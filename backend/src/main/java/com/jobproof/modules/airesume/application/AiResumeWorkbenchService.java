@@ -724,14 +724,6 @@ public class AiResumeWorkbenchService {
     }
 
     @Transactional
-    public TextImportView importText(CurrentAccount current, String conversationId, String text) {
-        assertSeeker(current);
-        requireConversation(current.accountId(), conversationId);
-        throw AppException.user("AI_TEXT_IMPORT_MOVED_TO_CHAT",
-                "请直接在 AI 对话框粘贴简历文本并说明希望修改的模块，系统会生成逐条待确认修改");
-    }
-
-    @Transactional
     public ConversationView uploadPhoto(CurrentAccount current, String conversationId, String filename,
             byte[] contentBytes) {
         assertSeeker(current);
@@ -1572,8 +1564,6 @@ public class AiResumeWorkbenchService {
     public record CareerEvidencePreferenceView(boolean enabled, int snapshotVersion, String source, Instant updatedAt) {}
     public record HistoryDeletionView(int messageBodiesDeleted, int pendingCandidatesDeleted,
             String auditMarker, Instant deletedAt) {}
-    public record TextImportView(String parserVersion, boolean aiCalled, int ignoredSensitiveLines,
-            int ambiguousLines, List<ResumeService.CandidateView> candidates) {}
     public record PhotoView(String fileId, String contentUrl) {}
     public record DesignPreferenceView(String id, String templateId, String variantCode, JsonNode settings,
             int versionNo, Instant updatedAt) {}

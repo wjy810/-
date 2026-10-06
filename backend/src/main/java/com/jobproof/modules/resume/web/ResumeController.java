@@ -19,6 +19,7 @@ import com.jobproof.shared.page.PageResult;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import java.util.List;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.ModelAttribute;
@@ -60,7 +61,7 @@ public class ResumeController {
     }
 
     @PutMapping("/{id}")
-    public ApiResponse<MasterView> update(@PathVariable String id, @RequestBody UpdateRequest request) {
+    public ApiResponse<MasterView> update(@PathVariable String id, @Valid @RequestBody UpdateRequest request) {
         return ApiResponse.ok(resumeService.update(
                 SecurityConfig.currentAccount(),
                 id,
@@ -227,7 +228,7 @@ public class ResumeController {
     }
 
     public record UpdateRequest(
-            String title,
+            @Size(max = 255) String title,
             String education,
             String experience,
             String projects,

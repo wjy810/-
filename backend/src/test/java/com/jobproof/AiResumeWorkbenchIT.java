@@ -1024,30 +1024,6 @@ class AiResumeWorkbenchIT {
     }
 
     @Test
-    void retiredTextImportDirectsPastedResumeTextToChatWithoutCreatingLegacyCandidates() throws Exception {
-        Session owner = seeker();
-        JsonNode created = data(mockMvc.perform(post("/api/v1/ai-resume/conversations")
-                        .cookie(owner.cookie()).contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"identityType\":\"GRADUATE\",\"title\":\"文本导入验收\"}"))
-                .andExpect(status().isOk()).andReturn());
-        String conversationId = created.path("id").asText();
-
-        mockMvc.perform(post("/api/v1/ai-resume/conversations/{id}/text-import", conversationId)
-                        .cookie(owner.cookie()).contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {"text":"个人简介\\n专注 Java 后端开发\\n性别：女\\n教育经历\\n示例大学 软件工程 本科\\n工作经历\\n示例公司 Java 实习生"}
-                                """))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error.reason").value("AI_TEXT_IMPORT_MOVED_TO_CHAT"));
-
-        mockMvc.perform(get("/api/v1/ai-resume/conversations/{id}", conversationId).cookie(owner.cookie()))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.resume.education").doesNotExist())
-                .andExpect(jsonPath("$.data.resume.pendingCandidateIds.length()").value(0))
-                .andExpect(jsonPath("$.data.changeSets.length()").value(0));
-    }
-
-    @Test
     void resumePhotoFlowsThroughPrivateUploadFreezeAndPdfExport() throws Exception {
         Session owner = seeker();
         JsonNode created = data(mockMvc.perform(post("/api/v1/ai-resume/conversations")

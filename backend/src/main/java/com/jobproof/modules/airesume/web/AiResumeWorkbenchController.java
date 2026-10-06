@@ -28,7 +28,6 @@ import com.jobproof.modules.airesume.application.AiResumeWorkbenchService.Conver
 import com.jobproof.modules.airesume.application.AiResumeWorkbenchService.CreateConversationCommand;
 import com.jobproof.modules.airesume.application.AiResumeMessageView;
 import com.jobproof.modules.airesume.application.AiResumeWorkbenchService.HistoryDeletionView;
-import com.jobproof.modules.airesume.application.AiResumeWorkbenchService.TextImportView;
 import com.jobproof.modules.airesume.application.AiResumeWorkbenchService.WritingPreferenceView;
 import com.jobproof.modules.airesume.application.AiResumeWorkbenchService.CareerEvidencePreferenceView;
 import com.jobproof.modules.airesume.application.AiResumeWorkbenchService.DesignPreferenceView;
@@ -332,12 +331,6 @@ public class AiResumeWorkbenchController {
         return ApiResponse.ok(workbench.deleteAiHistory(SecurityConfig.currentAccount(), conversationId));
     }
 
-    @PostMapping("/conversations/{conversationId}/text-import")
-    public ApiResponse<TextImportView> importText(@PathVariable String conversationId,
-            @Valid @RequestBody TextImportRequest request) {
-        return ApiResponse.ok(workbench.importText(SecurityConfig.currentAccount(), conversationId, request.text()));
-    }
-
     @PostMapping(value = "/conversations/{conversationId}/photo", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ApiResponse<ConversationView> uploadPhoto(@PathVariable String conversationId,
             @RequestParam("file") MultipartFile file) throws Exception {
@@ -394,5 +387,4 @@ public class AiResumeWorkbenchController {
     public record UndoChangeRequest(Integer expectedVersion) {}
     public record WritingPreferenceRequest(@NotBlank String styleCode) {}
     public record CareerEvidencePreferenceRequest(boolean enabled) {}
-    public record TextImportRequest(@NotBlank @Size(max = 50_000) String text) {}
 }
