@@ -1,0 +1,3 @@
+package com.jobproof.modules.aigateway.application;
+import static org.junit.jupiter.api.Assertions.*;import com.jobproof.modules.aigateway.domain.*;import com.jobproof.modules.aigateway.domain.AiGatewayModels.Channel;import java.net.URI;import java.util.*;import org.junit.jupiter.api.Test;
+class WeightedChannelRouterTest {@Test void prioritizesHealthAndIgnoresDisabled(){Channel h=c("healthy",0,1,true),d=c("degraded",1,100,true),x=c("disabled",0,100,false);assertEquals(List.of("healthy","degraded"),new WeightedChannelRouter(new Random(1)).order(List.of(d,x,h)).stream().map(Channel::id).toList());}private Channel c(String id,int p,int w,boolean e){return new Channel(id,AiProtocol.OPENAI_CHAT,URI.create("https://api.example/v1"),"key",p,w,e);}}

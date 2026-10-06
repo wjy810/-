@@ -1,0 +1,859 @@
+{
+  "name": "JobProof AI 全栏目 SVG 图标库",
+  "version": "1.0.0",
+  "viewBox": "0 0 24 24",
+  "strokeWidth": 1.8,
+  "colorMode": "currentColor",
+  "brandColors": {
+    "primary": "#2F6BFF",
+    "accent": "#13B8D4"
+  },
+  "modules": [
+    {
+      "code": "01",
+      "name": "工作台",
+      "slug": "dashboard",
+      "recommended": "A",
+      "icons": [
+        {
+          "variant": "A",
+          "label": "网格总览",
+          "id": "dashboard-a",
+          "file": "01_主栏目图标_每栏8选1/01_工作台/A_网格总览.svg",
+          "recommended": true
+        },
+        {
+          "variant": "B",
+          "label": "仪表盘",
+          "id": "dashboard-b",
+          "file": "01_主栏目图标_每栏8选1/01_工作台/B_仪表盘.svg",
+          "recommended": false
+        },
+        {
+          "variant": "C",
+          "label": "工作窗口",
+          "id": "dashboard-c",
+          "file": "01_主栏目图标_每栏8选1/01_工作台/C_工作窗口.svg",
+          "recommended": false
+        },
+        {
+          "variant": "D",
+          "label": "智能面板",
+          "id": "dashboard-d",
+          "file": "01_主栏目图标_每栏8选1/01_工作台/D_智能面板.svg",
+          "recommended": false
+        },
+        {
+          "variant": "E",
+          "label": "数据概览",
+          "id": "dashboard-e",
+          "file": "01_主栏目图标_每栏8选1/01_工作台/E_数据概览.svg",
+          "recommended": false
+        },
+        {
+          "variant": "F",
+          "label": "任务中枢",
+          "id": "dashboard-f",
+          "file": "01_主栏目图标_每栏8选1/01_工作台/F_任务中枢.svg",
+          "recommended": false
+        },
+        {
+          "variant": "G",
+          "label": "快捷启动",
+          "id": "dashboard-g",
+          "file": "01_主栏目图标_每栏8选1/01_工作台/G_快捷启动.svg",
+          "recommended": false
+        },
+        {
+          "variant": "H",
+          "label": "首页罗盘",
+          "id": "dashboard-h",
+          "file": "01_主栏目图标_每栏8选1/01_工作台/H_首页罗盘.svg",
+          "recommended": false
+        }
+      ]
+    },
+    {
+      "code": "02",
+      "name": "AI对话",
+      "slug": "ai-chat",
+      "recommended": "A",
+      "icons": [
+        {
+          "variant": "A",
+          "label": "对话微光",
+          "id": "ai-chat-a",
+          "file": "01_主栏目图标_每栏8选1/02_AI对话/A_对话微光.svg",
+          "recommended": true
+        },
+        {
+          "variant": "B",
+          "label": "双向会话",
+          "id": "ai-chat-b",
+          "file": "01_主栏目图标_每栏8选1/02_AI对话/B_双向会话.svg",
+          "recommended": false
+        },
+        {
+          "variant": "C",
+          "label": "AI助手",
+          "id": "ai-chat-c",
+          "file": "01_主栏目图标_每栏8选1/02_AI对话/C_AI助手.svg",
+          "recommended": false
+        },
+        {
+          "variant": "D",
+          "label": "语音对话",
+          "id": "ai-chat-d",
+          "file": "01_主栏目图标_每栏8选1/02_AI对话/D_语音对话.svg",
+          "recommended": false
+        },
+        {
+          "variant": "E",
+          "label": "问答气泡",
+          "id": "ai-chat-e",
+          "file": "01_主栏目图标_每栏8选1/02_AI对话/E_问答气泡.svg",
+          "recommended": false
+        },
+        {
+          "variant": "F",
+          "label": "联网思考",
+          "id": "ai-chat-f",
+          "file": "01_主栏目图标_每栏8选1/02_AI对话/F_联网思考.svg",
+          "recommended": false
+        },
+        {
+          "variant": "G",
+          "label": "消息魔法棒",
+          "id": "ai-chat-g",
+          "file": "01_主栏目图标_每栏8选1/02_AI对话/G_消息魔法棒.svg",
+          "recommended": false
+        },
+        {
+          "variant": "H",
+          "label": "AI轨道",
+          "id": "ai-chat-h",
+          "file": "01_主栏目图标_每栏8选1/02_AI对话/H_AI轨道.svg",
+          "recommended": false
+        }
+      ]
+    },
+    {
+      "code": "03",
+      "name": "求职资料库",
+      "slug": "career-library",
+      "recommended": "A",
+      "icons": [
+        {
+          "variant": "A",
+          "label": "资料文件夹",
+          "id": "career-library-a",
+          "file": "01_主栏目图标_每栏8选1/03_求职资料库/A_资料文件夹.svg",
+          "recommended": true
+        },
+        {
+          "variant": "B",
+          "label": "证据数据库",
+          "id": "career-library-b",
+          "file": "01_主栏目图标_每栏8选1/03_求职资料库/B_证据数据库.svg",
+          "recommended": false
+        },
+        {
+          "variant": "C",
+          "label": "档案认证",
+          "id": "career-library-c",
+          "file": "01_主栏目图标_每栏8选1/03_求职资料库/C_档案认证.svg",
+          "recommended": false
+        },
+        {
+          "variant": "D",
+          "label": "知识书架",
+          "id": "career-library-d",
+          "file": "01_主栏目图标_每栏8选1/03_求职资料库/D_知识书架.svg",
+          "recommended": false
+        },
+        {
+          "variant": "E",
+          "label": "资料堆栈",
+          "id": "career-library-e",
+          "file": "01_主栏目图标_每栏8选1/03_求职资料库/E_资料堆栈.svg",
+          "recommended": false
+        },
+        {
+          "variant": "F",
+          "label": "安全资料库",
+          "id": "career-library-f",
+          "file": "01_主栏目图标_每栏8选1/03_求职资料库/F_安全资料库.svg",
+          "recommended": false
+        },
+        {
+          "variant": "G",
+          "label": "云端档案",
+          "id": "career-library-g",
+          "file": "01_主栏目图标_每栏8选1/03_求职资料库/G_云端档案.svg",
+          "recommended": false
+        },
+        {
+          "variant": "H",
+          "label": "个人卷宗",
+          "id": "career-library-h",
+          "file": "01_主栏目图标_每栏8选1/03_求职资料库/H_个人卷宗.svg",
+          "recommended": false
+        }
+      ]
+    },
+    {
+      "code": "04",
+      "name": "AI职业规划",
+      "slug": "career-planning",
+      "recommended": "A",
+      "icons": [
+        {
+          "variant": "A",
+          "label": "职业能力树",
+          "id": "career-planning-a",
+          "file": "01_主栏目图标_每栏8选1/04_AI职业规划/A_职业能力树.svg",
+          "recommended": true
+        },
+        {
+          "variant": "B",
+          "label": "目标路径",
+          "id": "career-planning-b",
+          "file": "01_主栏目图标_每栏8选1/04_AI职业规划/B_目标路径.svg",
+          "recommended": false
+        },
+        {
+          "variant": "C",
+          "label": "职业罗盘",
+          "id": "career-planning-c",
+          "file": "01_主栏目图标_每栏8选1/04_AI职业规划/C_职业罗盘.svg",
+          "recommended": false
+        },
+        {
+          "variant": "D",
+          "label": "路线节点",
+          "id": "career-planning-d",
+          "file": "01_主栏目图标_每栏8选1/04_AI职业规划/D_路线节点.svg",
+          "recommended": false
+        },
+        {
+          "variant": "E",
+          "label": "画布分支",
+          "id": "career-planning-e",
+          "file": "01_主栏目图标_每栏8选1/04_AI职业规划/E_画布分支.svg",
+          "recommended": false
+        },
+        {
+          "variant": "F",
+          "label": "成长山峰",
+          "id": "career-planning-f",
+          "file": "01_主栏目图标_每栏8选1/04_AI职业规划/F_成长山峰.svg",
+          "recommended": false
+        },
+        {
+          "variant": "G",
+          "label": "职业星轨",
+          "id": "career-planning-g",
+          "file": "01_主栏目图标_每栏8选1/04_AI职业规划/G_职业星轨.svg",
+          "recommended": false
+        },
+        {
+          "variant": "H",
+          "label": "规划清单树",
+          "id": "career-planning-h",
+          "file": "01_主栏目图标_每栏8选1/04_AI职业规划/H_规划清单树.svg",
+          "recommended": false
+        }
+      ]
+    },
+    {
+      "code": "05",
+      "name": "岗位匹配",
+      "slug": "job-matching",
+      "recommended": "A",
+      "icons": [
+        {
+          "variant": "A",
+          "label": "岗位靶心",
+          "id": "job-matching-a",
+          "file": "01_主栏目图标_每栏8选1/05_岗位匹配/A_岗位靶心.svg",
+          "recommended": true
+        },
+        {
+          "variant": "B",
+          "label": "拼图匹配",
+          "id": "job-matching-b",
+          "file": "01_主栏目图标_每栏8选1/05_岗位匹配/B_拼图匹配.svg",
+          "recommended": false
+        },
+        {
+          "variant": "C",
+          "label": "人岗连接",
+          "id": "job-matching-c",
+          "file": "01_主栏目图标_每栏8选1/05_岗位匹配/C_人岗连接.svg",
+          "recommended": false
+        },
+        {
+          "variant": "D",
+          "label": "雷达匹配",
+          "id": "job-matching-d",
+          "file": "01_主栏目图标_每栏8选1/05_岗位匹配/D_雷达匹配.svg",
+          "recommended": false
+        },
+        {
+          "variant": "E",
+          "label": "双卡对比",
+          "id": "job-matching-e",
+          "file": "01_主栏目图标_每栏8选1/05_岗位匹配/E_双卡对比.svg",
+          "recommended": false
+        },
+        {
+          "variant": "F",
+          "label": "岗位磁吸",
+          "id": "job-matching-f",
+          "file": "01_主栏目图标_每栏8选1/05_岗位匹配/F_岗位磁吸.svg",
+          "recommended": false
+        },
+        {
+          "variant": "G",
+          "label": "条件天平",
+          "id": "job-matching-g",
+          "file": "01_主栏目图标_每栏8选1/05_岗位匹配/G_条件天平.svg",
+          "recommended": false
+        },
+        {
+          "variant": "H",
+          "label": "交集匹配",
+          "id": "job-matching-h",
+          "file": "01_主栏目图标_每栏8选1/05_岗位匹配/H_交集匹配.svg",
+          "recommended": false
+        }
+      ]
+    },
+    {
+      "code": "06",
+      "name": "简历工作台",
+      "slug": "resume-workbench",
+      "recommended": "A",
+      "icons": [
+        {
+          "variant": "A",
+          "label": "简历编辑",
+          "id": "resume-workbench-a",
+          "file": "01_主栏目图标_每栏8选1/06_简历工作台/A_简历编辑.svg",
+          "recommended": true
+        },
+        {
+          "variant": "B",
+          "label": "简历版式",
+          "id": "resume-workbench-b",
+          "file": "01_主栏目图标_每栏8选1/06_简历工作台/B_简历版式.svg",
+          "recommended": false
+        },
+        {
+          "variant": "C",
+          "label": "履历认证",
+          "id": "resume-workbench-c",
+          "file": "01_主栏目图标_每栏8选1/06_简历工作台/C_履历认证.svg",
+          "recommended": false
+        },
+        {
+          "variant": "D",
+          "label": "AI简历",
+          "id": "resume-workbench-d",
+          "file": "01_主栏目图标_每栏8选1/06_简历工作台/D_AI简历.svg",
+          "recommended": false
+        },
+        {
+          "variant": "E",
+          "label": "文本精修",
+          "id": "resume-workbench-e",
+          "file": "01_主栏目图标_每栏8选1/06_简历工作台/E_文本精修.svg",
+          "recommended": false
+        },
+        {
+          "variant": "F",
+          "label": "版本简历",
+          "id": "resume-workbench-f",
+          "file": "01_主栏目图标_每栏8选1/06_简历工作台/F_版本简历.svg",
+          "recommended": false
+        },
+        {
+          "variant": "G",
+          "label": "个人履历",
+          "id": "resume-workbench-g",
+          "file": "01_主栏目图标_每栏8选1/06_简历工作台/G_个人履历.svg",
+          "recommended": false
+        },
+        {
+          "variant": "H",
+          "label": "简历设置",
+          "id": "resume-workbench-h",
+          "file": "01_主栏目图标_每栏8选1/06_简历工作台/H_简历设置.svg",
+          "recommended": false
+        }
+      ]
+    },
+    {
+      "code": "07",
+      "name": "求职材料包",
+      "slug": "career-kit",
+      "recommended": "A",
+      "icons": [
+        {
+          "variant": "A",
+          "label": "材料箱",
+          "id": "career-kit-a",
+          "file": "01_主栏目图标_每栏8选1/07_求职材料包/A_材料箱.svg",
+          "recommended": true
+        },
+        {
+          "variant": "B",
+          "label": "公文资料",
+          "id": "career-kit-b",
+          "file": "01_主栏目图标_每栏8选1/07_求职材料包/B_公文资料.svg",
+          "recommended": false
+        },
+        {
+          "variant": "C",
+          "label": "文件组合",
+          "id": "career-kit-c",
+          "file": "01_主栏目图标_每栏8选1/07_求职材料包/C_文件组合.svg",
+          "recommended": false
+        },
+        {
+          "variant": "D",
+          "label": "压缩资料夹",
+          "id": "career-kit-d",
+          "file": "01_主栏目图标_每栏8选1/07_求职材料包/D_压缩资料夹.svg",
+          "recommended": false
+        },
+        {
+          "variant": "E",
+          "label": "投递材料",
+          "id": "career-kit-e",
+          "file": "01_主栏目图标_每栏8选1/07_求职材料包/E_投递材料.svg",
+          "recommended": false
+        },
+        {
+          "variant": "F",
+          "label": "作品集封套",
+          "id": "career-kit-f",
+          "file": "01_主栏目图标_每栏8选1/07_求职材料包/F_作品集封套.svg",
+          "recommended": false
+        },
+        {
+          "variant": "G",
+          "label": "星标档案盒",
+          "id": "career-kit-g",
+          "file": "01_主栏目图标_每栏8选1/07_求职材料包/G_星标档案盒.svg",
+          "recommended": false
+        },
+        {
+          "variant": "H",
+          "label": "材料清单包",
+          "id": "career-kit-h",
+          "file": "01_主栏目图标_每栏8选1/07_求职材料包/H_材料清单包.svg",
+          "recommended": false
+        }
+      ]
+    },
+    {
+      "code": "08",
+      "name": "模拟面试",
+      "slug": "mock-interview",
+      "recommended": "A",
+      "icons": [
+        {
+          "variant": "A",
+          "label": "面试麦克风",
+          "id": "mock-interview-a",
+          "file": "01_主栏目图标_每栏8选1/08_模拟面试/A_面试麦克风.svg",
+          "recommended": true
+        },
+        {
+          "variant": "B",
+          "label": "双人问答",
+          "id": "mock-interview-b",
+          "file": "01_主栏目图标_每栏8选1/08_模拟面试/B_双人问答.svg",
+          "recommended": false
+        },
+        {
+          "variant": "C",
+          "label": "视频面试",
+          "id": "mock-interview-c",
+          "file": "01_主栏目图标_每栏8选1/08_模拟面试/C_视频面试.svg",
+          "recommended": false
+        },
+        {
+          "variant": "D",
+          "label": "提问气泡",
+          "id": "mock-interview-d",
+          "file": "01_主栏目图标_每栏8选1/08_模拟面试/D_提问气泡.svg",
+          "recommended": false
+        },
+        {
+          "variant": "E",
+          "label": "语音评估",
+          "id": "mock-interview-e",
+          "file": "01_主栏目图标_每栏8选1/08_模拟面试/E_语音评估.svg",
+          "recommended": false
+        },
+        {
+          "variant": "F",
+          "label": "面试耳机",
+          "id": "mock-interview-f",
+          "file": "01_主栏目图标_每栏8选1/08_模拟面试/F_面试耳机.svg",
+          "recommended": false
+        },
+        {
+          "variant": "G",
+          "label": "面试记录",
+          "id": "mock-interview-g",
+          "file": "01_主栏目图标_每栏8选1/08_模拟面试/G_面试记录.svg",
+          "recommended": false
+        },
+        {
+          "variant": "H",
+          "label": "限时面试",
+          "id": "mock-interview-h",
+          "file": "01_主栏目图标_每栏8选1/08_模拟面试/H_限时面试.svg",
+          "recommended": false
+        }
+      ]
+    },
+    {
+      "code": "09",
+      "name": "笔试训练场",
+      "slug": "written-test",
+      "recommended": "A",
+      "icons": [
+        {
+          "variant": "A",
+          "label": "考试答卷",
+          "id": "written-test-a",
+          "file": "01_主栏目图标_每栏8选1/09_笔试训练场/A_考试答卷.svg",
+          "recommended": true
+        },
+        {
+          "variant": "B",
+          "label": "限时答题",
+          "id": "written-test-b",
+          "file": "01_主栏目图标_每栏8选1/09_笔试训练场/B_限时答题.svg",
+          "recommended": false
+        },
+        {
+          "variant": "C",
+          "label": "选择题",
+          "id": "written-test-c",
+          "file": "01_主栏目图标_每栏8选1/09_笔试训练场/C_选择题.svg",
+          "recommended": false
+        },
+        {
+          "variant": "D",
+          "label": "代码笔试",
+          "id": "written-test-d",
+          "file": "01_主栏目图标_每栏8选1/09_笔试训练场/D_代码笔试.svg",
+          "recommended": false
+        },
+        {
+          "variant": "E",
+          "label": "题库矩阵",
+          "id": "written-test-e",
+          "file": "01_主栏目图标_每栏8选1/09_笔试训练场/E_题库矩阵.svg",
+          "recommended": false
+        },
+        {
+          "variant": "F",
+          "label": "训练靶笔",
+          "id": "written-test-f",
+          "file": "01_主栏目图标_每栏8选1/09_笔试训练场/F_训练靶笔.svg",
+          "recommended": false
+        },
+        {
+          "variant": "G",
+          "label": "思维测验",
+          "id": "written-test-g",
+          "file": "01_主栏目图标_每栏8选1/09_笔试训练场/G_思维测验.svg",
+          "recommended": false
+        },
+        {
+          "variant": "H",
+          "label": "练习册计时",
+          "id": "written-test-h",
+          "file": "01_主栏目图标_每栏8选1/09_笔试训练场/H_练习册计时.svg",
+          "recommended": false
+        }
+      ]
+    },
+    {
+      "code": "10",
+      "name": "模板中心",
+      "slug": "template-center",
+      "recommended": "A",
+      "icons": [
+        {
+          "variant": "A",
+          "label": "模板布局",
+          "id": "template-center-a",
+          "file": "01_主栏目图标_每栏8选1/10_模板中心/A_模板布局.svg",
+          "recommended": true
+        },
+        {
+          "variant": "B",
+          "label": "模板图层",
+          "id": "template-center-b",
+          "file": "01_主栏目图标_每栏8选1/10_模板中心/B_模板图层.svg",
+          "recommended": false
+        },
+        {
+          "variant": "C",
+          "label": "智能模板",
+          "id": "template-center-c",
+          "file": "01_主栏目图标_每栏8选1/10_模板中心/C_智能模板.svg",
+          "recommended": false
+        },
+        {
+          "variant": "D",
+          "label": "模板画廊",
+          "id": "template-center-d",
+          "file": "01_主栏目图标_每栏8选1/10_模板中心/D_模板画廊.svg",
+          "recommended": false
+        },
+        {
+          "variant": "E",
+          "label": "配色模板",
+          "id": "template-center-e",
+          "file": "01_主栏目图标_每栏8选1/10_模板中心/E_配色模板.svg",
+          "recommended": false
+        },
+        {
+          "variant": "F",
+          "label": "蓝图模板",
+          "id": "template-center-f",
+          "file": "01_主栏目图标_每栏8选1/10_模板中心/F_蓝图模板.svg",
+          "recommended": false
+        },
+        {
+          "variant": "G",
+          "label": "复制版式",
+          "id": "template-center-g",
+          "file": "01_主栏目图标_每栏8选1/10_模板中心/G_复制版式.svg",
+          "recommended": false
+        },
+        {
+          "variant": "H",
+          "label": "组件系统",
+          "id": "template-center-h",
+          "file": "01_主栏目图标_每栏8选1/10_模板中心/H_组件系统.svg",
+          "recommended": false
+        }
+      ]
+    },
+    {
+      "code": "11",
+      "name": "通知中心",
+      "slug": "notification-center",
+      "recommended": "A",
+      "icons": [
+        {
+          "variant": "A",
+          "label": "通知铃铛",
+          "id": "notification-center-a",
+          "file": "01_主栏目图标_每栏8选1/11_通知中心/A_通知铃铛.svg",
+          "recommended": true
+        },
+        {
+          "variant": "B",
+          "label": "未读提醒",
+          "id": "notification-center-b",
+          "file": "01_主栏目图标_每栏8选1/11_通知中心/B_未读提醒.svg",
+          "recommended": false
+        },
+        {
+          "variant": "C",
+          "label": "消息收件箱",
+          "id": "notification-center-c",
+          "file": "01_主栏目图标_每栏8选1/11_通知中心/C_消息收件箱.svg",
+          "recommended": false
+        },
+        {
+          "variant": "D",
+          "label": "公告喇叭",
+          "id": "notification-center-d",
+          "file": "01_主栏目图标_每栏8选1/11_通知中心/D_公告喇叭.svg",
+          "recommended": false
+        },
+        {
+          "variant": "E",
+          "label": "脉冲提醒",
+          "id": "notification-center-e",
+          "file": "01_主栏目图标_每栏8选1/11_通知中心/E_脉冲提醒.svg",
+          "recommended": false
+        },
+        {
+          "variant": "F",
+          "label": "日程提醒",
+          "id": "notification-center-f",
+          "file": "01_主栏目图标_每栏8选1/11_通知中心/F_日程提醒.svg",
+          "recommended": false
+        },
+        {
+          "variant": "G",
+          "label": "会话提醒",
+          "id": "notification-center-g",
+          "file": "01_主栏目图标_每栏8选1/11_通知中心/G_会话提醒.svg",
+          "recommended": false
+        },
+        {
+          "variant": "H",
+          "label": "通知堆栈",
+          "id": "notification-center-h",
+          "file": "01_主栏目图标_每栏8选1/11_通知中心/H_通知堆栈.svg",
+          "recommended": false
+        }
+      ]
+    }
+  ],
+  "common": [
+    {
+      "label": "新建画布",
+      "id": "action-新建画布",
+      "file": "02_公共操作图标/01_新建画布.svg"
+    },
+    {
+      "label": "学习计划",
+      "id": "action-学习计划",
+      "file": "02_公共操作图标/02_学习计划.svg"
+    },
+    {
+      "label": "能力验证",
+      "id": "action-能力验证",
+      "file": "02_公共操作图标/03_能力验证.svg"
+    },
+    {
+      "label": "版本记录",
+      "id": "action-版本记录",
+      "file": "02_公共操作图标/04_版本记录.svg"
+    },
+    {
+      "label": "新增节点",
+      "id": "action-新增节点",
+      "file": "02_公共操作图标/05_新增节点.svg"
+    },
+    {
+      "label": "编辑节点",
+      "id": "action-编辑节点",
+      "file": "02_公共操作图标/06_编辑节点.svg"
+    },
+    {
+      "label": "锁定节点",
+      "id": "action-锁定节点",
+      "file": "02_公共操作图标/07_锁定节点.svg"
+    },
+    {
+      "label": "AI重生成",
+      "id": "action-AI重生成",
+      "file": "02_公共操作图标/08_AI重生成.svg"
+    },
+    {
+      "label": "能力证据",
+      "id": "action-能力证据",
+      "file": "02_公共操作图标/09_能力证据.svg"
+    },
+    {
+      "label": "进度",
+      "id": "action-进度",
+      "file": "02_公共操作图标/10_进度.svg"
+    },
+    {
+      "label": "筛选",
+      "id": "action-筛选",
+      "file": "02_公共操作图标/11_筛选.svg"
+    },
+    {
+      "label": "搜索",
+      "id": "action-搜索",
+      "file": "02_公共操作图标/12_搜索.svg"
+    },
+    {
+      "label": "上传",
+      "id": "action-上传",
+      "file": "02_公共操作图标/13_上传.svg"
+    },
+    {
+      "label": "导入",
+      "id": "action-导入",
+      "file": "02_公共操作图标/14_导入.svg"
+    },
+    {
+      "label": "导出",
+      "id": "action-导出",
+      "file": "02_公共操作图标/15_导出.svg"
+    },
+    {
+      "label": "设置",
+      "id": "action-设置",
+      "file": "02_公共操作图标/16_设置.svg"
+    },
+    {
+      "label": "用户",
+      "id": "action-用户",
+      "file": "02_公共操作图标/17_用户.svg"
+    },
+    {
+      "label": "收藏",
+      "id": "action-收藏",
+      "file": "02_公共操作图标/18_收藏.svg"
+    },
+    {
+      "label": "更多",
+      "id": "action-更多",
+      "file": "02_公共操作图标/19_更多.svg"
+    },
+    {
+      "label": "关闭",
+      "id": "action-关闭",
+      "file": "02_公共操作图标/20_关闭.svg"
+    },
+    {
+      "label": "确认",
+      "id": "action-确认",
+      "file": "02_公共操作图标/21_确认.svg"
+    },
+    {
+      "label": "警告",
+      "id": "action-警告",
+      "file": "02_公共操作图标/22_警告.svg"
+    },
+    {
+      "label": "信息",
+      "id": "action-信息",
+      "file": "02_公共操作图标/23_信息.svg"
+    },
+    {
+      "label": "日历",
+      "id": "action-日历",
+      "file": "02_公共操作图标/24_日历.svg"
+    },
+    {
+      "label": "加号",
+      "id": "action-加号",
+      "file": "02_公共操作图标/25_加号.svg"
+    },
+    {
+      "label": "下拉",
+      "id": "action-下拉",
+      "file": "02_公共操作图标/26_下拉.svg"
+    },
+    {
+      "label": "返回",
+      "id": "action-返回",
+      "file": "02_公共操作图标/27_返回.svg"
+    },
+    {
+      "label": "外链",
+      "id": "action-外链",
+      "file": "02_公共操作图标/28_外链.svg"
+    }
+  ]
+}

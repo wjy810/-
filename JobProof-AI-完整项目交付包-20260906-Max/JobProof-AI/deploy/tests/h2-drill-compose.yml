@@ -1,0 +1,51 @@
+name: ${JOBPROOF_DRILL_PROJECT:?isolated project required}
+services:
+  app:
+    image: eclipse-temurin:17-jre-jammy
+    command: ["java", "-Xmx384m", "-XX:MaxMetaspaceSize=192m", "-XX:+UseSerialGC", "-XX:ActiveProcessorCount=2", "-jar", "/app/jobproof-backend.jar"]
+    environment:
+      SPRING_PROFILES_ACTIVE: local,test
+      SPRING_DATASOURCE_URL: jdbc:h2:file:/var/lib/jobproof/jobproof;MODE=MySQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE;CASE_INSENSITIVE_IDENTIFIERS=TRUE;AUTO_SERVER=FALSE
+      JOBPROOF_REGISTRATION_ENABLED: "true"
+      JOBPROOF_DEV_ADMIN_ENABLED: "false"
+      JOBPROOF_DEV_SEEKER_ENABLED: "false"
+      JOBPROOF_AI_GATEWAY_ENABLED: "false"
+      JOBPROOF_AI_WORKBENCH_ENABLED: "false"
+      JOBPROOF_STORAGE_TYPE: minio
+      JOBPROOF_STORAGE_LOCAL_DIR: /var/lib/jobproof/files
+      JOBPROOF_STORAGE_MINIO_ENDPOINT: http://minio:9000
+      JOBPROOF_STORAGE_MINIO_ACCESS_KEY: synthetic-drill
+      JOBPROOF_STORAGE_MINIO_SECRET_KEY: synthetic-drill-password-not-a-real-credential
+      JOBPROOF_STORAGE_MINIO_BUCKET: jobproof-drill
+      JOBPROOF_CAREER_SCAN_PROVIDER: clamav
+      JOBPROOF_TEMPLATE_MALWARE_SCAN_ENABLED: "true"
+      JOBPROOF_TEMPLATE_MALWARE_SCAN_HOST: clamav
+      JOBPROOF_TEMPLATE_MALWARE_SCAN_PORT: "3310"
+    volumes:
+      - ./data:/var/lib/jobproof
+      - ../jobproof-backend.jar:/app/jobproof-backend.jar:ro
+    mem_limit: 768m
+    depends_on:
+      minio:
+        condition: service_healthy
+    security_opt: [no-new-privileges:true]
+  minio:
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
+    command: server /data
+    environment:
+      MINIO_ROOT_USER: synthetic-drill
+      MINIO_ROOT_PASSWORD: synthetic-drill-password-not-a-real-credential
+    volumes:
+      - objects:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:9000/minio/health/live"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+    mem_limit: 256m
+    security_opt: [no-new-privileges:true]
+networks:
+  default:
+    internal: true
+volumes:
+  objects:

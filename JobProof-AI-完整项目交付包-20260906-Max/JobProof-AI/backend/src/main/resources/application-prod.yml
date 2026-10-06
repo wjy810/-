@@ -1,0 +1,89 @@
+spring:
+  datasource:
+    url: ${JOBPROOF_DB_URL:jdbc:h2:file:/var/lib/jobproof/jobproof;MODE=MySQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE;CASE_INSENSITIVE_IDENTIFIERS=TRUE;AUTO_SERVER=FALSE}
+    driver-class-name: ${JOBPROOF_DB_DRIVER:org.h2.Driver}
+    username: ${JOBPROOF_DB_USERNAME:sa}
+    password: ${JOBPROOF_DB_PASSWORD:}
+    hikari:
+      maximum-pool-size: 6
+      minimum-idle: 1
+      connection-timeout: 10000
+  data:
+    redis:
+      host: ${JOBPROOF_REDIS_HOST:redis}
+      port: ${JOBPROOF_REDIS_PORT:6379}
+      password: ${JOBPROOF_REDIS_PASSWORD:}
+      timeout: 3s
+
+management:
+  health:
+    mail:
+      enabled: false
+
+jobproof:
+  login-rate-limit:
+    mode: redis
+  cookie:
+    secure: ${JOBPROOF_COOKIE_SECURE:true}
+  cors:
+    origins:
+      - ${JOBPROOF_PUBLIC_ORIGIN:http://47.242.17.130}
+  policies:
+    registration-enabled: ${JOBPROOF_REGISTRATION_ENABLED:true}
+  verification:
+    enabled: true
+    email-provider: ${JOBPROOF_VERIFICATION_EMAIL_PROVIDER:qq-smtp}
+    sms-provider: ${JOBPROOF_VERIFICATION_SMS_PROVIDER:aliyun-dypns}
+    rate-limit-mode: redis
+  redis:
+    enabled: true
+  storage:
+    type: minio
+    local-dir: /var/lib/jobproof/files
+    minio:
+      endpoint: ${JOBPROOF_MINIO_ENDPOINT:http://minio:9000}
+      access-key: ${JOBPROOF_MINIO_ACCESS_KEY}
+      secret-key: ${JOBPROOF_MINIO_SECRET_KEY}
+      bucket: ${JOBPROOF_MINIO_BUCKET:jobproof-private}
+  career-library:
+    malware-scan:
+      provider: clamav
+      timeout-seconds: 120
+  templates:
+    demo-enabled: false
+    preview:
+      enabled: true
+      batch-size: 2
+      poll-ms: 5000
+      initial-delay-ms: 30000
+      batch-timeout-seconds: 240
+      office-executable: /usr/bin/soffice
+    malware-scan:
+      enabled: true
+      host: clamav
+      port: 3310
+      connect-timeout-ms: 5000
+      read-timeout-ms: 30000
+  ai:
+    gateway:
+      enabled: true
+      master-key: ${JOBPROOF_AI_MASTER_KEY}
+    workbench:
+      enabled: true
+      monthly-quota: 50
+  job-match:
+    enabled: true
+    ocr:
+      executable: /usr/bin/tesseract
+      data-dir: /usr/share/tesseract-ocr/4.00/tessdata
+      languages: chi_sim+eng
+      timeout-seconds: 60
+      max-pages: 20
+  career-planning:
+    enabled: true
+  dev:
+    mailbox-enabled: false
+    admin:
+      enabled: false
+    seeker:
+      enabled: false

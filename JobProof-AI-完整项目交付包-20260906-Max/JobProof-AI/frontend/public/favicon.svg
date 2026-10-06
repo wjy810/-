@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="64"
+     height="64"
+     viewBox="0 0 64 64"
+     fill="none"
+     role="img"
+     aria-labelledby="title description">
+  <title id="title">JobProof AI 品牌图标</title>
+  <desc id="description">蓝青渐变圆角方形中的简历文档与校验勾，代表智能简历与可信求职资料。</desc>
+
+  <defs>
+    <linearGradient id="brand" x1="7" y1="5" x2="58" y2="60" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#2457E8"/>
+      <stop offset="0.56" stop-color="#2F6BFF"/>
+      <stop offset="1" stop-color="#13B8D4"/>
+    </linearGradient>
+    <radialGradient id="highlight" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse"
+                    gradientTransform="translate(51 10) rotate(133) scale(34)">
+      <stop stop-color="#7DE7F4" stop-opacity="0.46"/>
+      <stop offset="1" stop-color="#7DE7F4" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Brand squircle: stable at favicon and navigation sizes. -->
+  <rect x="2" y="2" width="60" height="60" rx="17" fill="url(#brand)"/>
+  <rect x="2.75" y="2.75" width="58.5" height="58.5" rx="16.25"
+        stroke="#FFFFFF" stroke-opacity="0.18" stroke-width="1.5"/>
+  <rect x="2" y="2" width="60" height="60" rx="17" fill="url(#highlight)"/>
+
+  <!-- Resume sheet. The folded corner remains readable at 16px. -->
+  <path d="M19.5 13H36.2L46.5 23.3V47.5C46.5 50.26 44.26 52.5 41.5 52.5H19.5C16.74 52.5 14.5 50.26 14.5 47.5V18C14.5 15.24 16.74 13 19.5 13Z"
+        fill="#FFFFFF"/>
+  <path d="M36.2 13V20.1C36.2 21.87 37.63 23.3 39.4 23.3H46.5L36.2 13Z"
+        fill="#DDF8FF"/>
+  <path d="M36.2 13V20.1C36.2 21.87 37.63 23.3 39.4 23.3H46.5"
+        stroke="#A8DDF1" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Resume content lines. -->
+  <rect x="21" y="25.5" width="11.5" height="3" rx="1.5" fill="#8CB0FF"/>
+  <rect x="21" y="31.5" width="17" height="3" rx="1.5" fill="#BCD0FF"/>
+
+  <!-- Proof mark. -->
+  <path d="M22 41.2L27.2 46.4L39 34.6"
+        stroke="#119FBE" stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Small AI spark: a restrained accent, not decorative text. -->
+  <path d="M51 13.2C51.35 15.62 52.68 16.95 55.1 17.3C52.68 17.65 51.35 18.98 51 21.4C50.65 18.98 49.32 17.65 46.9 17.3C49.32 16.95 50.65 15.62 51 13.2Z"
+        fill="#E8FCFF"/>
+</svg>

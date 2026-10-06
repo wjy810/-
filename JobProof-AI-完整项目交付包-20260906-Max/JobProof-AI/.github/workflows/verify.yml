@@ -1,0 +1,94 @@
+name: Verify JobProof
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  source-security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: python scripts/security-source-scan.py
+      - run: node scripts/lint-critical.mjs
+      - run: sh -n deploy/backup.sh && sh -n deploy/renew-certificates.sh && sh -n deploy/tests/backup-real-drill.sh && sh -n deploy/tests/backup-h2-drill.sh
+      - run: sh deploy/tests/backup-mock-test.sh
+      - name: Production source secret scanning (Trivy; values redacted by scanner)
+        run: |
+          docker run --rm -v "$PWD/backend/src/main:/scan:ro" aquasec/trivy:0.69.3 fs --timeout 5m --scanners secret --exit-code 1 /scan
+          docker run --rm -v "$PWD/frontend/src:/scan:ro" aquasec/trivy:0.69.3 fs --timeout 5m --scanners secret --exit-code 1 /scan
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: frontend/.node-version
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm install --global npm@11.5.1
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - run: npm audit --audit-level=high
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+      - run: mvn -B verify
+      - name: Reject embedded credentials in production artifact
+        run: python ../scripts/security-source-scan.py --jar target/jobproof-backend.jar
+      - name: Java vulnerability and license inventory
+        run: |
+          mkdir -p security-reports
+          mkdir -p security-input
+          cp target/jobproof-backend.jar security-input/
+          python ../scripts/java-license-inventory.py target/jobproof-backend.jar security-reports/java-licenses.json
+          docker run --rm -v "$PWD/security-input:/scan:ro" -v "$PWD/security-reports:/reports" aquasec/trivy:0.69.3 rootfs --timeout 5m --scanners vuln --format json --output /reports/backend.json /scan
+          python ../scripts/check-vulnerability-report.py security-reports/backend.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: backend-security-inventory
+          path: backend/security-reports/
+          retention-days: 14
+  container-security:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {name: redis, image: 'redis:7.4-alpine'}
+          - {name: minio, image: 'minio/minio:RELEASE.2025-09-07T16-13-09Z'}
+          - {name: clamav, image: 'clamav/clamav:1.4.6@sha256:b25d9199257ae7ef45e0cc4c7eaa60ce7e5447796f0090d5ff311d1a30980cc3'}
+          - {name: nginx, image: 'nginx:1.30.4-alpine-slim@sha256:77da26c31397bf6694b4bf93275f5b40b0b120ba1b8f114264b603e592c561d6'}
+          - {name: certbot, image: 'certbot/certbot:v5.8.0'}
+          - {name: java-base, image: 'eclipse-temurin:17-jre-jammy'}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Container CVE and license inventory
+        run: |
+          mkdir -p security-reports
+          docker run --rm -v "$PWD/security-reports:/reports" aquasec/trivy:0.69.3 image --timeout 5m --scanners vuln,license --format json --output /reports/image.json '${{ matrix.image }}'
+          python scripts/check-vulnerability-report.py security-reports/image.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: container-${{ matrix.name }}-inventory
+          path: security-reports/
+          retention-days: 14

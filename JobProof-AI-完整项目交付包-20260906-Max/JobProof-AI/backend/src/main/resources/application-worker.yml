@@ -1,0 +1,9 @@
+# 独立 Worker 进程骨架：无 Web，只跑任务轮询。S0 默认不必单独启动。
+spring:
+  main:
+    web-application-type: none
+
+jobproof:
+  worker:
+    in-process: true
+    poll-ms: 1000

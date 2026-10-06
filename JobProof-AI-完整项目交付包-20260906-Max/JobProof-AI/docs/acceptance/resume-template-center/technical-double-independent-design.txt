@@ -1,0 +1,10 @@
+JobProof smart resume template provenance evidence
+
+Template: rlt-b-tech-double-v1 (Technical Experience Two Page), revision 1
+Renderer protocol: resume-layout-v2
+Provenance: independently authored JobProof controlled layout
+Source definition: V16__resume_layout_v2_family_drafts.sql
+
+The layout definition, slot capacities, renderer implementation, and thumbnail were authored for JobProof. The smart template does not copy HICV example facts or bind to a HICV source DOCX. HICV documents remain separate public download assets under their own attribution and non-commercial license controls.
+
+Verified on: 2026-08-22

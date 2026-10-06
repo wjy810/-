@@ -1,0 +1,8 @@
+JobProof DOCX security acceptance evidence
+
+Template: rlt-b-cn-table-v1
+Generated DOCX SHA-256: 2F291E36DD7488024B0FFB72DFFBBFEB57108D5C5A4D8E45F1D5898ACF10E041
+Word round-trip SHA-256: 0043FA90CD93E665350AFD98BF480734FAC2783BB0000C47C1B6E0E4B98FE2DB
+WPS round-trip SHA-256: E6DCAA65EAEF53EEDF5827B97828F99634D1EBCEDF5353001D6C3B02D5EF4F21
+
+ResumeDocxRenderer inspection passed ZIP magic, content types, document XML, text order, macro-free, external-relationship-free, and active-content-free checks. ClamAV 1.4.6 (definition 28094, 2026-08-16) scanned the generated, Word round-trip, and WPS round-trip files individually on 2026-08-22; all three returned OK and the infected-file count was 0.

@@ -1,0 +1,9 @@
+JobProof ATS acceptance evidence
+
+Template: rlt-b-cn-table-v1
+Fixture: backend/target/docx-acceptance/chinese-table-mixed.docx
+Fixture SHA-256: 2F291E36DD7488024B0FFB72DFFBBFEB57108D5C5A4D8E45F1D5898ACF10E041
+
+Automated ResumeDocxRenderer inspection verified document XML, deterministic section text order, and exactly one controlled layout table. All Chinese and English content remains selectable and ordered in table cells. Microsoft Word Office 16 and WPS 12.1.0.28043 both opened, saved, and reopened the document without losing the title or section order. The mixed-language fixture remained one page.
+
+Result: PASSED on 2026-08-22

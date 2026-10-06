@@ -1,0 +1,2 @@
+package com.jobproof.modules.aigateway.security;
+public final class ApiKeyMasker { private ApiKeyMasker(){} public static String mask(String v){if(v==null || v.isBlank())return "";if(v.length()<=8)return "****";return v.substring(0,3)+"****"+v.substring(v.length()-4);} }

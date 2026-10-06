@@ -1,0 +1,47 @@
+# 对接 docker-compose 中的 MySQL 8 与 Redis。先启动 compose 再使用本 profile。
+spring:
+  datasource:
+    url: jdbc:mysql://127.0.0.1:3306/jobproof?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    username: jobproof
+    password: jobproof
+  data:
+    redis:
+      host: 127.0.0.1
+      port: 6379
+
+jobproof:
+  job-match:
+    enabled: true
+  career-planning:
+    enabled: true
+  verification:
+    enabled: true
+    email-provider: dev
+    sms-provider: dev
+  redis:
+    enabled: true
+  worker:
+    in-process: true
+  storage:
+    type: ${JOBPROOF_STORAGE_TYPE:minio}
+    minio:
+      endpoint: ${JOBPROOF_MINIO_ENDPOINT:http://127.0.0.1:9000}
+      access-key: ${JOBPROOF_MINIO_ACCESS_KEY:jobproof}
+      secret-key: ${JOBPROOF_MINIO_SECRET_KEY:jobproof-minio-dev}
+      bucket: ${JOBPROOF_MINIO_BUCKET:jobproof-private}
+  career-library:
+    malware-scan:
+      provider: ${JOBPROOF_CAREER_SCAN_PROVIDER:clamav}
+  dev:
+    mailbox-enabled: true
+    admin:
+      enabled: true
+      password: admin
+  templates:
+    preview:
+      enabled: true
+    malware-scan:
+      enabled: true
+  cookie:
+    secure: false

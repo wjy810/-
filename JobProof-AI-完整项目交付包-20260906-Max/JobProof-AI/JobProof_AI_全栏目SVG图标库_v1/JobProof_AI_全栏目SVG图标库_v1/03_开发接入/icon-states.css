@@ -1,0 +1,10 @@
+/* SVG files use currentColor: state colors belong to the button/link. */
+.nav-icon { width: 20px; height: 20px; color: #64748B; transition: color .18s ease, transform .18s ease; }
+.nav-item:hover .nav-icon { color: #2F6BFF; transform: translateY(-1px); }
+.nav-item[aria-current="page"] .nav-icon { color: #2F6BFF; }
+.nav-item[aria-current="page"] { background: #EEF4FF; color: #164CCA; }
+@media (prefers-color-scheme: dark) {
+  .nav-icon { color: #94A3B8; }
+  .nav-item:hover .nav-icon, .nav-item[aria-current="page"] .nav-icon { color: #70A0FF; }
+  .nav-item[aria-current="page"] { background: rgba(47,107,255,.16); color: #B9D0FF; }
+}

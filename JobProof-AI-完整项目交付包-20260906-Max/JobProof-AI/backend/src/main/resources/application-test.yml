@@ -1,0 +1,46 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:jobproof-${random.uuid};MODE=MySQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE;CASE_INSENSITIVE_IDENTIFIERS=TRUE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  flyway:
+    enabled: true
+
+management:
+  health:
+    mail:
+      enabled: false
+    redis:
+      enabled: false
+
+jobproof:
+  login-rate-limit:
+    mode: local
+    account-limit: 10000
+    ip-limit: 10000
+  verification:
+    enabled: true
+    email-provider: dev
+    sms-provider: dev
+    rate-limit-mode: local
+  redis:
+    enabled: false
+  worker:
+    in-process: true
+    poll-ms: 150
+  dev:
+    mailbox-enabled: true
+    admin:
+      enabled: false
+  templates:
+    demo-enabled: true
+    preview:
+      enabled: false
+  ai:
+    gateway:
+      master-key: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
+  cookie:
+    secure: false
+  storage:
+    local-dir: target/test-files

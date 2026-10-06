@@ -1,0 +1,97 @@
+# 无 MySQL / Redis 时的默认可运行档。H2 兼容 MySQL 模式，仅用于本机与测试。
+spring:
+  datasource:
+    url: jdbc:h2:file:./.local-data/jobproof;MODE=MySQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE;CASE_INSENSITIVE_IDENTIFIERS=TRUE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  h2:
+    console:
+      enabled: false
+  mail:
+    host: ${QQ_SMTP_HOST:smtp.qq.com}
+    port: ${QQ_SMTP_PORT:465}
+    username: ${JOBPROOF_QQ_SMTP_USERNAME:${QQ_SMTP_USER:}}
+    password: ${JOBPROOF_QQ_SMTP_PASSWORD:${QQ_SMTP_AUTH_CODE:}}
+    default-encoding: UTF-8
+    properties:
+      mail.smtp.auth: true
+      mail.smtp.ssl.enable: true
+      mail.smtp.connectiontimeout: 10000
+      mail.smtp.timeout: 10000
+      mail.smtp.writetimeout: 10000
+
+# External delivery is opt-in in dev. The default local provider keeps registration
+# deterministic and prevents synthetic test addresses from reaching a real gateway.
+management:
+  health:
+    mail:
+      enabled: false
+
+jobproof:
+  login-rate-limit:
+    mode: local
+  verification:
+    enabled: true
+    email-provider: ${JOBPROOF_VERIFICATION_EMAIL_PROVIDER:dev}
+    sms-provider: ${JOBPROOF_VERIFICATION_SMS_PROVIDER:dev}
+    rate-limit-mode: local
+    contact-hmac-secret: jobproof-dev-contact-hmac-20260826-9e5d3a8b7c1f4a62
+    code-hmac-secret: jobproof-dev-code-hmac-20260826-2f8c6e4b1a7d5c93
+    qq-smtp:
+      from: ${JOBPROOF_QQ_SMTP_FROM:${MAIL_FROM:}}
+      from-name: JobProof AI
+    aliyun:
+      endpoint: ${JOBPROOF_ALIYUN_SMS_ENDPOINT:dypnsapi.aliyuncs.com}
+      access-key-id: ${JOBPROOF_ALIYUN_DYPNS_ACCESS_KEY_ID:${ALIBABA_CLOUD_ACCESS_KEY_ID:}}
+      access-key-secret: ${JOBPROOF_ALIYUN_DYPNS_ACCESS_KEY_SECRET:${ALIBABA_CLOUD_ACCESS_KEY_SECRET:}}
+      sign-name: ${JOBPROOF_ALIYUN_DYPNS_SIGN_NAME:${JOBPROOF_ALIYUN_SMS_SIGN_NAME:}}
+      template-code: ${JOBPROOF_ALIYUN_DYPNS_TEMPLATE_CODE:${JOBPROOF_ALIYUN_SMS_TEMPLATE_CODE:}}
+  policies:
+    registration-enabled: true
+  redis:
+    enabled: false
+  worker:
+    in-process: true
+    poll-ms: 1000
+  storage:
+    type: ${JOBPROOF_STORAGE_TYPE:minio}
+    minio:
+      endpoint: ${JOBPROOF_MINIO_ENDPOINT:http://127.0.0.1:9000}
+      access-key: ${JOBPROOF_MINIO_ACCESS_KEY:jobproof}
+      secret-key: ${JOBPROOF_MINIO_SECRET_KEY:jobproof-minio-dev}
+      bucket: ${JOBPROOF_MINIO_BUCKET:jobproof-private}
+  career-library:
+    malware-scan:
+      # The local profile performs the same type/structure checks in
+      # CareerFilePolicy before this provider. Keep external ClamAV explicit
+      # for server/production and allow it locally with an env override.
+      provider: ${JOBPROOF_CAREER_SCAN_PROVIDER:dev}
+  dev:
+    mailbox-enabled: true
+    admin:
+      enabled: true
+      password: admin
+    seeker:
+      enabled: true
+      password: seeker123
+  templates:
+    demo-enabled: true
+    preview:
+      enabled: true
+    malware-scan:
+      enabled: true
+  ai:
+    gateway:
+      # 本地固定测试密钥；生产配置不继承 dev profile，仍必须从 JOBPROOF_AI_MASTER_KEY 注入。
+      enabled: true
+      master-key: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
+    workbench:
+      enabled: true
+      monthly-quota: 500
+  job-match:
+    enabled: true
+  career-planning:
+    enabled: true
+  cookie:
+    secure: false

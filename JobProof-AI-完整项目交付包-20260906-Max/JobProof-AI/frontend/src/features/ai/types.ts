@@ -1,0 +1,13 @@
+export type PageResponse<T> = { items: T[]; page: number; size: number; totalElements: number; totalPages: number }
+export type ChannelScope = 'SYSTEM' | 'PERSONAL'
+export type AiChannel = { id: string; scope: ChannelScope; ownerAccountId?: string | null; name: string; providerCode: string; baseUrl: string; protocol: string; apiKeyMasked: string; status: string; channelRate?: string | number | null; healthStatus: string; lastCheckedAt?: string | null; versionNo: number; createdAt: string; updatedAt: string }
+export type ChannelInput = { name: string; providerCode: string; baseUrl: string; apiKey: string; protocol: string; status: string }
+export type Wallet = { accountId: string; currency: string; availableBalance: string | number; heldBalance: string | number; versionNo: number; updatedAt: string }
+export type WalletLedger = { id: string; type: string; amount: string | number; balanceAfter: string | number; referenceType?: string | null; referenceId?: string | null; idempotencyKey?: string | null; createdAt: string }
+export type AiUsage = { id: string; requestId: string; channelId: string; modelId: string; status: string; inputTokens?: number | null; cachedInputTokens?: number | null; outputTokens?: number | null; successfulUnits?: number | null; failureCode?: string | null; startedAt: string; completedAt?: string | null }
+export type AiBilling = { id: string; usageId: string; status: string; currency: string; estimatedAmount: string | number; actualAmount: string | number; refundedAmount: string | number; pricingSnapshot?: unknown; channelRateSnapshot?: string | number | null; settledAt?: string | null; versionNo: number }
+export type PersonalSubscription = { id: string; status: string; price: string | number; currency: string; currentPeriodStart: string; currentPeriodEnd: string; autoRenew: boolean; versionNo: number }
+export type ChannelTestResult = { channelId: string; status: string; latencyMs?: number | null; checkedAt: string; failureCode?: string | null; message?: string | null }
+export type AiSystemChannel = { id: string; name: string; providerCode: string; baseUrl: string; protocol: string; apiKeyMasked: string; status: string; healthStatus: string; versionNo: number; createdAt: string; updatedAt: string }
+export type AiSystemCapability = { id: string; channelId: string; normalizedBaseUrl: string; models: string[]; testedModel?: string | null; authenticated: boolean; modelDiscovery: boolean; plainResponse: boolean; streamingResponse: boolean; structuredResponse: boolean; status: string; failureCode?: string | null; detail: string; checkedAt: string }
+export type AiSystemChannelInput = { name: string; providerCode: string; baseUrl: string; apiKey: string; protocol: string }

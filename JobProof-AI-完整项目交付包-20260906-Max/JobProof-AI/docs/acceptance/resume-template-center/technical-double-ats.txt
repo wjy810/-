@@ -1,0 +1,9 @@
+JobProof ATS acceptance evidence
+
+Template: rlt-b-tech-double-v1
+Fixture: backend/target/docx-acceptance/technical-double-long.docx
+Fixture SHA-256: 8C9B27CDFBF5F634FA43FE1DEB06376D145D715AF91AB58FFC890625A85ABAFC
+
+Automated ResumeDocxRenderer inspection verified document XML, deterministic section text order, and zero layout tables. The document contains selectable Chinese and English text rather than text-as-image content. Microsoft Word Office 16 and WPS 12.1.0.28043 both opened, saved, and reopened the document without losing the title or section order. The long-content fixture paginated to two pages as designed.
+
+Result: PASSED on 2026-08-22

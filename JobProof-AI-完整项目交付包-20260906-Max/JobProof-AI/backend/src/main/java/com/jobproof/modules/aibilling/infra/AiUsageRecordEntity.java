@@ -1,0 +1,7 @@
+package com.jobproof.modules.aibilling.infra;
+import jakarta.persistence.*; import java.time.Instant;
+@Entity @Table(name="ai_usage_record") public class AiUsageRecordEntity {
+ @Id private String id; @Column(name="request_id") private String requestId; @Column(name="account_id") private String accountId; @Column(name="channel_id") private String channelId; @Column(name="model_id") private String modelId; private String status;
+ @Column(name="input_tokens") private long inputTokens; @Column(name="cached_input_tokens") private long cachedInputTokens; @Column(name="output_tokens") private long outputTokens; @Column(name="successful_units") private int successfulUnits; @Column(name="failure_code") private String failureCode; @Column(name="started_at") private Instant startedAt; @Column(name="completed_at") private Instant completedAt;
+ protected AiUsageRecordEntity(){} public String getId(){return id;} public String getRequestId(){return requestId;} public String getChannelId(){return channelId;} public String getModelId(){return modelId;} public String getStatus(){return status;} public long getInputTokens(){return inputTokens;} public long getCachedInputTokens(){return cachedInputTokens;} public long getOutputTokens(){return outputTokens;} public int getSuccessfulUnits(){return successfulUnits;} public String getFailureCode(){return failureCode;} public Instant getStartedAt(){return startedAt;} public Instant getCompletedAt(){return completedAt;}
+}

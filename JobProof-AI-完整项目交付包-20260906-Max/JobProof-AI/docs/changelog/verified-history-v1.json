@@ -1,0 +1,652 @@
+[
+  {
+    "versionLabel": "v0.1.0",
+    "title": "账号、安全会话与数据权利基础",
+    "summary": "建立账号、权限、审计和数据权利主链路，为后续求职功能提供可信基础。",
+    "releaseType": "FEATURE",
+    "audience": "PUBLIC",
+    "modules": ["ACCOUNT", "NOTIFICATIONS", "PLATFORM"],
+    "ctaLabel": "管理账号安全",
+    "ctaPath": "/account",
+    "showWhatsNew": false,
+    "sendNotification": false,
+    "publishedAt": "2026-08-18T11:00:00Z",
+    "sections": [
+      {
+        "sectionType": "HIGHLIGHTS",
+        "title": "平台基础能力",
+        "body": "完成账号、会话、权限和审计基础，用户数据开始具备清晰的所有权边界。",
+        "items": [
+          "支持账号注册、登录、退出和受保护页面访问",
+          "管理员与求职者权限在服务端强制隔离",
+          "重要业务操作写入最小化审计记录"
+        ]
+      },
+      {
+        "sectionType": "IMPORTANT",
+        "title": "数据安全与权利",
+        "body": "账号数据可以按流程导出或删除，敏感内容不进入普通运营视图。",
+        "items": [
+          "密码使用 BCrypt 保存并支持会话撤销",
+          "数据导出和删除任务具备明确状态与失败原因",
+          "通知、Outbox 和任务执行支持幂等处理"
+        ]
+      }
+    ]
+  },
+  {
+    "versionLabel": "v0.2.0",
+    "title": "岗位、JD 与简历主链路打通",
+    "summary": "把岗位信息、JD 确认、匹配报告、简历主档和版本导出连接成可验证流程。",
+    "releaseType": "FEATURE",
+    "audience": "PUBLIC",
+    "modules": ["JOB_MATCHING", "AI_RESUME"],
+    "ctaLabel": "开始岗位匹配",
+    "ctaPath": "/jobs",
+    "showWhatsNew": false,
+    "sendNotification": false,
+    "publishedAt": "2026-08-18T13:00:00Z",
+    "sections": [
+      {
+        "sectionType": "HIGHLIGHTS",
+        "title": "岗位与匹配",
+        "body": "岗位原文、确认版本和匹配报告分别保存，输入变化不会覆盖已有历史。",
+        "items": [
+          "支持录入并确认结构化岗位信息",
+          "匹配报告引用确定的岗位和用户事实快照",
+          "资料变化后旧报告会标记过期而不是静默重算"
+        ]
+      },
+      {
+        "sectionType": "FEATURES",
+        "title": "简历与版本",
+        "body": "简历主档、候选内容和冻结版本形成独立边界，导出使用不可变版本。",
+        "items": [
+          "正式内容与 AI 候选分离，候选需要用户确认",
+          "冻结版本不可原地覆盖并支持历史比较",
+          "PDF 产物通过私有下载链路交付"
+        ]
+      }
+    ]
+  },
+  {
+    "versionLabel": "v0.3.0",
+    "title": "AI 通道池与真实模型能力接入",
+    "summary": "管理员可以管理兼容 OpenAI 协议的模型通道，并通过能力测试后向 AI 功能开放。",
+    "releaseType": "FEATURE",
+    "audience": "PUBLIC",
+    "modules": ["AI_RESUME", "PLATFORM"],
+    "ctaLabel": "进入简历工作台",
+    "ctaPath": "/resumes",
+    "showWhatsNew": false,
+    "sendNotification": false,
+    "publishedAt": "2026-08-19T14:15:00Z",
+    "sections": [
+      {
+        "sectionType": "HIGHLIGHTS",
+        "title": "统一 AI 网关",
+        "body": "普通用户无需配置密钥，系统通过管理员维护的主备通道调用真实模型。",
+        "items": [
+          "兼容 OpenAI 风格的模型发现、普通响应和流式响应",
+          "通道密钥使用现有主密钥体系加密保存",
+          "失败、超时和不可用状态向用户明确呈现"
+        ]
+      },
+      {
+        "sectionType": "IMPORTANT",
+        "title": "能力与安全门禁",
+        "body": "通道只有通过鉴权和能力测试后才能进入可用池。",
+        "items": [
+          "管理员可查看健康状态、模型和延迟",
+          "结构化候选失败时不写入正式简历",
+          "原始供应商响应不作为长期用户数据保存"
+        ]
+      }
+    ]
+  },
+  {
+    "versionLabel": "v0.4.0",
+    "title": "智能模板中心与 ATS 极简单栏",
+    "summary": "简历内容与视觉模板正式分离，首个受控 ATS 模板完成网页预览和 PDF 导出闭环。",
+    "releaseType": "FEATURE",
+    "audience": "PUBLIC",
+    "modules": ["TEMPLATE_CENTER", "AI_RESUME"],
+    "ctaLabel": "查看模板中心",
+    "ctaPath": "/resume-templates",
+    "showWhatsNew": false,
+    "sendNotification": false,
+    "publishedAt": "2026-08-20T12:04:00Z",
+    "sections": [
+      {
+        "sectionType": "HIGHLIGHTS",
+        "title": "内容与版式分离",
+        "body": "同一份结构化简历可以切换模板，换版不会改写或删除用户内容。",
+        "items": [
+          "建立稳定模板家族、版本和变体模型",
+          "网页预览与 PDF 共同读取受控版式定义",
+          "冻结版本同时记录内容、模板和渲染器版本"
+        ]
+      },
+      {
+        "sectionType": "FEATURES",
+        "title": "ATS 极简单栏",
+        "body": "首款模板提供清晰单栏结构和受控主题，面向机器筛选与快速阅读。",
+        "items": [
+          "支持实时 A4 预览和分页检查",
+          "支持 MONO 与 BLUE 受控设计变体",
+          "内容溢出时阻断导出并指出具体模块"
+        ]
+      }
+    ]
+  },
+  {
+    "versionLabel": "v0.5.0",
+    "title": "12 个模板家族与安全发布门禁",
+    "summary": "建立 12 个独立模板家族、候选资产治理、恶意文件扫描和发布证据体系。",
+    "releaseType": "FEATURE",
+    "audience": "PUBLIC",
+    "modules": ["TEMPLATE_CENTER", "PLATFORM"],
+    "ctaLabel": "浏览智能模板",
+    "ctaPath": "/resume-templates",
+    "showWhatsNew": false,
+    "sendNotification": false,
+    "publishedAt": "2026-08-20T15:56:00Z",
+    "sections": [
+      {
+        "sectionType": "HIGHLIGHTS",
+        "title": "12 个受控设计家族",
+        "body": "覆盖 ATS、技术、校园、职场、金融、教育和中英文等常见简历方向。",
+        "items": [
+          "每个家族使用独立的版式定义和真实缩略图",
+          "短、中、长及中英文混排夹具进入自动化验证",
+          "模板不得静默裁剪非空内容"
+        ]
+      },
+      {
+        "sectionType": "IMPORTANT",
+        "title": "模板资产安全",
+        "body": "候选 DOCX 进入私有隔离区并通过静态检查、外部扫描和证据门禁。",
+        "items": [
+          "检查宏、主动内容、外链和异常压缩结构",
+          "扫描器不可用时失败关闭，不绕过安全门禁",
+          "已发布版本不可原地覆盖，退休不破坏历史版本"
+        ]
+      }
+    ]
+  },
+  {
+    "versionLabel": "v0.6.0",
+    "title": "公共 Word 模板目录上线",
+    "summary": "2,000 多份公共 DOCX 进入独立下载目录，支持职业分类、关键词检索和来源说明。",
+    "releaseType": "FEATURE",
+    "audience": "PUBLIC",
+    "modules": ["TEMPLATE_CENTER"],
+    "ctaLabel": "搜索 Word 模板",
+    "ctaPath": "/resume-templates",
+    "showWhatsNew": false,
+    "sendNotification": false,
+    "publishedAt": "2026-08-22T14:05:00Z",
+    "sections": [
+      {
+        "sectionType": "HIGHLIGHTS",
+        "title": "公共模板目录",
+        "body": "公共 Word 资产与在线智能模板保持能力隔离，用户可以检索、预览和下载原文件。",
+        "items": [
+          "按职业、风格、语言、页数和职业阶段筛选",
+          "搜索覆盖标题、原文件名、路径、岗位别名和标签",
+          "卡片明确区分在线智能模板与 Word 下载资产"
+        ]
+      },
+      {
+        "sectionType": "IMPORTANT",
+        "title": "来源与许可证",
+        "body": "HICV 公共资产保留来源、署名和许可证说明，不与 JobProof 智能模板混用。",
+        "items": [
+          "原始 DOCX 字节不改写",
+          "页面持续展示来源和许可信息",
+          "下载行为记录审计并受登录权限保护"
+        ]
+      }
+    ]
+  },
+  {
+    "versionLabel": "v0.7.0",
+    "title": "DOCX 逐页真实图片预览",
+    "summary": "公共 Word 模板不再使用占位封面，每一页都可以通过真实渲染图片查看。",
+    "releaseType": "IMPROVEMENT",
+    "audience": "PUBLIC",
+    "modules": ["TEMPLATE_CENTER"],
+    "ctaLabel": "查看模板预览",
+    "ctaPath": "/resume-templates",
+    "showWhatsNew": false,
+    "sendNotification": false,
+    "publishedAt": "2026-08-23T08:08:00Z",
+    "sections": [
+      {
+        "sectionType": "HIGHLIGHTS",
+        "title": "真实逐页预览",
+        "body": "DOCX 在服务端完成安全渲染，列表使用真实第一页，详情可以连续查看全部页面。",
+        "items": [
+          "第一页缩略图来自实际 Word 内容",
+          "多页文档按原始页序提供 PNG 预览",
+          "预览失败或文件异常时不会公开空白占位图"
+        ]
+      },
+      {
+        "sectionType": "IMPROVEMENTS",
+        "title": "浏览与下载体验",
+        "body": "管理员和普通登录用户都可以在权限范围内下载模板。",
+        "items": [
+          "详情页展示页数和处理状态",
+          "预览与原始 DOCX 下载使用独立链路",
+          "归档或退休资产会立即阻断新下载"
+        ]
+      }
+    ]
+  },
+  {
+    "versionLabel": "v0.8.0",
+    "title": "AI 简历对话工作台",
+    "summary": "创建简历改为流式 AI 对话，通过结构化卡片收集事实并同步生成右侧 A4 预览。",
+    "releaseType": "FEATURE",
+    "audience": "PUBLIC",
+    "modules": ["AI_RESUME"],
+    "ctaLabel": "创建 AI 简历",
+    "ctaPath": "/ai-resume/new",
+    "showWhatsNew": false,
+    "sendNotification": false,
+    "publishedAt": "2026-08-23T16:00:00Z",
+    "sections": [
+      {
+        "sectionType": "HIGHLIGHTS",
+        "title": "像聊天一样创建简历",
+        "body": "AI 一次询问一个问题，用户消息立即进入对话，回复支持流式展示和断线续传。",
+        "items": [
+          "学生和应届生优先收集教育经历",
+          "目标岗位使用三级岗位分类和别名搜索",
+          "重复经历支持继续添加、删除和排序"
+        ]
+      },
+      {
+        "sectionType": "IMPORTANT",
+        "title": "事实确认机制",
+        "body": "AI 候选默认只叠加预览，只有用户采纳后才进入正式简历。",
+        "items": [
+          "不得编造公司、学校、岗位、日期和数字",
+          "候选按最小条目逐项采纳、纠正或拒绝",
+          "模型失败不会留下半成品正式版本"
+        ]
+      }
+    ]
+  },
+  {
+    "versionLabel": "v0.9.0",
+    "title": "统一简历内容、设计与 PDF 渲染",
+    "summary": "结构化内容、手动编辑、AI 对话、12 款设计和 PDF 导出统一消费同一份简历模型。",
+    "releaseType": "IMPROVEMENT",
+    "audience": "PUBLIC",
+    "modules": ["AI_RESUME", "TEMPLATE_CENTER"],
+    "ctaLabel": "体验简历设计",
+    "ctaPath": "/ai-resume/new",
+    "showWhatsNew": false,
+    "sendNotification": false,
+    "publishedAt": "2026-08-23T16:01:00Z",
+    "sections": [
+      {
+        "sectionType": "HIGHLIGHTS",
+        "title": "一份内容，多种视觉呈现",
+        "body": "模板切换、设计设置和模块显隐只改变视觉，不改变结构化内容哈希。",
+        "items": [
+          "统一姓名、意向、教育、经历、项目、技能等字段",
+          "支持受控字体、字号、密度、边距、主题和日期格式",
+          "每个模板单独记忆用户的设计偏好"
+        ]
+      },
+      {
+        "sectionType": "IMPROVEMENTS",
+        "title": "PDF 优先的真实分页",
+        "body": "网页预览和 PDF 使用相同的结构化版式与分页容量定义。",
+        "items": [
+          "长内容按条目边界续页，不裁剪正文",
+          "单双栏模板会根据内容密度平衡版面",
+          "匿名 PDF 可以隐藏姓名、照片和联系方式"
+        ]
+      }
+    ]
+  },
+  {
+    "versionLabel": "v0.10.0",
+    "title": "求职资料库重构",
+    "summary": "将职业事实、经历成果和私有文件整合为长期求职资料库，并支持按需作为 AI 证据。",
+    "releaseType": "FEATURE",
+    "audience": "PUBLIC",
+    "modules": ["CAREER_LIBRARY", "AI_RESUME", "JOB_MATCHING"],
+    "ctaLabel": "打开求职资料库",
+    "ctaPath": "/career-library",
+    "showWhatsNew": false,
+    "sendNotification": false,
+    "publishedAt": "2026-08-25T13:57:00Z",
+    "sections": [
+      {
+        "sectionType": "HIGHLIGHTS",
+        "title": "职业主档与经历成果",
+        "body": "个人信息、求职意向、教育、工作、项目、技能和证书统一进入结构化资料库。",
+        "items": [
+          "资料库作为长期主数据，简历导入必须确认差异",
+          "经历支持编辑、复制、归档、恢复和证据强度展示",
+          "岗位匹配读取已确认的有效事实快照"
+        ]
+      },
+      {
+        "sectionType": "FEATURES",
+        "title": "私有文件中心",
+        "body": "支持安全保存 DOCX、PDF 和常见图片，并提供分类、文件夹和逐页预览。",
+        "items": [
+          "文件进入私有对象存储并执行类型与安全检查",
+          "DOCX 和 PDF 异步生成逐页图片预览",
+          "AI 默认不能读取原始文件，引用资料必须由会话明确授权"
+        ]
+      }
+    ]
+  },
+  {
+    "versionLabel": "v0.11.0",
+    "title": "AI 帮写、技能生成与 PDF 体验强化",
+    "summary": "AI 帮写开始严格控制篇幅和结构，技能与经历支持多候选生成，PDF 分页进一步稳定。",
+    "releaseType": "IMPROVEMENT",
+    "audience": "PUBLIC",
+    "modules": ["AI_RESUME", "TEMPLATE_CENTER"],
+    "ctaLabel": "使用 AI 帮写",
+    "ctaPath": "/ai-resume/new",
+    "showWhatsNew": false,
+    "sendNotification": false,
+    "publishedAt": "2026-08-26T10:04:00Z",
+    "sections": [
+      {
+        "sectionType": "HIGHLIGHTS",
+        "title": "更完整的 AI 写作候选",
+        "body": "经历描述、项目要点和专业技能按简历场景生成足量、可核对的结构化候选。",
+        "items": [
+          "生成前提取现有字段与用户已确认事实",
+          "严格约束字数、条目数量和输出格式",
+          "技能可以先生成多个名称，再补充技能条目与描述"
+        ]
+      },
+      {
+        "sectionType": "IMPROVEMENTS",
+        "title": "编辑和导出体验",
+        "body": "优化下拉框、日期选择器、无滚动条阅读和长内容分页。",
+        "items": [
+          "结构化卡片与对话消息保持清晰对齐",
+          "校园模板支持更稳定的双页 PDF",
+          "短内容不会被强制扩展为多页，长内容不会静默裁剪"
+        ]
+      }
+    ]
+  },
+  {
+    "versionLabel": "v0.12.0",
+    "title": "结构化 JD 与简历感知匹配",
+    "summary": "岗位匹配同时读取确认 JD、当前简历和求职资料，输出可追溯的能力对应与事实缺口。",
+    "releaseType": "IMPROVEMENT",
+    "audience": "PUBLIC",
+    "modules": ["JOB_MATCHING", "AI_RESUME", "CAREER_LIBRARY"],
+    "ctaLabel": "分析目标岗位",
+    "ctaPath": "/jobs",
+    "showWhatsNew": false,
+    "sendNotification": false,
+    "publishedAt": "2026-08-26T13:30:00Z",
+    "sections": [
+      {
+        "sectionType": "HIGHLIGHTS",
+        "title": "结构化岗位要求",
+        "body": "岗位职责、任职要求和补充信息分区保存，原始 JD 与确认版本始终可追溯。",
+        "items": [
+          "支持动态岗位区块而不丢失原始文本",
+          "岗位分类、别名和目标岗位统一使用稳定标识",
+          "确认后的 JD 才能进入关键词对齐和岗位定制"
+        ]
+      },
+      {
+        "sectionType": "IMPROVEMENTS",
+        "title": "简历感知的匹配报告",
+        "body": "匹配结果结合当前简历表达与资料库事实，缺失能力只形成差距提示。",
+        "items": [
+          "不会把 JD 中用户没有的技能直接加入简历",
+          "报告展示匹配理由、事实引用和需要补充的信息",
+          "联系方式校验和简历准备状态进入导出前检查"
+        ]
+      }
+    ]
+  },
+  {
+    "versionLabel": "v1.0.0",
+    "title": "系统更新日志中心上线",
+    "summary": "新增公开更新时间线、版本详情、筛选、站内通知、版本亮点弹窗和管理员发布后台。",
+    "releaseType": "FEATURE",
+    "audience": "PUBLIC",
+    "modules": ["NOTIFICATIONS", "PLATFORM"],
+    "ctaLabel": "查看全部更新",
+    "ctaPath": "/updates",
+    "showWhatsNew": true,
+    "sendNotification": true,
+    "publishedAt": null,
+    "sections": [
+      {
+        "sectionType": "HIGHLIGHTS",
+        "title": "从项目起点到当前版本",
+        "body": "更新日志已经补齐经过代码和开发记录核验的历史里程碑，后续版本继续通过同一后台发布。",
+        "items": [
+          "公共时间线支持关键词、类型、模块、版本和时间筛选",
+          "版本详情提供结构化区块、图片、目录和前后版本导航",
+          "历史补录使用真实日期且不会集中发送过期通知"
+        ]
+      },
+      {
+        "sectionType": "FEATURES",
+        "title": "发布与通知闭环",
+        "body": "管理员可以编辑、预览、校验、立即或定时发布，并查看阅读和分发状态。",
+        "items": [
+          "已发布内容通过不可变修订保留修改历史",
+          "通知分发使用 Outbox 和幂等后台任务",
+          "首次登录亮点弹窗支持稍后提醒与永久确认"
+        ]
+      },
+      {
+        "sectionType": "IMPROVEMENTS",
+        "title": "桌面与移动端体验",
+        "body": "公共列表、详情和管理页面已经完成三档视口验收。",
+        "items": [
+          "移动端高级筛选使用贴底抽屉",
+          "可见交互目标不低于 44px",
+          "页面无横向溢出、空白图片或新增控制台错误"
+        ]
+      }
+    ]
+  },
+  {
+    "versionLabel": "v1.1.0",
+    "title": "AI 模拟面试文字与语音双模式",
+    "summary": "模拟面试支持文字与语音作答，围绕目标岗位和简历生成问题、追问与可恢复的阶段报告。",
+    "releaseType": "FEATURE",
+    "audience": "PUBLIC",
+    "modules": ["MOCK_INTERVIEW", "AI_RESUME", "JOB_MATCHING"],
+    "ctaLabel": "开始模拟面试",
+    "ctaPath": "/mock-interviews",
+    "showWhatsNew": false,
+    "sendNotification": false,
+    "publishedAt": "2026-08-26T18:00:00Z",
+    "sections": [
+      {
+        "sectionType": "HIGHLIGHTS",
+        "title": "文字与语音完整面试流程",
+        "body": "用户可以按场景选择文字或语音作答，系统保存题目、回答、追问和当前进度。",
+        "items": [
+          "支持回车发送、语音转写和面试官语音播报",
+          "连续问题交替使用不同面试官声音并保持中文语音优先",
+          "暂停后保留草稿与进度，支持继续面试或生成阶段报告"
+        ]
+      },
+      {
+        "sectionType": "FEATURES",
+        "title": "岗位与简历驱动的问题",
+        "body": "面试问题可以读取已确认的岗位匹配快照和正式简历，不使用无来源事实。",
+        "items": [
+          "创建时可选择面试类型、难度、轮次和作答模式",
+          "报告汇总回答质量、优势、风险和后续训练重点",
+          "岗位匹配报告可以直接创建对应的模拟面试"
+        ]
+      }
+    ]
+  },
+  {
+    "versionLabel": "v1.2.0",
+    "title": "AI 简历逐条修改与候选界面退役",
+    "summary": "AI 对话改为生成可直接作用于简历字段的修改卡，用户逐条采纳、编辑、拒绝或撤销。",
+    "releaseType": "IMPROVEMENT",
+    "audience": "PUBLIC",
+    "modules": ["AI_RESUME"],
+    "ctaLabel": "使用 AI 修改简历",
+    "ctaPath": "/ai-resume/new",
+    "showWhatsNew": false,
+    "sendNotification": false,
+    "publishedAt": "2026-08-26T20:30:00Z",
+    "sections": [
+      {
+        "sectionType": "HIGHLIGHTS",
+        "title": "字段级修改卡",
+        "body": "每项修改都展示原文、建议值、理由和事实来源，接受后才创建正式简历修订。",
+        "items": [
+          "每条建议独立提供采纳、编辑后采纳、拒绝和条件式撤销",
+          "待确认内容只叠加网页预览，PDF 只导出正式内容",
+          "路径值变化时阻止旧建议覆盖用户的新修改"
+        ]
+      },
+      {
+        "sectionType": "IMPROVEMENTS",
+        "title": "写作质量与界面收敛",
+        "body": "统一个人简介、经历、项目、技能和证书的字数、条数与事实校验策略。",
+        "items": [
+          "事实不足时追问，不为了凑条数编造公司、日期、技能或成果",
+          "结构、字数或事实校验失败自动修复一次，仍失败则不展示",
+          "移除旧“AI 与人工候选”面板，保留审计、版本和确认能力"
+        ]
+      }
+    ]
+  },
+  {
+    "versionLabel": "v1.3.0",
+    "title": "AI 岗位匹配全流程重建",
+    "summary": "岗位匹配重建为 JD、简历、证据授权、AI 分析、澄清、报告和行动相连的可恢复流程。",
+    "releaseType": "FEATURE",
+    "audience": "PUBLIC",
+    "modules": ["JOB_MATCHING", "AI_RESUME", "CAREER_LIBRARY", "MOCK_INTERVIEW"],
+    "ctaLabel": "创建岗位匹配",
+    "ctaPath": "/job-match",
+    "showWhatsNew": false,
+    "sendNotification": false,
+    "publishedAt": "2026-08-27T00:30:00Z",
+    "sections": [
+      {
+        "sectionType": "HIGHLIGHTS",
+        "title": "可恢复的四步分析准备",
+        "body": "岗位信息、投递简历和资料授权分别确认，刷新后根据服务端状态恢复。",
+        "items": [
+          "JD 支持粘贴文本、PDF、DOCX、截图和受控网页链接",
+          "简历支持站内正式修订或本地 PDF、DOCX 导入",
+          "资料库默认不授权，用户明确选择本次任务可读取的证据"
+        ]
+      },
+      {
+        "sectionType": "FEATURES",
+        "title": "带事实来源的 AI 报告",
+        "body": "规则引擎负责硬性门槛和稳定评分，AI 负责语义解释、澄清和行动建议。",
+        "items": [
+          "报告包含优势、缺口、证据矩阵、提升计划和结论溯源",
+          "低可信度或事实冲突进入澄清，不把未知项当作能力缺口",
+          "报告可联动逐条优化简历、模拟面试和相似职业方向"
+        ]
+      },
+      {
+        "sectionType": "IMPORTANT",
+        "title": "分析安全与额度",
+        "body": "分析冻结 JD、简历和授权证据快照，失败时保留规则结果并返还 AI 额度。",
+        "items": [
+          "稳定请求标识防止刷新或重复点击产生重复任务和扣费",
+          "AI 不修改规则分数、不生成录用概率，也不自动写入简历",
+          "原始上传文件保持不可变，导出默认隐藏联系方式和个人资料"
+        ]
+      }
+    ]
+  },
+  {
+    "versionLabel": "v1.3.1",
+    "title": "岗位匹配交互与报告体验全面优化",
+    "summary": "统一创建、分析、报告及历史页面的动效和视觉规格，修复得分重叠、维度隐藏与移动端溢出。",
+    "releaseType": "IMPROVEMENT",
+    "audience": "PUBLIC",
+    "modules": ["JOB_MATCHING", "PLATFORM"],
+    "ctaLabel": "查看岗位匹配",
+    "ctaPath": "/job-match",
+    "showWhatsNew": false,
+    "sendNotification": false,
+    "publishedAt": "2026-08-27T11:30:00Z",
+    "sections": [
+      {
+        "sectionType": "IMPROVEMENTS",
+        "title": "克制丝滑的流程动效",
+        "body": "页面切换使用 180 至 240 毫秒的轻微淡入和短距离位移，不增加假等待。",
+        "items": [
+          "四步进度轨道区分已完成、当前和未开始状态",
+          "JD 来源、简历来源和证据模式切换保持输入内容",
+          "减少动态效果模式会关闭位移、圆环、指示条和列表进入动画"
+        ]
+      },
+      {
+        "sectionType": "FIXES",
+        "title": "报告与响应式修复",
+        "body": "得分、关键结论、六项维度、标签页和历史记录在桌面与移动端保持清晰可用。",
+        "items": [
+          "综合得分圆环固定数字、百分号和说明的中心布局",
+          "中等宽度不再隐藏后三项维度，移动端改为紧凑列表",
+          "关键结论移除原生按钮外观，历史表格在手机端不再横向溢出"
+        ]
+      }
+    ]
+  },
+  {
+    "versionLabel": "v1.4.0",
+    "title": "职业方向探索与画像工作台",
+    "summary": "职业规划首阶段上线，通过结构化画像、授权证据和补充访谈生成可解释的职业方向建议。",
+    "releaseType": "FEATURE",
+    "audience": "PUBLIC",
+    "modules": ["CAREER_PLANNING", "CAREER_LIBRARY", "PLATFORM"],
+    "ctaLabel": "开始职业规划",
+    "ctaPath": "/career-planning",
+    "showWhatsNew": false,
+    "sendNotification": false,
+    "publishedAt": "2026-08-27T11:40:00Z",
+    "sections": [
+      {
+        "sectionType": "HIGHLIGHTS",
+        "title": "从职业画像到方向建议",
+        "body": "用户可以整理经历、偏好、约束和授权证据，再通过补充访谈确认缺失或冲突信息。",
+        "items": [
+          "画像字段区分用户事实、证据引用和 AI 推断",
+          "职业方向建议展示匹配理由、能力差距和事实来源",
+          "收藏与目标双确认防止 AI 自动替用户决定职业方向"
+        ]
+      },
+      {
+        "sectionType": "FEATURES",
+        "title": "不可变目标与画布起点",
+        "body": "确认职业目标后创建不可变目标记录和第一版能力画布根节点。",
+        "items": [
+          "职业画像、推荐集合、目标和画布按账号隔离并支持版本恢复",
+          "重复请求使用幂等标识，不重复生成推荐或消耗额度",
+          "完整能力树和学习路径仍标记为下一阶段，不展示伪完成状态"
+        ]
+      }
+    ]
+  }
+]

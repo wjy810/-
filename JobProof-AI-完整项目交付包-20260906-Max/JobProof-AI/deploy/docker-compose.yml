@@ -1,0 +1,113 @@
+name: jobproof
+
+services:
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    environment:
+      REDIS_PASSWORD: ${JOBPROOF_REDIS_PASSWORD}
+    command: ["sh", "-c", "exec redis-server --save 60 1 --appendonly yes --maxmemory 96mb --maxmemory-policy allkeys-lru --requirepass \"$$REDIS_PASSWORD\""]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    mem_limit: 160m
+    security_opt:
+      - no-new-privileges:true
+
+  minio:
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
+    restart: unless-stopped
+    command: server /data
+    environment:
+      MINIO_ROOT_USER: ${JOBPROOF_MINIO_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${JOBPROOF_MINIO_SECRET_KEY}
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:9000/minio/health/live"]
+      interval: 15s
+      timeout: 5s
+      retries: 12
+    mem_limit: 256m
+    security_opt:
+      - no-new-privileges:true
+
+  clamav:
+    image: clamav/clamav:1.4.6@sha256:b25d9199257ae7ef45e0cc4c7eaa60ce7e5447796f0090d5ff311d1a30980cc3
+    restart: unless-stopped
+    environment:
+      CLAMAV_NO_FRESHCLAMD: "false"
+    volumes:
+      - clamav-data:/var/lib/clamav
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/clamdcheck.sh"]
+      interval: 30s
+      timeout: 10s
+      retries: 30
+      start_period: 180s
+    mem_limit: 1400m
+    security_opt:
+      - no-new-privileges:true
+
+  app:
+    build:
+      context: ../backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      JOBPROOF_REDIS_HOST: redis
+      JOBPROOF_MINIO_ENDPOINT: http://minio:9000
+      JOBPROOF_TEMPLATE_MALWARE_SCAN_HOST: clamav
+      JOBPROOF_TEMPLATES_DEMO_ENABLED: "true"
+    volumes:
+      - ./data:/var/lib/jobproof
+    tmpfs:
+      - /tmp:size=384m,mode=1777
+    depends_on:
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      clamav:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/actuator/health"]
+      interval: 20s
+      timeout: 5s
+      retries: 15
+      start_period: 120s
+    mem_limit: 900m
+    security_opt:
+      - no-new-privileges:true
+
+  nginx:
+    image: nginx:1.30.4-alpine-slim@sha256:77da26c31397bf6694b4bf93275f5b40b0b120ba1b8f114264b603e592c561d6
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./web:/usr/share/nginx/html:ro
+      - ./acme-webroot:/var/www/certbot:ro
+    depends_on:
+      app:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/healthz"]
+      interval: 20s
+      timeout: 5s
+      retries: 10
+    mem_limit: 64m
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  redis-data:
+  minio-data:
+  clamav-data:

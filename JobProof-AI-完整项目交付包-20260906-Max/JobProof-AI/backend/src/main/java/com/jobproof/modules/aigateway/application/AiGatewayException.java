@@ -1,0 +1,2 @@
+package com.jobproof.modules.aigateway.application;
+public final class AiGatewayException extends RuntimeException {private final boolean retryable,outputStarted;public AiGatewayException(String m,boolean r,boolean o){super(m);retryable=r;outputStarted=o;}public AiGatewayException(String m,Throwable c,boolean r,boolean o){super(m,c);retryable=r;outputStarted=o;}public boolean retryable(){return retryable;}public boolean outputStarted(){return outputStarted;}}

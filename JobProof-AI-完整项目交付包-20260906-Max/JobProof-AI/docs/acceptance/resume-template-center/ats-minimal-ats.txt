@@ -1,0 +1,9 @@
+JobProof ATS acceptance evidence
+
+Template: rlt-b-ats-minimal-v1
+Fixture: backend/target/docx-acceptance/ats-minimal-short.docx
+Fixture SHA-256: AD42DCED762751565DAFC70D7DDE275A88C30B3F0F930FB0310C9BA13A461AB3
+
+Automated ResumeDocxRenderer inspection verified document XML, deterministic section text order, and zero layout tables. The document contains selectable text rather than text-as-image content. Microsoft Word Office 16 and WPS 12.1.0.28043 both opened, saved, and reopened the document without losing the title or section order. The one-page output matched the expected short-content fixture.
+
+Result: PASSED on 2026-08-22

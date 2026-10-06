@@ -1,0 +1,187 @@
+server:
+  port: 8080
+  forward-headers-strategy: none
+  servlet:
+    encoding:
+      charset: UTF-8
+      enabled: true
+      force: true
+
+spring:
+  application:
+    name: jobproof-api
+  mail:
+    host: ${QQ_SMTP_HOST:smtp.qq.com}
+    port: ${QQ_SMTP_PORT:465}
+    username: ${QQ_SMTP_USER:}
+    password: ${QQ_SMTP_AUTH_CODE:}
+    default-encoding: UTF-8
+    properties:
+      mail.smtp.auth: true
+      mail.smtp.ssl.enable: true
+      mail.smtp.connectiontimeout: 10000
+      mail.smtp.timeout: 10000
+      mail.smtp.writetimeout: 10000
+  servlet:
+    multipart:
+      # 普通用户附件仍由 FileUploadPolicy 限制为 1MB；较高的 HTTP 上限供受控模板 DOCX 上传使用。
+      max-file-size: 11MB
+      max-request-size: 12MB
+  profiles:
+    default: dev
+  jackson:
+    time-zone: Asia/Shanghai
+    default-property-inclusion: non_null
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: none
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: Asia/Shanghai
+        type:
+          preferred_instant_jdbc_type: TIMESTAMP
+  flyway:
+    enabled: true
+    encoding: UTF-8
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: never
+
+jobproof:
+  login-rate-limit:
+    mode: redis
+    account-limit: ${JOBPROOF_LOGIN_ACCOUNT_LIMIT:8}
+    ip-limit: ${JOBPROOF_LOGIN_IP_LIMIT:40}
+    window-seconds: ${JOBPROOF_LOGIN_WINDOW_SECONDS:300}
+  proxy:
+    # Empty by default: neither loopback nor private networks are implicitly trusted.
+    trusted-proxies: ${JOBPROOF_TRUSTED_PROXIES:}
+  cookie:
+    name: jobproof_session
+    secure: true
+    same-site: Lax
+    max-age-days: 14
+  session:
+    ttl-days: 14
+  reset:
+    ttl-minutes: 10
+  verification:
+    enabled: ${JOBPROOF_VERIFICATION_ENABLED:false}
+    email-provider: ${JOBPROOF_VERIFICATION_EMAIL_PROVIDER:disabled}
+    sms-provider: ${JOBPROOF_VERIFICATION_SMS_PROVIDER:disabled}
+    code-ttl-minutes: ${JOBPROOF_VERIFICATION_CODE_TTL_MINUTES:10}
+    token-ttl-minutes: ${JOBPROOF_VERIFICATION_TOKEN_TTL_MINUTES:10}
+    resend-cooldown-seconds: ${JOBPROOF_VERIFICATION_RESEND_SECONDS:60}
+    max-failed-attempts: ${JOBPROOF_VERIFICATION_MAX_ATTEMPTS:5}
+    rate-limit-mode: ${JOBPROOF_VERIFICATION_RATE_LIMIT_MODE:redis}
+    contact-hmac-secret: ${JOBPROOF_CONTACT_HMAC_SECRET:}
+    code-hmac-secret: ${JOBPROOF_EMAIL_CODE_HMAC_SECRET:}
+    email-address-daily-limit: 20
+    email-ip-hourly-limit: 50
+    sms-address-daily-limit: 5
+    sms-ip-hourly-limit: 10
+    qq-smtp:
+      from: ${MAIL_FROM:}
+      from-name: ${MAIL_FROM_NAME:JobProof AI}
+    aliyun:
+      endpoint: ${JOBPROOF_ALIYUN_SMS_ENDPOINT:dypnsapi.aliyuncs.com}
+      access-key-id: ${ALIBABA_CLOUD_ACCESS_KEY_ID:}
+      access-key-secret: ${ALIBABA_CLOUD_ACCESS_KEY_SECRET:}
+      sign-name: ${JOBPROOF_ALIYUN_SMS_SIGN_NAME:}
+      template-code: ${JOBPROOF_ALIYUN_SMS_TEMPLATE_CODE:}
+  policies:
+    registration-enabled: ${JOBPROOF_REGISTRATION_ENABLED:false}
+    terms-version: ${JOBPROOF_TERMS_VERSION:2026-08-26-v1}
+    privacy-version: ${JOBPROOF_PRIVACY_VERSION:2026-08-26-v1}
+  export:
+    download-ttl-hours: 1
+  share:
+    default-ttl-hours: 24
+  worker:
+    in-process: true
+    poll-ms: 1000
+  redis:
+    enabled: false
+  dev:
+    mailbox-enabled: false
+    admin:
+      enabled: false
+      alias: admin
+      email: admin@jobproof.local
+      password: ""
+    seeker:
+      enabled: false
+      alias: seeker
+      email: seeker@jobproof.local
+      password: ""
+  cors:
+    origins:
+      - http://localhost:5173
+      - http://localhost:3000
+      - http://127.0.0.1:5173
+  storage:
+    type: ${JOBPROOF_STORAGE_TYPE:local}
+    local-dir: .local-data/files
+    minio:
+      endpoint: ${JOBPROOF_MINIO_ENDPOINT:http://127.0.0.1:9000}
+      access-key: ${JOBPROOF_MINIO_ACCESS_KEY:}
+      secret-key: ${JOBPROOF_MINIO_SECRET_KEY:}
+      bucket: ${JOBPROOF_MINIO_BUCKET:jobproof-private}
+  career-library:
+    quota-bytes: ${JOBPROOF_CAREER_LIBRARY_QUOTA_BYTES:20971520}
+    malware-scan:
+      provider: ${JOBPROOF_CAREER_SCAN_PROVIDER:clamav}
+      timeout-seconds: ${JOBPROOF_CAREER_SCAN_TIMEOUT_SECONDS:90}
+      defender-executable: ${JOBPROOF_DEFENDER_EXECUTABLE:C:/Program Files/Windows Defender/MpCmdRun.exe}
+  templates:
+    demo-enabled: false
+    catalog-public-enabled: ${JOBPROOF_TEMPLATE_CATALOG_PUBLIC_ENABLED:true}
+    commercial-mode: ${JOBPROOF_COMMERCIAL_MODE:false}
+    preview:
+      enabled: false
+      batch-size: 12
+      poll-ms: 1000
+      initial-delay-ms: 3000
+      batch-timeout-seconds: 600
+      powershell-executable: powershell.exe
+      script-path: scripts/render-docx-previews.ps1
+    malware-scan:
+      # 生产候选 DOCX 必须由独立 ClamAV 服务扫描；关闭或不可达时导入进入隔离区且不能审批。
+      enabled: ${JOBPROOF_TEMPLATE_MALWARE_SCAN_ENABLED:false}
+      host: ${JOBPROOF_TEMPLATE_MALWARE_SCAN_HOST:127.0.0.1}
+      port: ${JOBPROOF_TEMPLATE_MALWARE_SCAN_PORT:3310}
+      connect-timeout-ms: 2000
+      read-timeout-ms: 15000
+      chunk-bytes: 8192
+  ai:
+    llm-parse-enabled: false
+    api-key: ""
+    auto-retry-limit: 2
+    gateway:
+      enabled: false
+      master-key: ${JOBPROOF_AI_MASTER_KEY:}
+    workbench:
+      enabled: ${JOBPROOF_AI_WORKBENCH_ENABLED:false}
+      monthly-quota: ${JOBPROOF_AI_MONTHLY_QUOTA:50}
+      prompt-version: resume-workbench-v1
+  job-match:
+    enabled: ${JOBPROOF_JOB_MATCH_ENABLED:false}
+    model: ${JOBPROOF_JOB_MATCH_MODEL:qwen-plus}
+    prompt-version: ${JOBPROOF_JOB_MATCH_PROMPT_VERSION:job-match-v3}
+    ocr:
+      executable: ${JOBPROOF_TESSERACT_EXECUTABLE:C:/Program Files/Tesseract-OCR/tesseract.exe}
+      data-dir: ${JOBPROOF_TESSDATA_DIR:.local-data/ocr/tessdata}
+      languages: ${JOBPROOF_OCR_LANGUAGES:chi_sim+eng}
+      timeout-seconds: ${JOBPROOF_OCR_TIMEOUT_SECONDS:45}
+      max-pages: ${JOBPROOF_OCR_MAX_PAGES:20}
+  career-planning:
+    enabled: ${JOBPROOF_CAREER_PLANNING_ENABLED:false}
+    model: ${JOBPROOF_CAREER_PLANNING_MODEL:qwen-plus}
