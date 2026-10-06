@@ -78,7 +78,7 @@ defineProps<{ steps: { key: string; label: string }[]; current: number }>()
 .ui-stepper__step.is-current .ui-stepper__dot {
   border-color: var(--color-primary);
   background: var(--color-primary);
-  color: #fff;
+  color: var(--text-on-primary);
   box-shadow: 0 0 0 4px var(--color-primary-soft);
 }
 

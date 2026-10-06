@@ -57,6 +57,10 @@ spring:
     encoding: UTF-8
 
 management:
+  health:
+    redis:
+      # Redis is optional outside production; only report it when the app actually uses it.
+      enabled: ${jobproof.redis.enabled:false}
   endpoints:
     web:
       exposure:

@@ -305,7 +305,7 @@ function set(key: keyof ResumeDesignSettings, next: string): void {
   place-items: center;
   border-radius: 50%;
   background: var(--swatch);
-  color: #fff;
+  color: var(--text-on-primary);
   box-shadow: 0 0 0 2px var(--surface-1), 0 0 0 3px var(--border-default);
   transition: transform var(--dur-fast) var(--ease-spring), box-shadow var(--dur-fast);
 }
@@ -372,9 +372,9 @@ function set(key: keyof ResumeDesignSettings, next: string): void {
 .tile :deep(.design-glyph) {
   padding: 4px;
   border-radius: var(--radius-sm);
-  background: #fff;
-  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.06);
-  color: #253044;
+  background: var(--sheet-bg);
+  box-shadow: inset 0 0 0 1px var(--sheet-edge);
+  color: var(--sheet-ink);
 }
 
 .tile:hover {

@@ -144,7 +144,7 @@ const tag = computed(() => (props.to ? RouterLink : 'button'))
   padding: 0 4px;
   border-radius: 999px;
   background: var(--color-accent);
-  color: #fff;
+  color: var(--text-on-primary);
   font-size: 10px;
   font-weight: 700;
   line-height: 16px;

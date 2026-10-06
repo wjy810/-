@@ -48,13 +48,13 @@ const offset = computed(() => ({ top: route?.meta.focus ? 124 : 68, right: 20 })
   --normal-bg: var(--surface-overlay);
   --normal-text: var(--text-primary);
   --normal-border: var(--border-subtle);
-  --success-bg: #f1faf6;
+  --success-bg: color-mix(in srgb, var(--color-success) 6%, var(--surface-overlay));
   --success-border: color-mix(in srgb, var(--color-success) 26%, transparent);
   --success-text: var(--color-success-text);
-  --error-bg: #fff5f5;
+  --error-bg: color-mix(in srgb, var(--color-danger) 5%, var(--surface-overlay));
   --error-border: color-mix(in srgb, var(--color-danger) 26%, transparent);
   --error-text: var(--color-danger-text);
-  --warning-bg: #fffaf0;
+  --warning-bg: color-mix(in srgb, var(--color-warning) 6%, var(--surface-overlay));
   --warning-border: color-mix(in srgb, var(--color-warning) 30%, transparent);
   --warning-text: var(--color-warning-text);
   --info-bg: var(--ink-50);
@@ -66,6 +66,6 @@ const offset = computed(() => ({ top: route?.meta.focus ? 124 : 68, right: 20 })
   border-radius: var(--radius-sm) !important;
   font-weight: 600 !important;
   background: var(--color-primary) !important;
-  color: #fff !important;
+  color: var(--text-on-primary) !important;
 }
 </style>

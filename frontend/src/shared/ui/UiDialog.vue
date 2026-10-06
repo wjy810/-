@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { X } from 'lucide-vue-next'
 import { DialogClose, DialogContent, DialogDescription, DialogOverlay, DialogPortal, DialogRoot, DialogTitle, VisuallyHidden } from 'reka-ui'
+import { isInFloatingLayer } from '@/shared/lib/floatingLayer'
 
 const props = withDefaults(
   defineProps<{
@@ -31,7 +32,14 @@ function onOpenChange(value: boolean): void {
   emit('close')
 }
 
-function preventIfLocked(event: Event): void {
+/** Clicks in a picker panel opened from this dialog are not "outside" it. */
+function onOutside(event: Event): void {
+  const original = (event as CustomEvent<{ originalEvent?: Event }>).detail?.originalEvent
+  if (!props.dismissible || isInFloatingLayer(original?.target ?? event.target)) event.preventDefault()
+}
+
+/** A picker that consumes Esc prevents it, which Reka already honours; only the lock matters here. */
+function onEscape(event: KeyboardEvent): void {
   if (!props.dismissible) event.preventDefault()
 }
 </script>
@@ -44,9 +52,9 @@ function preventIfLocked(event: Event): void {
         class="ui-dialog"
         :class="{ 'ui-dialog--sheet': mobileSheet }"
         :style="{ '--dialog-width': maxWidth }"
-        @escape-key-down="preventIfLocked"
-        @pointer-down-outside="preventIfLocked"
-        @interact-outside="preventIfLocked"
+        @escape-key-down="onEscape"
+        @pointer-down-outside="onOutside"
+        @interact-outside="onOutside"
       >
         <header v-if="!hideTitle" class="ui-dialog__head">
           <div class="ui-dialog__titles">

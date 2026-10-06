@@ -183,12 +183,12 @@ const tagAttrs = computed<Record<string, unknown>>(() => {
 
 .ui-btn--danger {
   background: var(--color-danger);
-  color: #fff;
+  color: var(--text-on-primary);
 }
 
 .ui-btn--danger:hover:not(:disabled):not([aria-disabled='true']) {
   background: var(--color-danger-hover);
-  color: #fff;
+  color: var(--text-on-primary);
 }
 
 .ui-btn--danger:focus-visible {

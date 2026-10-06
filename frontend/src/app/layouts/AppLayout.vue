@@ -125,14 +125,14 @@ onMounted(() => {
   padding: 8px 14px;
   border-radius: var(--radius-sm);
   background: var(--color-primary);
-  color: #fff;
+  color: var(--text-on-primary);
   transform: translateY(-200%);
   transition: transform var(--dur-base) var(--ease-out);
 }
 
 .skip-link:focus {
   transform: translateY(0);
-  color: #fff;
+  color: var(--text-on-primary);
 }
 
 .public-shell {

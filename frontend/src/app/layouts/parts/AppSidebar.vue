@@ -195,7 +195,7 @@ async function logout(): Promise<void> {
   gap: 8px;
   border-radius: var(--radius-md);
   background: var(--color-primary);
-  color: #fff;
+  color: var(--text-on-primary);
   font-weight: 600;
   font-size: var(--fs-body);
   box-shadow: var(--shadow-xs), inset 0 1px 0 rgba(255, 255, 255, 0.16);
@@ -203,7 +203,7 @@ async function logout(): Promise<void> {
 }
 
 .sidebar__new:hover {
-  color: #fff;
+  color: var(--text-on-primary);
   background: var(--color-primary-hover);
   box-shadow: var(--shadow-primary);
 }
@@ -318,7 +318,7 @@ async function logout(): Promise<void> {
   padding: 0 5px;
   border-radius: 999px;
   background: var(--color-accent);
-  color: #fff;
+  color: var(--text-on-primary);
   font-size: 11px;
   font-weight: 700;
   line-height: 18px;

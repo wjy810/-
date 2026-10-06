@@ -163,8 +163,8 @@ const activeId = computed(() => design.activeTemplate.value?.templateId)
   aspect-ratio: 210 / 297;
   overflow: hidden;
   border-radius: var(--radius-sm);
-  background: #fff;
-  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.06);
+  background: var(--sheet-bg);
+  box-shadow: inset 0 0 0 1px var(--sheet-edge);
   pointer-events: none;
 }
 

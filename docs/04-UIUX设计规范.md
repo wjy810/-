@@ -128,9 +128,12 @@ JobProof 的视觉语言取材于**温润的纸张**与**沉静的墨蓝**：界
 | `--color-accent` | `apricot-500` | `apricot-400` | AI 标识、强调 |
 | `--color-accent-soft` | `apricot-50` | `rgba(250,140,85,.14)` | AI 卡片底 |
 | `--focus-ring` | `0 0 0 3px rgba(94,89,232,.32)` | `0 0 0 3px rgba(168,166,246,.40)` | 焦点环 |
+| `--sheet-bg` / `--sheet-ink` / `--sheet-edge` | `#FFFFFF` / `#253044` / `rgba(0,0,0,.06)` | 同左 | 简历纸张与模板缩略图：文档在任何主题下都保持白纸黑字 |
 
 **AI 渐变**（仅用于 AI 相关的标识、按钮描边与生成中的流光）：
 `--gradient-ai: linear-gradient(120deg, #5E59E8 0%, #9B6BF2 48%, #FA8C55 100%)`
+
+**令牌守卫**：`frontend/scripts/lint-design.mjs`（`npm test` 的第一步）禁止在样式中新增十六进制色值；只有简历纸张、主题色样、品牌插画等 6 个登记文件可以保留固定色值，且数量只减不增。
 
 **对比度要求**：`text-primary` / `text-secondary` 在 `surface-1` 与 `bg-app` 上 ≥ 4.5:1；`text-tertiary` 仅用于非关键辅助信息且 ≥ 3:1。
 

@@ -18,6 +18,7 @@ import com.jobproof.modules.identity.infra.PasswordResetJpaRepository;
 import com.jobproof.modules.identity.infra.SessionEntity;
 import com.jobproof.modules.identity.infra.SessionJpaRepository;
 import com.jobproof.shared.auth.CurrentAccount;
+import com.jobproof.shared.auth.SessionAuthenticator;
 import com.jobproof.shared.error.AppException;
 import com.jobproof.shared.id.Ids;
 import com.jobproof.shared.security.Tokens;
@@ -37,7 +38,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
-public class IdentityService {
+public class IdentityService implements SessionAuthenticator {
 
     private final AccountJpaRepository accounts;
     private final SessionJpaRepository sessions;
@@ -422,6 +423,7 @@ public class IdentityService {
     }
 
     @Transactional
+    @Override
     public Optional<CurrentAccount> authenticate(String rawToken) {
         if (rawToken == null || rawToken.isBlank()) {
             return Optional.empty();

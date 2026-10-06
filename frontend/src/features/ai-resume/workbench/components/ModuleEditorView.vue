@@ -273,7 +273,7 @@ watch(wb.focusPending, (pending) => {
 
 .card-nav__tile.is-confirmed .card-nav__state {
   background: var(--color-success);
-  color: #fff;
+  color: var(--text-on-primary);
 }
 
 .card-nav__tile.is-skipped .card-nav__state {

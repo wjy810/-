@@ -10,7 +10,8 @@
   "scripts": {
     "dev": "vite",
     "build": "node scripts/clean-dist.mjs && vue-tsc -b && vite build --emptyOutDir",
-    "test": "npm run test:logic && npm run test:components",
+    "test": "npm run lint:design && npm run test:logic && npm run test:components",
+    "lint:design": "node scripts/lint-design.mjs",
     "test:logic": "node scripts/run-logic-tests.mjs",
     "test:components": "vitest run --config vitest.config.ts",
     "test:e2e:career-planning": "playwright test e2e/career-planning.spec.ts",

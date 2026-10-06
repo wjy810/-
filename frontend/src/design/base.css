@@ -250,3 +250,8 @@ samp {
 [hidden] {
   display: none !important;
 }
+
+/* Teleported picker panels stay usable while a modal dialog disables pointer events on <body>. */
+[data-floating-layer] {
+  pointer-events: auto;
+}

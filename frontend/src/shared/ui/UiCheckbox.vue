@@ -52,7 +52,7 @@ const emit = defineEmits<{ 'update:modelValue': [value: boolean] }>()
   border: 1.5px solid var(--border-strong);
   border-radius: 5px;
   background: var(--surface-1);
-  color: #fff;
+  color: var(--text-on-primary);
   transition: background-color var(--dur-fast), border-color var(--dur-fast);
 }
 

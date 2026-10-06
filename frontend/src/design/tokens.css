@@ -146,6 +146,10 @@
   --text-disabled: var(--paper-400);
   --text-on-primary: #ffffff;
   --text-inverse: #ffffff;
+  /* Resume paper: a document stays white with dark ink in every theme. */
+  --sheet-bg: #ffffff;
+  --sheet-ink: #253044;
+  --sheet-edge: rgb(0 0 0 / 0.06);
 
   --color-primary: var(--ink-600);
   --color-primary-hover: var(--ink-700);

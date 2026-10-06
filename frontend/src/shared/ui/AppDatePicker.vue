@@ -2,6 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue'
 import type { CSSProperties } from 'vue'
 import AppIcon from './AppIcon.vue'
+import UiFloatingLayer from './UiFloatingLayer.vue'
 import {
   buildCalendarDays,
   datetimeValue,
@@ -211,7 +212,9 @@ function onTriggerKeydown(event: KeyboardEvent): void {
   if (event.key === 'ArrowDown' || event.key === 'Enter' || event.key === ' ') {
     event.preventDefault()
     void openPicker()
-  } else if (event.key === 'Escape') {
+  } else if (event.key === 'Escape' && open.value) {
+    // Close the popover only; an enclosing dialog stays open.
+    event.preventDefault()
     closePicker(true)
   }
 }
@@ -329,8 +332,8 @@ onBeforeUnmount(() => {
 
     <Teleport to="body">
       <Transition name="date-picker-popover">
+        <UiFloatingLayer v-if="open">
         <section
-          v-if="open"
           :id="popupId"
           ref="popup"
           class="app-date-picker__popover"
@@ -403,6 +406,7 @@ onBeforeUnmount(() => {
             </div>
           </footer>
         </section>
+        </UiFloatingLayer>
       </Transition>
     </Teleport>
   </span>

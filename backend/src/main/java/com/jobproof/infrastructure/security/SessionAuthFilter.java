@@ -1,7 +1,7 @@
 package com.jobproof.infrastructure.security;
 
 import com.jobproof.infrastructure.config.JobProofProperties;
-import com.jobproof.modules.identity.application.IdentityService;
+import com.jobproof.shared.auth.SessionAuthenticator;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.Cookie;
@@ -20,11 +20,11 @@ import org.springframework.web.filter.OncePerRequestFilter;
 @Component
 public class SessionAuthFilter extends OncePerRequestFilter {
 
-    private final IdentityService identityService;
+    private final SessionAuthenticator sessions;
     private final JobProofProperties properties;
 
-    public SessionAuthFilter(IdentityService identityService, JobProofProperties properties) {
-        this.identityService = identityService;
+    public SessionAuthFilter(SessionAuthenticator sessions, JobProofProperties properties) {
+        this.sessions = sessions;
         this.properties = properties;
     }
 
@@ -37,7 +37,7 @@ public class SessionAuthFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
         String token = readCookie(request, properties.getCookie().getName());
-        identityService.authenticate(token).ifPresent(account -> {
+        sessions.authenticate(token).ifPresent(account -> {
             UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
                     account,
                     null,

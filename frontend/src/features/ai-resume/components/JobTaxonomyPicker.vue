@@ -2,6 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import type { CSSProperties } from 'vue'
 import AppIcon from '@/shared/ui/AppIcon.vue'
+import UiFloatingLayer from '@/shared/ui/UiFloatingLayer.vue'
 import { listJobTaxonomy } from '../services/aiResumeApi'
 import type { JobTaxonomyNode, JobTaxonomySelection } from '../types'
 
@@ -166,7 +167,10 @@ function onPointerDown(event: PointerEvent): void {
 }
 
 function onKeydown(event: KeyboardEvent): void {
-  if (event.key === 'Escape' && open.value) close()
+  if (event.key !== 'Escape' || !open.value) return
+  // Consumed here, so an enclosing dialog stays open (Reka skips dismiss on a prevented Esc).
+  event.preventDefault()
+  close()
 }
 
 function updatePanelPosition(): void {
@@ -248,8 +252,8 @@ onBeforeUnmount(() => {
 
     <Teleport to="body">
     <Transition name="taxonomy-panel">
+    <UiFloatingLayer v-if="open">
     <section
-      v-if="open"
       ref="panel"
       class="job-taxonomy-panel"
       :class="{ 'job-taxonomy-panel--compact': compactPanel }"
@@ -329,6 +333,7 @@ onBeforeUnmount(() => {
         </section>
       </div>
     </section>
+    </UiFloatingLayer>
     </Transition>
     </Teleport>
   </div>
@@ -340,7 +345,7 @@ onBeforeUnmount(() => {
 .job-taxonomy-trigger:hover { border-color: var(--color-primary); background: var(--surface-1); }
 .job-taxonomy-trigger[aria-expanded="true"] { border-color: var(--color-primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 9%, transparent); }
 .job-taxonomy-trigger.selected { border-color: var(--color-primary-border); background: var(--surface-1); box-shadow: inset 3px 0 var(--color-primary); }
-.job-taxonomy-trigger > span { min-width: 0; display: grid; gap: 2px; }
+.job-taxonomy-trigger > span { min-width: 0; display: grid; gap: 2px; line-height: 18px; }
 .job-taxonomy-trigger small { color: var(--text-tertiary); font-size: 11.5px; font-weight: 500; }
 .job-taxonomy-trigger strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
 .job-taxonomy-legacy { color: var(--color-danger-text); font-size: 11.5px; }
