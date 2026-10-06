@@ -60,7 +60,7 @@ public class MockInterviewService {
         int text = count("SELECT COUNT(*) FROM mock_interview_sessions WHERE account_id=? AND mode='TEXT'", accountId);
         int voice = count("SELECT COUNT(*) FROM mock_interview_sessions WHERE account_id=? AND mode='VOICE'", accountId);
         Integer average = jdbc.queryForObject(
-                "SELECT CAST(AVG(overall_score) AS INTEGER) FROM mock_interview_reports WHERE account_id=?",
+                "SELECT ROUND(AVG(overall_score)) FROM mock_interview_reports WHERE account_id=?",
                 Integer.class, accountId);
         List<SessionSummary> recent = list(current, null, null, null, 6);
         SessionSummary resumable = recent.stream().filter(item -> ACTIVE_STATUSES.contains(item.status())).findFirst().orElse(null);
@@ -629,7 +629,15 @@ public class MockInterviewService {
     private static int average(List<Integer> values, int fallback) { return values.isEmpty() ? fallback : (int) Math.round(values.stream().mapToInt(Integer::intValue).average().orElse(fallback)); }
     private int count(String sql, Object... args) { Integer result = jdbc.queryForObject(sql, Integer.class, args); return result == null ? 0 : result; }
     private static int number(Object value) { return value instanceof Number number ? number.intValue() : Integer.parseInt(String.valueOf(value)); }
-    private static Instant instant(Object value) { if (value == null) return null; if (value instanceof java.sql.Timestamp ts) return ts.toInstant(); if (value instanceof Instant instant) return instant; return Instant.parse(String.valueOf(value)); }
+    /** Timestamps arrive as Timestamp (H2, getTimestamp) or LocalDateTime (MySQL via queryForMap), in the JVM zone. */
+    private static Instant instant(Object value) {
+        if (value == null) return null;
+        if (value instanceof java.sql.Timestamp ts) return ts.toInstant();
+        if (value instanceof Instant instant) return instant;
+        if (value instanceof java.time.LocalDateTime local) return local.atZone(java.time.ZoneId.systemDefault()).toInstant();
+        if (value instanceof java.time.OffsetDateTime offset) return offset.toInstant();
+        return Instant.parse(String.valueOf(value));
+    }
     private static String clean(String value) { return value == null || value.isBlank() ? null : value.trim(); }
     private static String blankTo(String value, String fallback) { return value == null || value.isBlank() ? fallback : value.trim(); }
     private static String required(String value, String reason, String message) { if (value == null || value.isBlank()) throw AppException.user(reason, message); return value.trim(); }

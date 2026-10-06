@@ -18,6 +18,38 @@ services:
     security_opt:
       - no-new-privileges:true
 
+  mysql:
+    image: mysql:8.4@sha256:6ea90827b1100f8f2ae306a539f86d2c264a26ed435a2a9f75551dd5c3aeb242
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: jobproof
+      MYSQL_USER: jobproof
+      MYSQL_PASSWORD: ${JOBPROOF_DB_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${JOBPROOF_DB_ROOT_PASSWORD}
+    # Sized for the 2-core / 2 GiB host (docs/ops/deployment-capacity-2c2g.md). With a managed
+    # database (JOBPROOF_DB_URL pointing elsewhere) this service can be removed.
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+      - --innodb-buffer-pool-size=128M
+      - --innodb-log-buffer-size=8M
+      - --performance-schema=OFF
+      - --max-connections=60
+      - --table-open-cache=400
+      - --skip-name-resolve
+      - --binlog-expire-logs-seconds=259200
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p\"$$MYSQL_ROOT_PASSWORD\" --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+    mem_limit: 512m
+    security_opt:
+      - no-new-privileges:true
+
   minio:
     image: minio/minio:RELEASE.2025-09-07T16-13-09Z
     restart: unless-stopped
@@ -80,6 +112,10 @@ services:
       - .env
     environment:
       SPRING_PROFILES_ACTIVE: prod
+      JOBPROOF_DB_URL: ${JOBPROOF_DB_URL:-jdbc:mysql://mysql:3306/jobproof?useUnicode=true&characterEncoding=utf8&useSSL=false&allowPublicKeyRetrieval=true}
+      JOBPROOF_DB_DRIVER: com.mysql.cj.jdbc.Driver
+      JOBPROOF_DB_USERNAME: ${JOBPROOF_DB_USERNAME:-jobproof}
+      JOBPROOF_DB_PASSWORD: ${JOBPROOF_DB_PASSWORD}
       JOBPROOF_REDIS_HOST: redis
       JOBPROOF_MINIO_ENDPOINT: http://minio:9000
       JOBPROOF_TEMPLATE_MALWARE_SCAN_HOST: clamav
@@ -92,6 +128,8 @@ services:
     tmpfs:
       - /tmp:size=384m,mode=1777
     depends_on:
+      mysql:
+        condition: service_healthy
       redis:
         condition: service_healthy
       minio:
@@ -133,6 +171,7 @@ services:
       - no-new-privileges:true
 
 volumes:
+  mysql-data:
   redis-data:
   minio-data:
   clamav-data:

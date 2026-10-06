@@ -1,6 +1,8 @@
 package com.jobproof.modules.task.application;
 
+import com.jobproof.infrastructure.config.JobProofProperties;
 import com.jobproof.infrastructure.queue.OutboxService;
+import com.jobproof.infrastructure.queue.WorkerIdentity;
 import com.jobproof.modules.task.domain.TaskStatus;
 import com.jobproof.modules.task.infra.AsyncTaskEntity;
 import com.jobproof.modules.task.infra.AsyncTaskJpaRepository;
@@ -8,6 +10,7 @@ import com.jobproof.shared.error.AppException;
 import com.jobproof.shared.event.EventTypes;
 import com.jobproof.shared.id.Ids;
 import com.jobproof.shared.time.ClockPort;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -21,11 +24,16 @@ public class TaskService {
     private final AsyncTaskJpaRepository tasks;
     private final ClockPort clock;
     private final OutboxService outboxService;
+    private final WorkerIdentity worker;
+    private final Duration lease;
 
-    public TaskService(AsyncTaskJpaRepository tasks, ClockPort clock, OutboxService outboxService) {
+    public TaskService(AsyncTaskJpaRepository tasks, ClockPort clock, OutboxService outboxService,
+            WorkerIdentity worker, JobProofProperties properties) {
         this.tasks = tasks;
         this.clock = clock;
         this.outboxService = outboxService;
+        this.worker = worker;
+        this.lease = Duration.ofSeconds(properties.getWorker().getTaskLeaseSeconds());
     }
 
     @Transactional
@@ -91,6 +99,7 @@ public class TaskService {
             throw AppException.conflict("TASK_NOT_CANCELLABLE", "终态任务不可取消，请开新任务");
         }
         Instant now = clock.now();
+        releaseLease(entity);
         entity.setStatus(TaskStatus.CANCELLED.name());
         entity.setUpdatedAt(now);
         entity.setFailureReason("用户取消");
@@ -113,42 +122,54 @@ public class TaskService {
         return create(accountId, old.getTaskType(), Ids.newId(), old.getPayloadJson(), old.getInputVersion());
     }
 
+    /**
+     * Claims the oldest queued task of a type for this process, or one whose worker died (lease
+     * expired). Safe with any number of concurrent workers: locked rows are skipped, not waited on.
+     */
     @Transactional
     public Optional<AsyncTaskEntity> claimNext(String taskType) {
-        return tasks.findFirstByTaskTypeAndStatusOrderByCreatedAtAsc(taskType, TaskStatus.PENDING.name())
+        Instant now = clock.now();
+        return tasks.lockNextClaimable(taskType, now)
                 .map(task -> {
+                    boolean reclaimed = TaskStatus.RUNNING.name().equals(task.getStatus());
                     task.setStatus(TaskStatus.RUNNING.name());
                     task.setAttemptCount(task.getAttemptCount() + 1);
                     task.setProgressPercent(Math.max(task.getProgressPercent(), 5));
-                    task.setCheckpointCode("STARTING");
+                    task.setCheckpointCode(reclaimed ? "RESUMING" : "STARTING");
                     task.setErrorCode(null);
                     task.setFailureReason(null);
-                    task.setUpdatedAt(clock.now());
+                    task.setLeaseOwner(worker.id());
+                    task.setLeaseExpiresAt(now.plus(lease));
+                    task.setUpdatedAt(now);
                     return tasks.save(task);
                 });
     }
 
+    /** Extends the leases of every task this process is running (called by the lease heartbeat). */
     @Transactional
-    public int recoverRunning(String taskType) {
-        List<AsyncTaskEntity> interrupted = tasks.findByTaskTypeAndStatus(taskType, TaskStatus.RUNNING.name());
+    public int renewLeases() {
         Instant now = clock.now();
-        interrupted.forEach(task -> {
-            task.setStatus(TaskStatus.PENDING.name());
-            task.setFailureReason(null);
-            task.setCheckpointCode("RESUMING");
-            task.setErrorCode(null);
-            task.setUpdatedAt(now);
-        });
-        tasks.saveAll(interrupted);
-        return interrupted.size();
+        return tasks.renewLeases(worker.id(), now.plus(lease), now);
+    }
+
+    /**
+     * Kept for processors that call it on startup. Interrupted tasks no longer need resetting: a
+     * task whose worker died is claimable again once its lease expires (immediately for tasks that
+     * were running before leases existed). Resetting every RUNNING task here would steal work from
+     * other live instances.
+     */
+    @Transactional(readOnly = true)
+    public int recoverRunning(String taskType) {
+        return 0;
     }
 
     @Transactional
     public boolean markSucceeded(String taskId, String resultVersion, String payloadJson) {
         AsyncTaskEntity entity = requireForUpdate(taskId);
         TaskStatus current = TaskStatus.valueOf(entity.getStatus());
-        if (current.terminal()) return false;
+        if (current.terminal() || ownedElsewhere(entity)) return false;
         Instant now = clock.now();
+        releaseLease(entity);
         entity.setStatus(TaskStatus.SUCCEEDED.name());
         entity.setResultVersion(resultVersion);
         entity.setPayloadJson(payloadJson);
@@ -169,10 +190,11 @@ public class TaskService {
     @Transactional
     public void requeuePending(String taskId) {
         AsyncTaskEntity entity = requireForUpdate(taskId);
-        if (TaskStatus.CANCELLED.name().equals(entity.getStatus())) {
+        if (TaskStatus.CANCELLED.name().equals(entity.getStatus()) || ownedElsewhere(entity)) {
             return;
         }
         Instant now = clock.now();
+        releaseLease(entity);
         entity.setStatus(TaskStatus.PENDING.name());
         entity.setFailureReason(null);
         entity.setCheckpointCode("RETRY_QUEUED");
@@ -191,8 +213,9 @@ public class TaskService {
     public boolean markFailed(String taskId, String errorCode, String reason) {
         AsyncTaskEntity entity = requireForUpdate(taskId);
         TaskStatus current = TaskStatus.valueOf(entity.getStatus());
-        if (current.terminal()) return false;
+        if (current.terminal() || ownedElsewhere(entity)) return false;
         Instant now = clock.now();
+        releaseLease(entity);
         entity.setStatus(TaskStatus.FAILED.name());
         entity.setFailureReason(reason);
         entity.setCheckpointCode("FAILED");
@@ -211,7 +234,8 @@ public class TaskService {
     public void updateProgress(String taskId, int progressPercent, String checkpointCode) {
         AsyncTaskEntity entity = requireForUpdate(taskId);
         TaskStatus status = TaskStatus.valueOf(entity.getStatus());
-        if (status.terminal()) return;
+        if (status.terminal() || ownedElsewhere(entity)) return;
+        if (worker.id().equals(entity.getLeaseOwner())) entity.setLeaseExpiresAt(clock.now().plus(lease));
         entity.setProgressPercent(Math.max(entity.getProgressPercent(), Math.min(99, Math.max(0, progressPercent))));
         entity.setCheckpointCode(checkpointCode);
         entity.setErrorCode(null);
@@ -237,6 +261,20 @@ public class TaskService {
 
     public AsyncTaskEntity require(String taskId) {
         return tasks.findById(taskId).orElseThrow(() -> AppException.user("TASK_NOT_FOUND", "任务不存在"));
+    }
+
+    /** A running task leased by another live worker may only be finished by that worker. */
+    private boolean ownedElsewhere(AsyncTaskEntity entity) {
+        return TaskStatus.RUNNING.name().equals(entity.getStatus())
+                && entity.getLeaseOwner() != null
+                && !entity.getLeaseOwner().equals(worker.id())
+                && entity.getLeaseExpiresAt() != null
+                && entity.getLeaseExpiresAt().isAfter(clock.now());
+    }
+
+    private static void releaseLease(AsyncTaskEntity entity) {
+        entity.setLeaseOwner(null);
+        entity.setLeaseExpiresAt(null);
     }
 
     private AsyncTaskEntity requireForUpdate(String taskId) {

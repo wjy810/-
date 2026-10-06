@@ -24,6 +24,10 @@ run_case none running running
 test "$result" = 0
 archive=$(find "$fixture/deploy/backups" -name 'jobproof-*.tar.gz' -type f | head -n 1)
 tar -tzf "$archive" | grep -q '^minio-data.tar.gz$'
+tar -tzf "$archive" | grep -q '^mysql-dump.sql.gz$'
+tar -xzf "$archive" -C "$fixture" manifest.txt
+grep -q '^format=jobproof-backup-v3$' "$fixture/manifest.txt"
+grep -q '^database=mysql-dump.sql.gz$' "$fixture/manifest.txt"
 grep -q '^start aa$' "$MOCK_LOG"
 grep -q '^start bb$' "$MOCK_LOG"
 success_count=$(find "$fixture/deploy/backups" -name 'jobproof-*.tar.gz' | wc -l)
@@ -34,6 +38,28 @@ grep -q '^start aa$' "$MOCK_LOG"
 grep -q '^start bb$' "$MOCK_LOG"
 test "$(find "$fixture/deploy/backups" -name 'jobproof-*.tar.gz' | wc -l)" = "$success_count"
 
+for failure in dump truncated-dump; do
+    run_case "$failure" running running
+    test "$result" != 0
+    grep -q '^start aa$' "$MOCK_LOG"
+    grep -q '^start bb$' "$MOCK_LOG"
+    test "$(find "$fixture/deploy/backups" -name 'jobproof-*.tar.gz' | wc -l)" = "$success_count"
+done
+
+export MOCK_MYSQL_STATE=exited
+run_case none running running
+test "$result" != 0
+! grep -q '^stop ' "$MOCK_LOG"
+unset MOCK_MYSQL_STATE
+
+run_case external-db running running
+test "$result" != 0
+! grep -q '^stop ' "$MOCK_LOG"
+export JOBPROOF_BACKUP_SKIP_DATABASE=1
+run_case external-db running running
+test "$result" = 0
+unset JOBPROOF_BACKUP_SKIP_DATABASE
+
 run_case missing-volume running running
 test "$result" != 0
 ! grep -q '^stop ' "$MOCK_LOG"
@@ -42,4 +68,4 @@ run_case none exited exited
 test "$result" = 0
 ! grep -q '^start ' "$MOCK_LOG"
 ! grep -q '^stop ' "$MOCK_LOG"
-printf '%s\n' 'PASS: complete archive, failure restart/no publish, missing-volume preflight, originally stopped states'
+printf '%s\n' 'PASS: complete archive with MySQL dump, dump failure/truncation restart and no publish, stopped mysql and unacknowledged external database refused before downtime, missing-volume preflight, originally stopped states'

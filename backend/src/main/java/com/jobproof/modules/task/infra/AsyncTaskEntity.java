@@ -55,6 +55,13 @@ public class AsyncTaskEntity {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
+    /** Worker instance currently running the task; null while queued or after it finished. */
+    @Column(name = "lease_owner", length = 96)
+    private String leaseOwner;
+
+    @Column(name = "lease_expires_at")
+    private Instant leaseExpiresAt;
+
     public String getId() {
         return id;
     }
@@ -174,4 +181,9 @@ public class AsyncTaskEntity {
     public void setUpdatedAt(Instant updatedAt) {
         this.updatedAt = updatedAt;
     }
+
+    public String getLeaseOwner() { return leaseOwner; }
+    public void setLeaseOwner(String leaseOwner) { this.leaseOwner = leaseOwner; }
+    public Instant getLeaseExpiresAt() { return leaseExpiresAt; }
+    public void setLeaseExpiresAt(Instant leaseExpiresAt) { this.leaseExpiresAt = leaseExpiresAt; }
 }

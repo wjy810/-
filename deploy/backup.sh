@@ -48,8 +48,18 @@ command -v sha256sum >/dev/null
 data_dir=$(CDPATH= cd -- "$root_dir/data" && pwd -P)
 app_id=$(docker compose -f "$root_dir/docker-compose.yml" ps -a -q app)
 minio_id=$(docker compose -f "$root_dir/docker-compose.yml" ps -a -q minio)
+mysql_id=$(docker compose -f "$root_dir/docker-compose.yml" ps -a -q mysql)
+skip_database=${JOBPROOF_BACKUP_SKIP_DATABASE:-0}
 case "$app_id" in ''|*[!a-fA-F0-9]*) echo 'Expected exactly one existing app container' >&2; exit 1 ;; esac
 case "$minio_id" in ''|*[!a-fA-F0-9]*) echo 'Expected exactly one existing MinIO container' >&2; exit 1 ;; esac
+# The database is dumped from the bundled MySQL service. A managed database has its own backups;
+# skipping it must be stated explicitly so an archive is never silently missing the database.
+if [ -z "$mysql_id" ]; then
+    [ "$skip_database" = 1 ] || { echo 'No bundled mysql container; set JOBPROOF_BACKUP_SKIP_DATABASE=1 only if the database is backed up elsewhere' >&2; exit 1; }
+else
+    case "$mysql_id" in *[!a-fA-F0-9]*) echo 'Expected exactly one existing mysql container' >&2; exit 1 ;; esac
+    [ "$(docker inspect --format '{{.State.Status}}' "$mysql_id")" = running ] || { echo 'mysql must be running to take a consistent dump' >&2; exit 1; }
+fi
 app_mount=$(docker inspect --format '{{range .Mounts}}{{if eq .Destination "/var/lib/jobproof"}}{{if eq .Type "bind"}}{{.Source}}{{end}}{{end}}{{end}}' "$app_id")
 [ "$app_mount" = "$data_dir" ] || { echo 'App data mount differs from deploy/data; refusing incomplete backup' >&2; exit 1; }
 minio_volume=$(docker inspect --format '{{range .Mounts}}{{if eq .Destination "/data"}}{{if eq .Type "volume"}}{{.Name}}{{end}}{{end}}{{end}}' "$minio_id")
@@ -69,6 +79,13 @@ if [ "$app_state" = running ]; then app_restart=1; docker stop "$app_id" >/dev/n
 if [ "$minio_state" = running ]; then minio_restart=1; docker stop "$minio_id" >/dev/null; fi
 
 tar -C "$data_dir" -czf "$stage/app-data.tar.gz" .
+members='app-data.tar.gz minio-data.tar.gz'
+if [ -n "$mysql_id" ]; then
+    # The app is stopped, so the single-transaction dump is consistent with the object store copy.
+    docker exec "$mysql_id" sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysqldump -uroot --single-transaction --quick --routines --triggers --hex-blob --default-character-set=utf8mb4 --databases "$MYSQL_DATABASE"' \
+        | gzip > "$stage/mysql-dump.sql.gz"
+    members="mysql-dump.sql.gz $members"
+fi
 docker run --rm --network none --read-only \
     --mount "type=volume,src=$minio_volume,dst=/source,readonly" \
     --entrypoint sh "$helper_image" -c 'tar -C /source -czf - .' > "$stage/minio-data.tar.gz"
@@ -76,12 +93,19 @@ docker run --rm --network none --read-only \
 restore_services
 tar -tzf "$stage/app-data.tar.gz" >/dev/null
 tar -tzf "$stage/minio-data.tar.gz" >/dev/null
-printf '%s\n' 'format=jobproof-backup-v2' "created_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+if [ -n "$mysql_id" ]; then
+    gzip -t "$stage/mysql-dump.sql.gz"
+    gzip -dc "$stage/mysql-dump.sql.gz" | tail -n 1 | grep -q '^-- Dump completed' || { echo 'MySQL dump is incomplete' >&2; exit 1; }
+fi
+database_note=$([ -n "$mysql_id" ] && echo 'database=mysql-dump.sql.gz' || echo 'database=external (not included; use the provider backups)')
+printf '%s\n' 'format=jobproof-backup-v3' "created_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
     "app_state=$app_state" "minio_state=$minio_state" "minio_volume=$minio_volume" \
-    "helper_image=$helper_image" 'includes=app-data.tar.gz,minio-data.tar.gz' \
+    "helper_image=$helper_image" "includes=$(echo "$members" | tr ' ' ',')" "$database_note" \
     'secrets=excluded; recover configuration from separately secured storage' > "$stage/manifest.txt"
-(cd "$stage" && sha256sum app-data.tar.gz minio-data.tar.gz > SHA256SUMS)
-tar -C "$stage" -czf "$stage/archive.tar.gz" manifest.txt SHA256SUMS app-data.tar.gz minio-data.tar.gz
+# shellcheck disable=SC2086 # members is a fixed list of file names without spaces
+(cd "$stage" && sha256sum $members > SHA256SUMS)
+# shellcheck disable=SC2086
+tar -C "$stage" -czf "$stage/archive.tar.gz" manifest.txt SHA256SUMS $members
 tar -tzf "$stage/archive.tar.gz" >/dev/null
 archive="$backup_dir/jobproof-$timestamp-$$.tar.gz"
 [ ! -e "$archive" ] || { echo 'Backup destination already exists' >&2; exit 1; }

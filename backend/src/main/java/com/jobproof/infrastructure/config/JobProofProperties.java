@@ -95,6 +95,15 @@ public class JobProofProperties {
     public static class Worker {
         private boolean inProcess = true;
         private long pollMs = 1000;
+        /** How long a claimed task stays reserved without a heartbeat before another worker may take it. */
+        private long taskLeaseSeconds = 120;
+        /** How often this process extends the leases of the tasks it is running. */
+        private long leaseHeartbeatMs = 30_000;
+
+        public long getTaskLeaseSeconds() { return taskLeaseSeconds; }
+        public void setTaskLeaseSeconds(long value) { this.taskLeaseSeconds = Math.max(10, value); }
+        public long getLeaseHeartbeatMs() { return leaseHeartbeatMs; }
+        public void setLeaseHeartbeatMs(long value) { this.leaseHeartbeatMs = Math.max(1000, value); }
 
         public boolean isInProcess() {
             return inProcess;

@@ -55,6 +55,9 @@ spring:
   flyway:
     enabled: true
     encoding: UTF-8
+    # Shared migrations plus per-database variants where H2 and MySQL need different SQL. A variant
+    # keeps the original version number; the H2 copy is byte-identical to what H2 databases applied.
+    locations: classpath:db/migration,classpath:db/vendor/{vendor}
 
 management:
   health:

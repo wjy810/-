@@ -15,7 +15,7 @@ class FlywayMigrationIT {
     void freshDatabaseMigratesThroughLatestVersion() {
         Flyway flyway = flyway("fresh-" + UUID.randomUUID(), null);
 
-        assertThat(flyway.migrate().targetSchemaVersion).isEqualTo("69");
+        assertThat(flyway.migrate().targetSchemaVersion).isEqualTo("70");
     }
 
     @Test
@@ -25,7 +25,7 @@ class FlywayMigrationIT {
         assertThat(version39.migrate().targetSchemaVersion).isEqualTo("39");
 
         Flyway latest = flyway(database, null);
-        assertThat(latest.migrate().targetSchemaVersion).isEqualTo("69");
+        assertThat(latest.migrate().targetSchemaVersion).isEqualTo("70");
     }
 
     @Test
@@ -70,7 +70,7 @@ class FlywayMigrationIT {
     private static Flyway flyway(String database, MigrationVersion target) {
         var configuration = Flyway.configure()
                 .dataSource(dataSource(database))
-                .locations("classpath:db/migration");
+                .locations("classpath:db/migration", "classpath:db/vendor/h2");
         if (target != null) configuration.target(target);
         return configuration.load();
     }

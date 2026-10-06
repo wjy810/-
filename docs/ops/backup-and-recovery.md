@@ -1,6 +1,8 @@
 # 本机部署备份与恢复验收
 
-适用：当前单实例 Compose、`deploy/data` 本机绑定目录、MinIO `/data` 命名卷。脚本必须在持有该绑定目录的 Docker 主机运行，不支持远程 Docker context、外部数据库或多副本写入；这些环境需另行设计一致性备份。
+适用：当前单实例 Compose、内置 `mysql` 服务、`deploy/data` 本机绑定目录、MinIO `/data` 命名卷。脚本必须在持有该绑定目录的 Docker 主机运行，不支持远程 Docker context 或多副本写入。使用托管数据库时，数据库由服务商的备份负责，需显式设置 `JOBPROOF_BACKUP_SKIP_DATABASE=1`，归档中会注明数据库未包含。
+
+> 归档格式 v3（2026-10）：新增 `mysql-dump.sql.gz`。仍在使用 H2 文件库的旧部署，请先按 [mysql-migration.md](mysql-migration.md) 迁移到 MySQL。
 
 ## 备份
 
@@ -11,7 +13,9 @@
 - 使用 `backups/.backup.lock` 防止重复执行。异常断电/SIGKILL 无法触发退出清理；遇到遗留锁，先确认没有备份进程、核实服务状态及未发布暂存文件，再由管理员移除锁。不要直接反复删锁重跑。
 - 完成后检查 app 和 MinIO 的健康状态、备份退出码，并把成功归档复制到独立、访问受控的离机存储。本机保留不是灾难恢复。
 
-输出为权限受限的 `deploy/backups/jobproof-时间-进程号.tar.gz`，内含 `manifest.txt`、`SHA256SUMS`、`app-data.tar.gz`、`minio-data.tar.gz`。MinIO 卷名来自容器实际挂载，不猜测 Compose 前缀。退出/中断路径会尝试恢复原运行状态，启动失败会报错并返回非零；脚本不能保证主机/守护进程失效时恢复服务。
+数据库：app 停止后，脚本在 `mysql` 容器内执行 `mysqldump --single-transaction --routines --triggers --hex-blob`，与对象卷是同一时刻的一致状态。导出必须以 `-- Dump completed` 结尾，否则视为失败、不发布归档并恢复服务；`mysql` 未运行时在停服前就拒绝执行。
+
+输出为权限受限的 `deploy/backups/jobproof-时间-进程号.tar.gz`，内含 `manifest.txt`、`SHA256SUMS`、`mysql-dump.sql.gz`、`app-data.tar.gz`、`minio-data.tar.gz`。MinIO 卷名来自容器实际挂载，不猜测 Compose 前缀。退出/中断路径会尝试恢复原运行状态，启动失败会报错并返回非零；脚本不能保证主机/守护进程失效时恢复服务。
 
 备份包含数据库和私有用户文件，应按敏感数据管理。`.env`、云端凭据、应用镜像、Compose/Nginx 配置不打入归档；必须通过单独的受控配置/密钥保管机制恢复。不要把它们写入工单、日志或恢复报告。Redis 验证码/会话缓存与 ClamAV 可重新生成的数据不属于此恢复包。
 
@@ -19,10 +23,16 @@
 
 1. 准备隔离主机或独立 Compose 项目、全新空数据目录与全新 MinIO 卷；关闭外发短信、邮件、模型及定时任务。保留原环境不变，绝不覆盖正在使用的卷或数据库。
 2. 使用可信归档，在独立目录先列出成员并确认只有上列四个文件，再解包外层；运行 `sha256sum -c SHA256SUMS`。分别列出两个内层归档，检查绝对路径和 `..` 路径后才解包。失败即停止，不能拿损坏包继续恢复。
-3. app/MinIO 均保持停止。把 `app-data.tar.gz` 恢复到新绑定目录，把 `minio-data.tar.gz` 恢复到新命名卷；保留文件属主、权限和 MinIO 元数据。按 manifest 的实际源卷与新卷逐项人工核对，不能仅凭名称相似选卷。
+3. app/MinIO 均保持停止。把 `app-data.tar.gz` 恢复到新绑定目录，把 `minio-data.tar.gz` 恢复到新命名卷；保留文件属主、权限和 MinIO 元数据。按 manifest 的实际源卷与新卷逐项人工核对，不能仅凭名称相似选卷。数据库：只启动新的空 `mysql` 服务，执行 `gzip -dc mysql-dump.sql.gz | docker compose exec -T mysql sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql -uroot'`（导出包含建库语句）。可用 `DatabaseCopyTool --verify-only` 逐表核对恢复库与源库行数（见 mysql-migration.md）。
 4. 从受控渠道恢复对应应用版本和配置。MinIO 使用与备份源兼容的版本及凭据，app 使用对应数据库版本；先启动 MinIO并确认健康，再启动 app。上线前才恢复已审核的外部连接。
 5. 验收数据库启动及迁移状态、账号隔离、简历内容、附件下载/预览；抽查多个数据库文件引用均能读取对象，对比原始文件 SHA-256。检查一个数据库引用存在但对象缺失的反例会被明确识别。记录恢复耗时、文件数量/大小、抽样哈希和差异，不记录个人原文或密钥。
 6. 演练通过后才确定切换方案和回滚点。演练失败时保持原环境运行，仅保留隔离演练资源供排查；删除任何卷前另行核对并授权。
+
+## 2026-10-06 MySQL 导出 / 恢复演练
+
+在 MySQL 8.4.11 上，对一份由开发环境真实 H2 数据迁移而来的库（123 张表）执行与 `backup.sh` 相同参数的 `mysqldump`，导出 162 KB，以 `-- Dump completed` 结尾；恢复到新的空库后，用 `DatabaseCopyTool --verify-only` 逐表比对：123 张表、1807 行，差异 0。导出加恢复共约 3 秒。`backup-mock-test.sh` 覆盖：归档包含导出、导出失败或截断时不发布且恢复服务、`mysql` 未运行或未声明托管库时在停服前拒绝。
+
+**边界：这是数据库导出与恢复的真实演练，不是完整 Compose 栈（含 MinIO 对象与离机存储）的端到端恢复；正式环境上线前仍需管理员按上文步骤在隔离环境做一次完整恢复。**
 
 ## 本次验证边界
 

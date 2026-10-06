@@ -2,13 +2,13 @@
 
 ## 已确认的静态预算
 
-当前 Compose 的容器内存上限为 Redis 160 MiB、MinIO 256 MiB、ClamAV 1400 MiB、应用 900 MiB、Nginx 64 MiB，合计 **2780 MiB**。`mem_limit` 是单容器上限而不是预留，不能相加后断言服务启动时必然占满；但宿主只有 2 GiB，且操作系统、Docker 与页缓存也需要内存，因此多个容器同时接近峰值时存在明确的宿主 OOM 风险。
+当前 Compose 的容器内存上限为 MySQL 512 MiB（`innodb_buffer_pool_size=128M`、关闭 performance_schema）、Redis 160 MiB、MinIO 256 MiB、ClamAV 1400 MiB、渲染服务 640 MiB、应用 900 MiB、Nginx 64 MiB，合计 **3932 MiB**。`mem_limit` 是单容器上限而不是预留，不能相加后断言服务启动时必然占满；但宿主只有 2 GiB，且操作系统、Docker 与页缓存也需要内存，因此多个容器同时接近峰值时存在明确的宿主 OOM 风险。
 
 应用容器使用 `MaxRAMPercentage=72` 和 900 MiB 容器上限，Java 堆理论上可接近 648 MiB，另有最高 192 MiB metaspace、线程栈、直接内存，以及同容器内 LibreOffice/Tesseract 子进程。Redis 自身配置 `maxmemory 96mb`，但进程、持久化和 fork 开销不受该数值完全覆盖。ClamAV 的 1400 MiB 上限用于病毒库加载与扫描峰值，不能在没有真实病毒库和并发扫描验证时直接压低。
 
 ## 运行结论
 
-完整功能栈在 2 核 2 GiB 上目前只能视为低流量试运行配置，**尚无容量验收结论**。不得仅通过降低 `mem_limit` 使数字看似小于 2 GiB；这可能把宿主 OOM 变为 ClamAV、PDF 或应用容器反复 OOM，并因扫描失败关闭而阻断文件功能。
+完整功能栈在 2 核 2 GiB 上目前只能视为低流量试运行配置，**尚无容量验收结论**。正式上线建议至少 4 核 8 GiB，或把数据库换成云厂商托管 MySQL（删除 `mysql` 服务、设置 `JOBPROOF_DB_URL`），并把 ClamAV 放到独立主机。不得仅通过降低 `mem_limit` 使数字看似小于 2 GiB；这可能把宿主 OOM 变为 ClamAV、PDF 或应用容器反复 OOM，并因扫描失败关闭而阻断文件功能。
 
 生产发布前至少要：配置并监控受控 swap；记录宿主 `MemAvailable`、swap、容器 RSS/OOM、磁盘与任务失败；分别执行单次登录、资料列表、PDF、预览和病毒扫描，再执行受控的两任务并发；确认扫描不可用时仍失败关闭。若要求稳定并发 PDF/预览/扫描，保守方案是升级到至少 4 GiB，或把 ClamAV/对象存储迁到独立受控服务。具体并发上限必须由容量测试决定。
 
