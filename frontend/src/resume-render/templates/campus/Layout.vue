@@ -26,7 +26,7 @@ defineProps<LayoutProps>()
 [data-template='campus'] .cp-head { display: flex; align-items: center; justify-content: space-between; gap: 8mm; margin-bottom: 5mm; }
 [data-template='campus'] .cp-name { font-size: 25pt; font-weight: 700; line-height: 1.1; letter-spacing: 0.04em; }
 [data-template='campus'] .cp-title { display: flex; align-items: center; gap: 2mm; margin-top: 2mm; color: var(--r-ink); font-size: calc(var(--r-size) + 1pt); font-weight: 600; }
-[data-template='campus'] .cp-title span { padding: 0.3mm 1.8mm; border-radius: 1mm; background: var(--r-accent); color: #fff; font-size: calc(var(--r-size) - 1.5pt); font-weight: 500; letter-spacing: 0.06em; }
+[data-template='campus'] .cp-title span { padding: 0.3mm 1.8mm; border-radius: 1mm; background: var(--r-accent); color: var(--r-on-accent); font-size: calc(var(--r-size) - 1.5pt); font-weight: 500; letter-spacing: 0.06em; }
 [data-template='campus'] .cp-contact { margin-top: 2.6mm; }
 [data-template='campus'] .rr-heading {
   padding: 0.9mm 2.4mm;

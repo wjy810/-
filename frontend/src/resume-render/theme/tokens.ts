@@ -153,6 +153,10 @@ export function resolveTheme(manifest: TemplateManifest, design: ResumeDesignV2)
       '--r-muted': muted,
       '--r-rule': tint(ink, paper, 0.18),
       '--r-paper': paper,
+      // Fixed paper colours: text on accent fills, and the vermilion seal of the ink-wash template.
+      '--r-on-accent': '#ffffff',
+      '--r-seal': '#a23b2c',
+      '--r-seal-ink': '#fbf4ec',
       '--r-font-body': fonts.body,
       '--r-font-heading': fonts.heading,
       '--r-font-mono': fonts.mono,

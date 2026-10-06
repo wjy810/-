@@ -28,11 +28,11 @@ defineProps<LayoutProps>()
 [data-template='bold'][data-header='tall'] { --bd-band: 54mm; }
 [data-template='bold'] .bd-band { inset: 0 0 auto 0; height: var(--bd-band); background: var(--r-accent); }
 [data-template='bold'] .bd-page { display: flex; flex: 1; flex-direction: column; min-height: 0; }
-[data-template='bold'] .bd-head { display: flex; align-items: center; justify-content: space-between; gap: 8mm; height: var(--bd-band); padding: 0 var(--r-margin-x); color: #fff; }
+[data-template='bold'] .bd-head { display: flex; align-items: center; justify-content: space-between; gap: 8mm; height: var(--bd-band); padding: 0 var(--r-margin-x); color: var(--r-on-accent); }
 [data-template='bold'] .bd-name { font-family: var(--r-font-heading); font-size: 27pt; font-weight: 700; line-height: 1.1; letter-spacing: 0.04em; }
 [data-template='bold'] .bd-title { margin-top: 1.8mm; font-size: calc(var(--r-size) + 1.5pt); font-weight: 500; opacity: 0.92; }
 [data-template='bold'] .bd-contact { margin-top: 3.2mm; color: rgb(255 255 255 / 0.86); }
-[data-template='bold'] .bd-contact .rr-contact__icon { stroke: #fff; }
+[data-template='bold'] .bd-contact .rr-contact__icon { stroke: var(--r-on-accent); }
 [data-template='bold'] .bd-contact .rr-contact__sep { color: rgb(255 255 255 / 0.5); }
 [data-template='bold'] .bd-photo { flex: none; width: 27mm; height: 33mm; outline: 1.2mm solid rgb(255 255 255 / 0.9); }
 [data-template='bold'] .bd-photo[data-shape='circle'] { width: 30mm; height: 30mm; }

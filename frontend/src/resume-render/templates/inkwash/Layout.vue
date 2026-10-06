@@ -47,8 +47,8 @@ const stroke = { '--iw-stroke': `url(${artUrl('ink-wash-band')})` }
   width: 9.5mm;
   height: 9.5mm;
   border-radius: 1mm;
-  background: #a23b2c;
-  color: #fbf4ec;
+  background: var(--r-seal);
+  color: var(--r-seal-ink);
   font-size: 13pt;
   font-weight: 700;
   letter-spacing: 0;
