@@ -87,6 +87,7 @@ export const routes: RouteRecordRaw[] = [
     component: () => import('@/app/layouts/AppLayout.vue'),
     children: [
       { path: 'workspace', redirect: { name: 'dashboard' } },
+      { path: 'settings', redirect: '/account' },
       {
         path: 'dashboard',
         name: 'dashboard',

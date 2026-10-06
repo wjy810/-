@@ -108,7 +108,7 @@ onMounted(load)
 .quota-overview { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(330px, 1fr); }
 .quota-overview__main { display: grid; align-content: center; gap: 22px; padding: 24px; border-right: 1px solid var(--border); }
 .quota-overview__title { display: flex; align-items: center; gap: 13px; }
-.quota-overview__title > span { width: 44px; height: 44px; display: grid; place-items: center; flex: 0 0 auto; border-radius: 10px; background: var(--color-primary); color: var(--text-on-primary); box-shadow: 0 7px 16px color-mix(in srgb, var(--color-primary) 20%, transparent); }
+.quota-overview__title > span:first-child { width: 44px; height: 44px; display: grid; place-items: center; flex: 0 0 auto; border-radius: 10px; background: var(--color-primary); color: var(--text-on-primary); box-shadow: 0 7px 16px color-mix(in srgb, var(--color-primary) 20%, transparent); }
 .quota-overview__title > div { display: grid; flex: 1; }
 .quota-overview__title small { color: var(--text-tertiary); font-size: 12.5px; }
 .quota-overview__title strong { margin-top: 1px; font-size: 26px; letter-spacing: 0; }

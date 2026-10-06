@@ -113,3 +113,47 @@
 .scroll-edges.can-scroll-down::after {
   opacity: 1;
 }
+
+/* Settings sections (账号与安全, AI 用量, 数据与隐私): icon beside title, actions on the right. */
+.settings-section__head {
+  margin-bottom: var(--space-5);
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-3) var(--space-4);
+}
+
+.settings-section__title {
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+
+.settings-section__icon {
+  width: 36px;
+  height: 36px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-md);
+  color: var(--color-primary-text);
+  background: var(--color-primary-soft);
+}
+
+.settings-section__title h2 {
+  font-size: var(--fs-h3);
+  line-height: 36px;
+}
+
+.settings-section__title p {
+  color: var(--text-secondary);
+  font-size: var(--fs-sm);
+}
+
+.settings-section__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
