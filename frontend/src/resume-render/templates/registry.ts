@@ -3,8 +3,21 @@ import type { TemplateModule } from './manifest'
 
 const LOADERS: Record<string, () => Promise<{ default: TemplateModule }>> = {
   classic: () => import('./classic'),
+  clarity: () => import('./clarity'),
+  harvard: () => import('./harvard'),
   meridian: () => import('./meridian'),
   timeline: () => import('./timeline'),
+  ledger: () => import('./ledger'),
+  bold: () => import('./bold'),
+  aurora: () => import('./aurora'),
+  editorial: () => import('./editorial'),
+  inkwash: () => import('./inkwash'),
+  watercolor: () => import('./watercolor'),
+  contour: () => import('./contour'),
+  banker: () => import('./banker'),
+  engineer: () => import('./engineer'),
+  academic: () => import('./academic'),
+  campus: () => import('./campus'),
 }
 
 const cache = new Map<string, Promise<TemplateModule>>()
