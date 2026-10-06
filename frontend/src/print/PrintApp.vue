@@ -22,6 +22,8 @@ declare global {
   interface Window {
     __JP_RENDER__?: (payload: PrintPayload) => Promise<LayoutResult & { paperSize: string }>
     __JP_READY__?: boolean
+    /** Last layout result, for visual review scripts. */
+    __JP_LAYOUT__?: LayoutResult
   }
 }
 
@@ -52,6 +54,7 @@ async function render(payload: PrintPayload) {
   const paperSize = (payload.design as { paperSize?: string } | undefined)?.paperSize === 'LETTER' && module.manifest.paperSizes.includes('LETTER') ? 'LETTER' : 'A4'
   setPaper(paperSize)
   document.title = payload.title || 'Resume'
+  window.__JP_LAYOUT__ = result
   return { ...result, paperSize }
 }
 

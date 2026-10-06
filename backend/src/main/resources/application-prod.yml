@@ -49,6 +49,9 @@ jobproof:
     malware-scan:
       provider: clamav
       timeout-seconds: 120
+  renderer:
+    url: ${JOBPROOF_RENDERER_URL:http://renderer:3100}
+    token: ${JOBPROOF_RENDERER_TOKEN}
   templates:
     demo-enabled: false
     preview:

@@ -9,9 +9,6 @@ const src = join(root, 'src')
 
 /** Files that must render fixed colours, with the most hex literals they may contain. */
 const HEX_ALLOWED = {
-  // Resume paper and its print palette must look the same in every app theme.
-  'src/features/resume/components/ResumeTemplatePreview.vue': 18,
-  'src/shared/ui/MiniResume.vue': 14,
   'src/features/dashboard/components/ResumeMiniCard.vue': 6,
   // Theme and accent swatches show the literal colours being chosen.
   'src/features/identity/pages/AppearancePage.vue': 14,

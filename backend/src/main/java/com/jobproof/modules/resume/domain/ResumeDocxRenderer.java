@@ -195,13 +195,13 @@ public final class ResumeDocxRenderer {
 
         XWPFStyles styles = document.createStyles();
         Typography typography = Typography.from(definition);
-        addParagraphStyle(styles, "JobProofTitle", "JobProof Title", typography.halfPoints(40), true,
+        addParagraphStyle(styles, "JobProofTitle", "Resume Title", typography.halfPoints(40), true,
                 palette.accent(), 0, 80, typography);
-        addParagraphStyle(styles, "JobProofSubtitle", "JobProof Subtitle", typography.halfPoints(18), false,
+        addParagraphStyle(styles, "JobProofSubtitle", "Resume Subtitle", typography.halfPoints(18), false,
                 palette.muted(), 0, 180, typography);
-        addParagraphStyle(styles, "JobProofHeading", "JobProof Section Heading", typography.halfPoints(22), true,
+        addParagraphStyle(styles, "JobProofHeading", "Resume Section Heading", typography.halfPoints(22), true,
                 palette.accent(), 160, 80, typography);
-        addParagraphStyle(styles, "JobProofBody", "JobProof Body", typography.halfPoints(20), false,
+        addParagraphStyle(styles, "JobProofBody", "Resume Body", typography.halfPoints(20), false,
                 palette.body(), 0, 80, typography);
     }
 
@@ -263,8 +263,9 @@ public final class ResumeDocxRenderer {
             Palette palette) {
         String headerStyle = definition.visual() == null
                 ? "MINIMAL" : definition.visual().effectiveHeaderStyle().toUpperCase(Locale.ROOT);
-        String subtitle = definition.visual() == null
-                ? "JobProof 结构化简历" : definition.visual().effectiveSubtitle();
+        // No product mark on the resume (RND-10): only a subtitle the template itself defines.
+        String subtitle = definition.visual() == null || definition.visual().subtitle() == null
+                ? "" : definition.visual().subtitle().trim();
         Typography typography = Typography.from(definition);
         XWPFParagraph heading = document.createParagraph();
         heading.setStyle("JobProofTitle");
@@ -523,9 +524,6 @@ public final class ResumeDocxRenderer {
         XWPFParagraph paragraph = footer.createParagraph();
         paragraph.setAlignment(ParagraphAlignment.CENTER);
         paragraph.setSpacingBefore(40);
-        XWPFRun run = paragraph.createRun();
-        run.setText("JobProof · ");
-        formatRun(run, 8, false, palette.muted());
         var field = paragraph.getCTP().addNewFldSimple();
         field.setInstr("PAGE");
         field.addNewR().addNewT().setStringValue("1");

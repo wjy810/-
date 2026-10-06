@@ -75,6 +75,9 @@ jobproof:
     seeker:
       enabled: true
       password: seeker123
+  renderer:
+    url: ${JOBPROOF_RENDERER_URL:http://127.0.0.1:3100}
+    token: ${JOBPROOF_RENDERER_TOKEN:dev-renderer-token-0123456789}
   templates:
     demo-enabled: true
     preview:

@@ -1,0 +1,1285 @@
+{
+  "schema": "resume-template-manifests-v1",
+  "templates": [
+    {
+      "id": "classic",
+      "revision": 1,
+      "name": "经典",
+      "nameEn": "Classic",
+      "category": "steady",
+      "summary": "居中衬线姓名、字距标题与通栏细线，克制而郑重。",
+      "bestFor": "国企、事业单位、传统行业，或任何不确定风格时的稳妥选择",
+      "tags": [
+        "单栏",
+        "ATS 友好",
+        "衬线"
+      ],
+      "maxPages": 2,
+      "locale": "zh-CN",
+      "paperSizes": [
+        "A4"
+      ],
+      "fontPairings": [
+        "serif",
+        "mixed",
+        "sans"
+      ],
+      "palettes": [
+        {
+          "id": "ink",
+          "name": "墨黑",
+          "accent": "#1f2328"
+        },
+        {
+          "id": "navy",
+          "name": "藏青",
+          "accent": "#1e3a5f"
+        },
+        {
+          "id": "wine",
+          "name": "酒红",
+          "accent": "#7a2e3a"
+        }
+      ],
+      "headerVariants": [
+        {
+          "id": "centered",
+          "name": "居中"
+        },
+        {
+          "id": "left",
+          "name": "左对齐"
+        }
+      ],
+      "photo": "none",
+      "regions": [
+        {
+          "id": "main",
+          "sections": [
+            "summary",
+            "education",
+            "experience",
+            "projects",
+            "organizations",
+            "skills",
+            "certificates",
+            "honors",
+            "languages"
+          ]
+        }
+      ],
+      "atsLevel": "strict",
+      "decorations": false,
+      "defaults": {}
+    },
+    {
+      "id": "clarity",
+      "revision": 1,
+      "name": "清晰",
+      "nameEn": "Clarity",
+      "category": "steady",
+      "summary": "单栏、无装饰、层级分明，为招聘系统筛选而生。",
+      "bestFor": "网申、外企与大型企业的 ATS 筛选，海投时的默认版本",
+      "tags": [
+        "单栏",
+        "ATS 优先",
+        "无照片"
+      ],
+      "maxPages": 2,
+      "locale": "zh-CN",
+      "paperSizes": [
+        "A4"
+      ],
+      "fontPairings": [
+        "sans",
+        "serif"
+      ],
+      "palettes": [
+        {
+          "id": "graphite",
+          "name": "石墨",
+          "accent": "#2b2f36"
+        },
+        {
+          "id": "navy",
+          "name": "海军蓝",
+          "accent": "#1d4e89"
+        },
+        {
+          "id": "forest",
+          "name": "墨绿",
+          "accent": "#1f5f4a"
+        }
+      ],
+      "headerVariants": [
+        {
+          "id": "left",
+          "name": "左对齐"
+        },
+        {
+          "id": "centered",
+          "name": "居中"
+        }
+      ],
+      "photo": "none",
+      "regions": [
+        {
+          "id": "main",
+          "sections": [
+            "summary",
+            "experience",
+            "projects",
+            "education",
+            "organizations",
+            "skills",
+            "certificates",
+            "honors",
+            "languages"
+          ]
+        }
+      ],
+      "atsLevel": "strict",
+      "decorations": false,
+      "defaults": {
+        "contactIcons": false
+      }
+    },
+    {
+      "id": "harvard",
+      "revision": 1,
+      "name": "Harvard",
+      "nameEn": "Harvard",
+      "category": "steady",
+      "summary": "The classic one-page English format: centred name, ruled small-caps headings, dates on the right.",
+      "bestFor": "英文简历：外企、海外岗位、留学与交换申请",
+      "tags": [
+        "英文",
+        "单栏",
+        "Letter"
+      ],
+      "maxPages": 2,
+      "locale": "en",
+      "paperSizes": [
+        "A4",
+        "LETTER"
+      ],
+      "fontPairings": [
+        "serif",
+        "sans"
+      ],
+      "palettes": [
+        {
+          "id": "black",
+          "name": "黑",
+          "accent": "#111111"
+        },
+        {
+          "id": "midnight",
+          "name": "深蓝",
+          "accent": "#102a43"
+        }
+      ],
+      "headerVariants": [
+        {
+          "id": "centered",
+          "name": "居中"
+        }
+      ],
+      "photo": "none",
+      "regions": [
+        {
+          "id": "main",
+          "sections": [
+            "summary",
+            "education",
+            "experience",
+            "projects",
+            "organizations",
+            "skills",
+            "certificates",
+            "honors",
+            "languages"
+          ]
+        }
+      ],
+      "atsLevel": "strict",
+      "decorations": false,
+      "defaults": {
+        "contactIcons": false,
+        "sectionOrder": [
+          "summary",
+          "education",
+          "experience",
+          "projects",
+          "organizations",
+          "skills",
+          "certificates",
+          "honors",
+          "languages"
+        ]
+      }
+    },
+    {
+      "id": "meridian",
+      "revision": 1,
+      "name": "子午",
+      "nameEn": "Meridian",
+      "category": "modern",
+      "summary": "左侧浅色侧栏承载照片、联系方式与技能，主栏专注经历。",
+      "bestFor": "互联网、运营、产品、市场等需要一眼看清能力与经历的岗位",
+      "tags": [
+        "两栏",
+        "照片",
+        "现代"
+      ],
+      "maxPages": 2,
+      "locale": "zh-CN",
+      "paperSizes": [
+        "A4"
+      ],
+      "fontPairings": [
+        "sans",
+        "mixed"
+      ],
+      "palettes": [
+        {
+          "id": "fog-blue",
+          "name": "雾蓝",
+          "accent": "#3b6a9e"
+        },
+        {
+          "id": "pine",
+          "name": "松绿",
+          "accent": "#2f6b5b"
+        },
+        {
+          "id": "graphite",
+          "name": "石墨",
+          "accent": "#3a3f47"
+        },
+        {
+          "id": "ochre",
+          "name": "赭石",
+          "accent": "#8a5a36"
+        }
+      ],
+      "headerVariants": [
+        {
+          "id": "stacked",
+          "name": "照片在上"
+        },
+        {
+          "id": "compact",
+          "name": "紧凑"
+        }
+      ],
+      "photo": "optional",
+      "regions": [
+        {
+          "id": "main",
+          "sections": [
+            "summary",
+            "experience",
+            "projects",
+            "education",
+            "organizations"
+          ]
+        },
+        {
+          "id": "side",
+          "sections": [
+            "skills",
+            "languages",
+            "certificates",
+            "honors"
+          ]
+        }
+      ],
+      "atsLevel": "standard",
+      "decorations": false,
+      "defaults": {
+        "sectionOrder": [
+          "summary",
+          "experience",
+          "projects",
+          "education",
+          "organizations",
+          "skills",
+          "languages",
+          "certificates",
+          "honors"
+        ]
+      }
+    },
+    {
+      "id": "timeline",
+      "revision": 1,
+      "name": "时间轴",
+      "nameEn": "Timeline",
+      "category": "modern",
+      "summary": "左侧日期列与贯穿的时间线，让成长路径一目了然。",
+      "bestFor": "经历丰富、晋升路径清晰，或需要突出时间连续性的求职者",
+      "tags": [
+        "单栏",
+        "时间线",
+        "照片"
+      ],
+      "maxPages": 2,
+      "locale": "zh-CN",
+      "paperSizes": [
+        "A4"
+      ],
+      "fontPairings": [
+        "sans",
+        "mixed"
+      ],
+      "palettes": [
+        {
+          "id": "indigo",
+          "name": "靛蓝",
+          "accent": "#4338ca"
+        },
+        {
+          "id": "teal",
+          "name": "青",
+          "accent": "#0e7490"
+        },
+        {
+          "id": "coral",
+          "name": "珊瑚",
+          "accent": "#c2410c"
+        }
+      ],
+      "headerVariants": [
+        {
+          "id": "split",
+          "name": "照片在右"
+        },
+        {
+          "id": "plain",
+          "name": "无照片"
+        }
+      ],
+      "photo": "optional",
+      "regions": [
+        {
+          "id": "main",
+          "sections": [
+            "summary",
+            "experience",
+            "projects",
+            "education",
+            "organizations",
+            "skills",
+            "certificates",
+            "honors",
+            "languages"
+          ]
+        }
+      ],
+      "atsLevel": "standard",
+      "decorations": false,
+      "defaults": {
+        "sectionOrder": [
+          "summary",
+          "experience",
+          "projects",
+          "education",
+          "organizations",
+          "skills",
+          "certificates",
+          "honors",
+          "languages"
+        ]
+      }
+    },
+    {
+      "id": "ledger",
+      "revision": 1,
+      "name": "分栏",
+      "nameEn": "Ledger",
+      "category": "modern",
+      "summary": "主栏讲经历，右侧事实栏列技能、教育与证书，中间一条发丝线。",
+      "bestFor": "产品经理、咨询、综合管理等需要兼顾经历与能力的岗位",
+      "tags": [
+        "两栏",
+        "现代",
+        "照片"
+      ],
+      "maxPages": 2,
+      "locale": "zh-CN",
+      "paperSizes": [
+        "A4"
+      ],
+      "fontPairings": [
+        "sans",
+        "mixed"
+      ],
+      "palettes": [
+        {
+          "id": "royal",
+          "name": "深蓝",
+          "accent": "#1e3a8a"
+        },
+        {
+          "id": "forest",
+          "name": "墨绿",
+          "accent": "#14532d"
+        },
+        {
+          "id": "grape",
+          "name": "葡萄紫",
+          "accent": "#5b21b6"
+        }
+      ],
+      "headerVariants": [
+        {
+          "id": "split",
+          "name": "左右分栏"
+        },
+        {
+          "id": "photo",
+          "name": "带照片"
+        }
+      ],
+      "photo": "optional",
+      "regions": [
+        {
+          "id": "main",
+          "sections": [
+            "summary",
+            "experience",
+            "projects",
+            "organizations"
+          ]
+        },
+        {
+          "id": "facts",
+          "sections": [
+            "skills",
+            "education",
+            "certificates",
+            "honors",
+            "languages"
+          ]
+        }
+      ],
+      "atsLevel": "standard",
+      "decorations": false,
+      "defaults": {
+        "sectionOrder": [
+          "summary",
+          "experience",
+          "projects",
+          "organizations",
+          "skills",
+          "education",
+          "certificates",
+          "honors",
+          "languages"
+        ]
+      }
+    },
+    {
+      "id": "bold",
+      "revision": 1,
+      "name": "撞色",
+      "nameEn": "Bold",
+      "category": "modern",
+      "summary": "通栏强调色页头与白色姓名，第一眼就被记住。",
+      "bestFor": "销售、市场、商务拓展等需要留下深刻印象的岗位",
+      "tags": [
+        "单栏",
+        "色块页头",
+        "照片"
+      ],
+      "maxPages": 2,
+      "locale": "zh-CN",
+      "paperSizes": [
+        "A4"
+      ],
+      "fontPairings": [
+        "sans",
+        "mixed"
+      ],
+      "palettes": [
+        {
+          "id": "deep-sea",
+          "name": "深海",
+          "accent": "#0f3d5e"
+        },
+        {
+          "id": "evergreen",
+          "name": "墨绿",
+          "accent": "#1f4d3a"
+        },
+        {
+          "id": "brick",
+          "name": "砖红",
+          "accent": "#8c2f1c"
+        },
+        {
+          "id": "night",
+          "name": "夜黑",
+          "accent": "#111827"
+        }
+      ],
+      "headerVariants": [
+        {
+          "id": "band",
+          "name": "通栏色块"
+        },
+        {
+          "id": "tall",
+          "name": "加高色块"
+        }
+      ],
+      "photo": "optional",
+      "regions": [
+        {
+          "id": "main",
+          "sections": [
+            "summary",
+            "experience",
+            "projects",
+            "education",
+            "organizations",
+            "skills",
+            "certificates",
+            "honors",
+            "languages"
+          ]
+        }
+      ],
+      "atsLevel": "standard",
+      "decorations": false,
+      "defaults": {
+        "photo": {
+          "mode": "AUTO",
+          "shape": "SQUARE"
+        }
+      }
+    },
+    {
+      "id": "aurora",
+      "revision": 1,
+      "name": "极光",
+      "nameEn": "Aurora",
+      "category": "modern",
+      "summary": "右上角一抹柔和极光，细体大字姓名，轻盈而有设计感。",
+      "bestFor": "设计、新媒体、品牌与创意类岗位",
+      "tags": [
+        "单栏",
+        "装饰",
+        "照片"
+      ],
+      "maxPages": 2,
+      "locale": "zh-CN",
+      "paperSizes": [
+        "A4"
+      ],
+      "fontPairings": [
+        "sans",
+        "mixed"
+      ],
+      "palettes": [
+        {
+          "id": "stardust",
+          "name": "星紫",
+          "accent": "#6d28d9",
+          "art": "aurora-soft"
+        },
+        {
+          "id": "clear-sky",
+          "name": "晴蓝",
+          "accent": "#2563eb",
+          "art": "aurora-soft"
+        },
+        {
+          "id": "peach",
+          "name": "蜜桃",
+          "accent": "#c2410c",
+          "art": "aurora-soft"
+        }
+      ],
+      "headerVariants": [
+        {
+          "id": "airy",
+          "name": "舒展"
+        },
+        {
+          "id": "photo",
+          "name": "带照片"
+        }
+      ],
+      "photo": "optional",
+      "regions": [
+        {
+          "id": "main",
+          "sections": [
+            "summary",
+            "experience",
+            "projects",
+            "education",
+            "organizations",
+            "skills",
+            "certificates",
+            "honors",
+            "languages"
+          ]
+        }
+      ],
+      "atsLevel": "standard",
+      "decorations": true,
+      "defaults": {}
+    },
+    {
+      "id": "editorial",
+      "revision": 1,
+      "name": "纸本",
+      "nameEn": "Editorial",
+      "category": "design",
+      "summary": "真实纸张纹理、衬线大字与编号章节，像一本排版讲究的小册子。",
+      "bestFor": "文字、编辑、品牌、咨询与人文社科方向",
+      "tags": [
+        "单栏",
+        "纸纹",
+        "衬线"
+      ],
+      "maxPages": 2,
+      "locale": "zh-CN",
+      "paperSizes": [
+        "A4"
+      ],
+      "fontPairings": [
+        "mixed",
+        "serif"
+      ],
+      "palettes": [
+        {
+          "id": "ivory",
+          "name": "暖纸",
+          "accent": "#9a3b2e",
+          "ink": "#2b2a28",
+          "paper": "#fbf8f2",
+          "art": "paper-warm"
+        },
+        {
+          "id": "frost",
+          "name": "冷纸",
+          "accent": "#2f5d8a",
+          "ink": "#1e2a3a",
+          "paper": "#f7f8fa",
+          "art": "paper-cool"
+        },
+        {
+          "id": "linen",
+          "name": "亚麻",
+          "accent": "#6b5b3e",
+          "ink": "#33302b",
+          "paper": "#f8f6f1",
+          "art": "paper-linen"
+        }
+      ],
+      "headerVariants": [
+        {
+          "id": "masthead",
+          "name": "刊头"
+        },
+        {
+          "id": "left",
+          "name": "左对齐"
+        }
+      ],
+      "photo": "none",
+      "regions": [
+        {
+          "id": "main",
+          "sections": [
+            "summary",
+            "experience",
+            "projects",
+            "education",
+            "organizations",
+            "skills",
+            "certificates",
+            "honors",
+            "languages"
+          ]
+        }
+      ],
+      "atsLevel": "standard",
+      "decorations": true,
+      "defaults": {
+        "pageMargin": "WIDE"
+      }
+    },
+    {
+      "id": "inkwash",
+      "revision": 1,
+      "name": "水墨",
+      "nameEn": "Ink Wash",
+      "category": "design",
+      "summary": "页脚远山、角落梅枝或修竹、朱红方印，东方意境点到为止。",
+      "bestFor": "文化、教育、传媒、国风品牌与设计相关岗位",
+      "tags": [
+        "单栏",
+        "国风",
+        "衬线"
+      ],
+      "maxPages": 2,
+      "locale": "zh-CN",
+      "paperSizes": [
+        "A4"
+      ],
+      "fontPairings": [
+        "serif",
+        "mixed"
+      ],
+      "palettes": [
+        {
+          "id": "ink",
+          "name": "墨",
+          "accent": "#a23b2c",
+          "ink": "#222222",
+          "art": "ink-plum"
+        },
+        {
+          "id": "indigo",
+          "name": "黛蓝",
+          "accent": "#a23b2c",
+          "ink": "#1f3a4d",
+          "art": "ink-plum"
+        },
+        {
+          "id": "bamboo",
+          "name": "竹青",
+          "accent": "#2e4a3f",
+          "ink": "#24302b",
+          "art": "ink-bamboo"
+        }
+      ],
+      "headerVariants": [
+        {
+          "id": "seal",
+          "name": "印章"
+        },
+        {
+          "id": "plain",
+          "name": "无印章"
+        }
+      ],
+      "photo": "optional",
+      "regions": [
+        {
+          "id": "main",
+          "sections": [
+            "summary",
+            "experience",
+            "projects",
+            "education",
+            "organizations",
+            "skills",
+            "certificates",
+            "honors",
+            "languages"
+          ]
+        }
+      ],
+      "atsLevel": "standard",
+      "decorations": true,
+      "defaults": {}
+    },
+    {
+      "id": "watercolor",
+      "revision": 1,
+      "name": "水彩",
+      "nameEn": "Watercolor",
+      "category": "design",
+      "summary": "页顶一道水彩晕染，温柔但不失专业，适合需要亲和力的岗位。",
+      "bestFor": "教育、医疗健康、设计、公益与服务类岗位",
+      "tags": [
+        "单栏",
+        "水彩",
+        "照片"
+      ],
+      "maxPages": 2,
+      "locale": "zh-CN",
+      "paperSizes": [
+        "A4"
+      ],
+      "fontPairings": [
+        "sans",
+        "mixed"
+      ],
+      "palettes": [
+        {
+          "id": "indigo",
+          "name": "靛青",
+          "accent": "#3a4f8a",
+          "art": "wash-indigo"
+        },
+        {
+          "id": "sage",
+          "name": "鼠尾草",
+          "accent": "#4a6b4f",
+          "art": "wash-sage"
+        },
+        {
+          "id": "terracotta",
+          "name": "赤陶",
+          "accent": "#9a4a2c",
+          "art": "wash-terracotta"
+        }
+      ],
+      "headerVariants": [
+        {
+          "id": "centered",
+          "name": "居中"
+        },
+        {
+          "id": "photo",
+          "name": "带照片"
+        }
+      ],
+      "photo": "optional",
+      "regions": [
+        {
+          "id": "main",
+          "sections": [
+            "summary",
+            "experience",
+            "projects",
+            "education",
+            "organizations",
+            "skills",
+            "certificates",
+            "honors",
+            "languages"
+          ]
+        }
+      ],
+      "atsLevel": "standard",
+      "decorations": true,
+      "defaults": {}
+    },
+    {
+      "id": "contour",
+      "revision": 1,
+      "name": "等高线",
+      "nameEn": "Contour",
+      "category": "design",
+      "summary": "角落的等高线与等宽编号，冷静、理性，带一点探索感。",
+      "bestFor": "工程、地理、户外、能源与研究类岗位",
+      "tags": [
+        "单栏",
+        "线描",
+        "技术感"
+      ],
+      "maxPages": 2,
+      "locale": "zh-CN",
+      "paperSizes": [
+        "A4"
+      ],
+      "fontPairings": [
+        "tech",
+        "sans"
+      ],
+      "palettes": [
+        {
+          "id": "slate",
+          "name": "岩灰",
+          "accent": "#334155"
+        },
+        {
+          "id": "lake",
+          "name": "湖蓝",
+          "accent": "#0f766e"
+        },
+        {
+          "id": "rust",
+          "name": "锈红",
+          "accent": "#9a3412"
+        }
+      ],
+      "headerVariants": [
+        {
+          "id": "left",
+          "name": "左对齐"
+        }
+      ],
+      "photo": "none",
+      "regions": [
+        {
+          "id": "main",
+          "sections": [
+            "summary",
+            "experience",
+            "projects",
+            "education",
+            "organizations",
+            "skills",
+            "certificates",
+            "honors",
+            "languages"
+          ]
+        }
+      ],
+      "atsLevel": "standard",
+      "decorations": true,
+      "defaults": {}
+    },
+    {
+      "id": "banker",
+      "revision": 1,
+      "name": "投行",
+      "nameEn": "Banker",
+      "category": "industry",
+      "summary": "高密度单页：机构与地点、职位与日期两行严格对齐，信息量最大化。",
+      "bestFor": "投行、券商、四大、咨询与律所，要求严格一页的申请",
+      "tags": [
+        "单页",
+        "高密度",
+        "衬线"
+      ],
+      "maxPages": 1,
+      "locale": "zh-CN",
+      "paperSizes": [
+        "A4"
+      ],
+      "fontPairings": [
+        "serif",
+        "sans"
+      ],
+      "palettes": [
+        {
+          "id": "navy",
+          "name": "海军蓝",
+          "accent": "#102a43"
+        },
+        {
+          "id": "charcoal",
+          "name": "炭黑",
+          "accent": "#1f2328"
+        },
+        {
+          "id": "burgundy",
+          "name": "勃艮第",
+          "accent": "#6b1e2e"
+        }
+      ],
+      "headerVariants": [
+        {
+          "id": "centered",
+          "name": "居中"
+        }
+      ],
+      "photo": "none",
+      "regions": [
+        {
+          "id": "main",
+          "sections": [
+            "summary",
+            "education",
+            "experience",
+            "projects",
+            "organizations",
+            "skills",
+            "certificates",
+            "honors",
+            "languages"
+          ]
+        }
+      ],
+      "atsLevel": "strict",
+      "decorations": false,
+      "defaults": {
+        "fontSize": "S",
+        "lineHeight": "COMPACT",
+        "spacing": "TIGHT",
+        "pageMargin": "NARROW",
+        "pageTarget": "ONE",
+        "contactIcons": false,
+        "sectionOrder": [
+          "summary",
+          "education",
+          "experience",
+          "projects",
+          "organizations",
+          "skills",
+          "certificates",
+          "honors",
+          "languages"
+        ]
+      }
+    },
+    {
+      "id": "engineer",
+      "revision": 1,
+      "name": "工程师",
+      "nameEn": "Engineer",
+      "category": "industry",
+      "summary": "项目优先、技术栈分组、等宽字体点缀，链接一眼可见。",
+      "bestFor": "研发、测试、数据、算法等技术岗位",
+      "tags": [
+        "单栏",
+        "技术",
+        "链接"
+      ],
+      "maxPages": 2,
+      "locale": "zh-CN",
+      "paperSizes": [
+        "A4"
+      ],
+      "fontPairings": [
+        "tech",
+        "sans"
+      ],
+      "palettes": [
+        {
+          "id": "teal",
+          "name": "石墨青",
+          "accent": "#0f766e"
+        },
+        {
+          "id": "night",
+          "name": "夜蓝",
+          "accent": "#1d4ed8"
+        },
+        {
+          "id": "violet",
+          "name": "紫",
+          "accent": "#6d28d9"
+        }
+      ],
+      "headerVariants": [
+        {
+          "id": "split",
+          "name": "左右分栏"
+        },
+        {
+          "id": "stacked",
+          "name": "上下排列"
+        }
+      ],
+      "photo": "none",
+      "regions": [
+        {
+          "id": "main",
+          "sections": [
+            "summary",
+            "skills",
+            "projects",
+            "experience",
+            "education",
+            "organizations",
+            "certificates",
+            "honors",
+            "languages"
+          ]
+        }
+      ],
+      "atsLevel": "standard",
+      "decorations": false,
+      "sectionTitles": {
+        "skills": "技术栈"
+      },
+      "defaults": {
+        "sectionOrder": [
+          "summary",
+          "skills",
+          "experience",
+          "projects",
+          "education",
+          "organizations",
+          "certificates",
+          "honors",
+          "languages"
+        ]
+      }
+    },
+    {
+      "id": "academic",
+      "revision": 1,
+      "name": "学术",
+      "nameEn": "Academic",
+      "category": "industry",
+      "summary": "学术 CV 体例：教育与科研优先，衬线排版，允许多页。",
+      "bestFor": "科研岗位、读研读博申请、高校与研究所求职",
+      "tags": [
+        "单栏",
+        "衬线",
+        "多页"
+      ],
+      "maxPages": 3,
+      "locale": "zh-CN",
+      "paperSizes": [
+        "A4"
+      ],
+      "fontPairings": [
+        "serif",
+        "mixed"
+      ],
+      "palettes": [
+        {
+          "id": "crimson",
+          "name": "学院红",
+          "accent": "#8b1e2d"
+        },
+        {
+          "id": "royal",
+          "name": "学院蓝",
+          "accent": "#1e3a8a"
+        },
+        {
+          "id": "ink",
+          "name": "墨",
+          "accent": "#222222"
+        }
+      ],
+      "headerVariants": [
+        {
+          "id": "left",
+          "name": "左对齐"
+        },
+        {
+          "id": "centered",
+          "name": "居中"
+        }
+      ],
+      "photo": "optional",
+      "regions": [
+        {
+          "id": "main",
+          "sections": [
+            "summary",
+            "education",
+            "projects",
+            "experience",
+            "honors",
+            "organizations",
+            "skills",
+            "certificates",
+            "languages"
+          ]
+        }
+      ],
+      "atsLevel": "standard",
+      "decorations": false,
+      "sectionTitles": {
+        "summary": "研究概述",
+        "projects": "科研项目"
+      },
+      "defaults": {
+        "sectionOrder": [
+          "summary",
+          "education",
+          "projects",
+          "experience",
+          "honors",
+          "organizations",
+          "skills",
+          "certificates",
+          "languages"
+        ]
+      }
+    },
+    {
+      "id": "campus",
+      "revision": 1,
+      "name": "校园",
+      "nameEn": "Campus",
+      "category": "industry",
+      "summary": "教育经历置顶，荣誉与社团醒目，技能以标签呈现，清爽有朝气。",
+      "bestFor": "应届生、实习与校园招聘",
+      "tags": [
+        "单栏",
+        "校招",
+        "照片"
+      ],
+      "maxPages": 2,
+      "locale": "zh-CN",
+      "paperSizes": [
+        "A4"
+      ],
+      "fontPairings": [
+        "sans",
+        "mixed"
+      ],
+      "palettes": [
+        {
+          "id": "teal",
+          "name": "青绿",
+          "accent": "#0f766e"
+        },
+        {
+          "id": "sky",
+          "name": "晴蓝",
+          "accent": "#2563eb"
+        },
+        {
+          "id": "orange",
+          "name": "橙",
+          "accent": "#c2410c"
+        },
+        {
+          "id": "berry",
+          "name": "莓红",
+          "accent": "#be185d"
+        }
+      ],
+      "headerVariants": [
+        {
+          "id": "split",
+          "name": "照片在右"
+        },
+        {
+          "id": "plain",
+          "name": "无照片"
+        }
+      ],
+      "photo": "optional",
+      "regions": [
+        {
+          "id": "main",
+          "sections": [
+            "summary",
+            "education",
+            "experience",
+            "projects",
+            "organizations",
+            "honors",
+            "skills",
+            "certificates",
+            "languages"
+          ]
+        }
+      ],
+      "atsLevel": "standard",
+      "decorations": false,
+      "sectionTitles": {
+        "experience": "实习经历",
+        "organizations": "校园经历"
+      },
+      "defaults": {
+        "lineHeight": "COMPACT",
+        "spacing": "TIGHT",
+        "photo": {
+          "mode": "AUTO",
+          "shape": "ROUNDED"
+        },
+        "sectionOrder": [
+          "summary",
+          "education",
+          "experience",
+          "projects",
+          "organizations",
+          "honors",
+          "skills",
+          "certificates",
+          "languages"
+        ]
+      }
+    }
+  ]
+}

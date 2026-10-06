@@ -21,6 +21,15 @@ export type TaskView = {
   downloadUrl?: string | null
   downloadExpired?: boolean | null
   downloadExpiresAt?: string | null
+  /** Resume exports: page count and the ATS text check of the produced PDF. */
+  result?: { pageCount?: number; atsCheck?: AtsTextCheck } | null
+}
+
+export type AtsTextCheck = {
+  passed: boolean
+  pageCount: number
+  textLength: number
+  checks: Array<{ code: string; passed: boolean; detail?: string | null }>
 }
 
 export function fetchTask(id: string): Promise<TaskView> {

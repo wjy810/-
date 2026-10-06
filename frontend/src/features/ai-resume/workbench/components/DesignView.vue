@@ -1,54 +1,102 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { Check, ChevronDown, ChevronUp, GripVertical } from 'lucide-vue-next'
+import { Check, ChevronDown, ChevronUp, GripVertical, Palette, RotateCcw } from 'lucide-vue-next'
+import UiButton from '@/shared/ui/UiButton.vue'
 import UiIconButton from '@/shared/ui/UiIconButton.vue'
 import UiSegmented from '@/shared/ui/UiSegmented.vue'
 import UiSwitch from '@/shared/ui/UiSwitch.vue'
 import { useScrollSurface } from '@/shared/composables/useScrollSurface'
 import { useSortableList } from '@/shared/composables/useSortableList'
-import type { ResumeDesignSettings } from '@/features/resume/types'
+import { DATE_FORMATS } from '@/resume-render/model/dates'
+import type { SectionKey } from '@/resume-render/model/types'
+import type { FontPairing, ResumeDesignV2 } from '@/resume-render/theme/design'
 import { useWorkbench } from '../useWorkbench'
-import DesignGlyph from './DesignGlyph.vue'
+import { SECTION_TITLE_MAX } from '../useDesignDraft'
 import SaveIndicator from './SaveIndicator.vue'
 
-type SegmentKey = 'fontPreset' | 'fontScale' | 'lineHeight' | 'density' | 'pageMargin' | 'dateFormat' | 'photoMode'
 type Choice = { value: string; label: string }
+type SegmentKey = 'fontSize' | 'lineHeight' | 'spacing' | 'pageMargin' | 'pageTarget' | 'dateFormat' | 'paperSize'
 
-const SPACING: Choice[] = [{ value: 'COMPACT', label: '紧凑' }, { value: 'STANDARD', label: '标准' }, { value: 'AIRY', label: '舒展' }]
-const TYPOGRAPHY: Array<{ key: SegmentKey; label: string; items: Choice[] }> = [
-  { key: 'fontPreset', label: '字体', items: [{ value: 'MODERN_SANS', label: '现代黑体' }, { value: 'CLASSIC_SERIF', label: '经典宋体' }] },
-  { key: 'fontScale', label: '字号', items: [{ value: 'SMALL', label: '小' }, { value: 'STANDARD', label: '标准' }, { value: 'LARGE', label: '大' }] },
-  { key: 'lineHeight', label: '行距', items: SPACING },
-  { key: 'density', label: '内容密度', items: SPACING },
-  { key: 'pageMargin', label: '页边距', items: [{ value: 'NARROW', label: '窄' }, { value: 'STANDARD', label: '标准' }, { value: 'WIDE', label: '宽' }] },
-]
-const DETAILS: Array<{ key: SegmentKey; label: string; items: Choice[] }> = [
-  { key: 'dateFormat', label: '日期格式', items: [{ value: 'YYYY_DOT_MM', label: 'YYYY.MM' }, { value: 'YYYY_CN_MM', label: 'YYYY年MM月' }] },
-  { key: 'photoMode', label: '照片', items: [{ value: 'AUTO', label: '自动' }, { value: 'SHOW', label: '显示' }, { value: 'HIDE', label: '隐藏' }] },
-]
-const HEADER_LAYOUTS: Choice[] = [
-  { value: 'MINIMAL', label: '居中简约' }, { value: 'BAND', label: '色带头部' }, { value: 'SPLIT', label: '左右分栏' }, { value: 'COMPACT', label: '紧凑头部' },
-]
-const HEADING_STYLES: Choice[] = [
-  { value: 'RULE', label: '下划线' }, { value: 'BAR', label: '色条' }, { value: 'SIDELINE', label: '侧线' }, { value: 'PLAIN', label: '纯文本' }, { value: 'TABLE', label: '表格' },
-]
+const FONT_LABELS: Record<FontPairing, { label: string; hint: string }> = {
+  sans: { label: '现代黑体', hint: '思源黑体 + Inter' },
+  serif: { label: '经典宋体', hint: '思源宋体 + Source Serif' },
+  mixed: { label: '宋黑混排', hint: '标题宋体，正文黑体' },
+  tech: { label: '技术等宽', hint: '黑体 + JetBrains Mono' },
+}
+const SIZE: Choice[] = [{ value: 'XS', label: '极小' }, { value: 'S', label: '小' }, { value: 'M', label: '标准' }, { value: 'L', label: '大' }, { value: 'XL', label: '特大' }]
+const THREE: Record<string, Choice[]> = {
+  lineHeight: [{ value: 'COMPACT', label: '紧凑' }, { value: 'NORMAL', label: '标准' }, { value: 'RELAXED', label: '舒展' }],
+  spacing: [{ value: 'TIGHT', label: '紧凑' }, { value: 'NORMAL', label: '标准' }, { value: 'RELAXED', label: '舒展' }],
+  pageMargin: [{ value: 'NARROW', label: '窄' }, { value: 'STANDARD', label: '标准' }, { value: 'WIDE', label: '宽' }],
+}
+const PHOTO_MODES: Choice[] = [{ value: 'AUTO', label: '有照片时显示' }, { value: 'SHOW', label: '显示' }, { value: 'HIDE', label: '隐藏' }]
+const PHOTO_SHAPES: Choice[] = [{ value: 'CIRCLE', label: '圆形' }, { value: 'ROUNDED', label: '圆角' }, { value: 'SQUARE', label: '方形' }]
+const REGION_LABELS: Record<string, string> = { main: '主栏', side: '侧栏', facts: '侧栏' }
 
 const wb = useWorkbench()
 const design = wb.design
 const settings = design.activeDesign
-const accent = computed(() => settings.value?.accentColor ?? undefined)
+const manifest = design.manifest
 
 const scroller = ref<HTMLElement | null>(null)
 const sectionList = ref<HTMLElement | null>(null)
 const surface = useScrollSurface(scroller)
 useSortableList(sectionList, { handle: '.section-row__grip', onMove: (from, to) => design.moveSection(from, to) })
 
-function value(key: keyof ResumeDesignSettings): string {
+const typography = computed(() => {
+  const target = manifest.value
+  const rows: Array<{ key: SegmentKey; label: string; items: Choice[] }> = [
+    { key: 'fontSize', label: '字号', items: SIZE },
+    { key: 'lineHeight', label: '行距', items: THREE.lineHeight! },
+    { key: 'spacing', label: '段落间距', items: THREE.spacing! },
+    { key: 'pageMargin', label: '页边距', items: THREE.pageMargin! },
+    {
+      key: 'pageTarget',
+      label: '目标页数',
+      items: [{ value: 'AUTO', label: `自动（≤${target?.maxPages ?? 2} 页）` }, { value: 'ONE', label: '1 页' }, { value: 'TWO', label: '2 页' }],
+    },
+  ]
+  return rows
+})
+const details = computed(() => {
+  const rows: Array<{ key: SegmentKey; label: string; items: Choice[] }> = [
+    { key: 'dateFormat', label: '日期格式', items: DATE_FORMATS.map(value => ({ value, label: value === 'MMM YYYY' ? 'Jan 2024' : value.replace('YYYY', '2024').replace('MM', '03') })) },
+  ]
+  if ((manifest.value?.paperSizes.length ?? 0) > 1) rows.push({ key: 'paperSize', label: '纸张', items: [{ value: 'A4', label: 'A4' }, { value: 'LETTER', label: 'US Letter' }] })
+  return rows
+})
+const customAccent = computed(() => settings.value?.customAccent ?? '')
+const customPickerValue = computed(() => customAccent.value || manifest.value?.palettes[0]?.accent || '#1d4ed8')
+const multiRegion = computed(() => (manifest.value?.regions.length ?? 0) > 1)
+const regionChoices = computed<Choice[]>(() => (manifest.value?.regions ?? []).map(region => ({ value: region.id, label: REGION_LABELS[region.id] ?? region.id })))
+const editing = ref<SectionKey | null>(null)
+
+function value(key: SegmentKey): string {
   return String(settings.value?.[key] ?? '')
 }
 
-function set(key: keyof ResumeDesignSettings, next: string): void {
+function set(key: SegmentKey, next: string): void {
   design.update(key, next as never)
+}
+
+function choosePalette(id: string): void {
+  if (!settings.value) return
+  design.update('paletteId', id)
+  if (settings.value.customAccent) design.update('customAccent', null)
+}
+
+function setCustomAccent(event: Event): void {
+  const next = (event.target as HTMLInputElement).value.toLowerCase()
+  if (/^#[0-9a-f]{6}$/.test(next)) design.update('customAccent', next)
+}
+
+function rename(key: SectionKey, event: Event): void {
+  design.renameSection(key, (event.target as HTMLInputElement).value)
+  editing.value = null
+}
+
+function set2<K extends keyof ResumeDesignV2>(key: K, next: ResumeDesignV2[K]): void {
+  design.update(key, next)
 }
 </script>
 
@@ -57,47 +105,54 @@ function set(key: keyof ResumeDesignSettings, next: string): void {
     <div ref="scroller" class="design-view__scroll" @scroll.passive="surface.onScroll">
       <section class="design-panel">
         <header class="design-panel__head">
-          <div><strong>当前模板设计</strong><span>{{ design.activeTemplate.value?.displayName ?? '读取中' }} · 按模板单独记忆</span></div>
+          <div><strong>{{ manifest?.name ?? '当前模板' }} · 设计</strong><span>修改即时预览并自动保存；配色与版式按模板分别记忆</span></div>
           <SaveIndicator :state="design.saveState.value" @retry="design.persist()" />
         </header>
 
-        <p v-if="!settings" class="design-panel__empty">当前模板没有可调整的设计项。</p>
+        <p v-if="!settings || !manifest" class="design-panel__empty">正在读取模板设计…</p>
 
         <template v-else>
-          <section v-if="design.activeTemplate.value?.presets.length" class="design-group">
-            <h3>设计预设</h3>
-            <div class="preset-grid">
+          <section class="design-group">
+            <h3>配色 <small>强调色对比度不足时会自动加深</small></h3>
+            <div class="swatches" role="radiogroup" aria-label="配色">
               <button
-                v-for="preset in design.activeTemplate.value.presets"
-                :key="preset.variantCode"
-                type="button"
-                class="preset"
-                :aria-pressed="design.activeVariant.value === preset.variantCode"
-                @click="design.changePreset(preset.variantCode)"
-              >
-                <span class="preset__swatch" :style="{ background: preset.settings.accentColor }" aria-hidden="true" />
-                <span>{{ preset.displayName }}</span>
-                <Check v-if="design.activeVariant.value === preset.variantCode" :size="14" aria-hidden="true" />
-              </button>
-            </div>
-          </section>
-
-          <section v-if="design.accentColors.value.length" class="design-group">
-            <h3>主题色</h3>
-            <div class="swatches" role="radiogroup" aria-label="主题色">
-              <button
-                v-for="color in design.accentColors.value"
-                :key="color"
+                v-for="palette in manifest.palettes"
+                :key="palette.id"
                 type="button"
                 role="radio"
                 class="swatch"
-                :aria-checked="settings.accentColor.toUpperCase() === color"
-                :aria-label="color"
-                :title="color"
-                :style="{ '--swatch': color }"
-                @click="design.update('accentColor', color)"
+                :aria-checked="!settings.customAccent && settings.paletteId === palette.id"
+                :aria-label="palette.name"
+                :title="palette.name"
+                :style="{ '--swatch': palette.accent }"
+                @click="choosePalette(palette.id)"
               >
-                <Check v-if="settings.accentColor.toUpperCase() === color" :size="15" :stroke-width="3" aria-hidden="true" />
+                <Check v-if="!settings.customAccent && settings.paletteId === palette.id" :size="15" :stroke-width="3" aria-hidden="true" />
+              </button>
+              <label class="swatch swatch--custom" :class="{ 'is-active': Boolean(customAccent) }" :style="customAccent ? { '--swatch': customAccent } : undefined" title="自定义强调色">
+                <Check v-if="customAccent" :size="15" :stroke-width="3" aria-hidden="true" />
+                <Palette v-else :size="15" aria-hidden="true" />
+                <input type="color" :value="customPickerValue" aria-label="自定义强调色" @change="setCustomAccent">
+              </label>
+            </div>
+            <p class="design-hint">{{ settings.customAccent ? `自定义 ${settings.customAccent}` : manifest.palettes.find(item => item.id === settings?.paletteId)?.name }}</p>
+          </section>
+
+          <section v-if="manifest.fontPairings.length > 1" class="design-group">
+            <h3>字体组合</h3>
+            <div class="option-grid" role="radiogroup" aria-label="字体组合">
+              <button
+                v-for="pairing in manifest.fontPairings"
+                :key="pairing"
+                type="button"
+                role="radio"
+                class="option"
+                :class="`option--font-${pairing}`"
+                :aria-checked="settings.fontPairing === pairing"
+                @click="set2('fontPairing', pairing)"
+              >
+                <strong>{{ FONT_LABELS[pairing].label }}</strong>
+                <small>{{ FONT_LABELS[pairing].hint }}</small>
               </button>
             </div>
           </section>
@@ -105,45 +160,26 @@ function set(key: keyof ResumeDesignSettings, next: string): void {
           <section class="design-group">
             <h3>排版</h3>
             <div class="design-rows">
-              <div v-for="control in TYPOGRAPHY" :key="control.key" class="design-row">
+              <div v-for="control in typography" :key="control.key" class="design-row">
                 <span>{{ control.label }}</span>
                 <UiSegmented :model-value="value(control.key)" :items="control.items" :aria-label="control.label" size="sm" @update:model-value="set(control.key, $event)" />
               </div>
             </div>
           </section>
 
-          <section class="design-group">
-            <h3>头部布局</h3>
-            <div class="tile-grid tile-grid--4" role="radiogroup" aria-label="头部布局">
+          <section v-if="manifest.headerVariants.length > 1" class="design-group">
+            <h3>页头样式</h3>
+            <div class="option-grid" role="radiogroup" aria-label="页头样式">
               <button
-                v-for="option in HEADER_LAYOUTS"
-                :key="option.value"
+                v-for="variant in manifest.headerVariants"
+                :key="variant.id"
                 type="button"
                 role="radio"
-                class="tile"
-                :aria-checked="settings.headerLayout === option.value"
-                @click="set('headerLayout', option.value)"
+                class="option"
+                :aria-checked="settings.headerVariant === variant.id"
+                @click="set2('headerVariant', variant.id)"
               >
-                <DesignGlyph kind="header" :value="option.value" :accent="accent" />
-                <span>{{ option.label }}</span>
-              </button>
-            </div>
-          </section>
-
-          <section class="design-group">
-            <h3>标题样式</h3>
-            <div class="tile-grid tile-grid--5" role="radiogroup" aria-label="标题样式">
-              <button
-                v-for="option in HEADING_STYLES"
-                :key="option.value"
-                type="button"
-                role="radio"
-                class="tile"
-                :aria-checked="settings.headingStyle === option.value"
-                @click="set('headingStyle', option.value)"
-              >
-                <DesignGlyph kind="heading" :value="option.value" :accent="accent" />
-                <span>{{ option.label }}</span>
+                <strong>{{ variant.name }}</strong>
               </button>
             </div>
           </section>
@@ -151,25 +187,70 @@ function set(key: keyof ResumeDesignSettings, next: string): void {
           <section class="design-group">
             <h3>细节</h3>
             <div class="design-rows">
-              <div v-for="control in DETAILS" :key="control.key" class="design-row">
+              <div v-for="control in details" :key="control.key" class="design-row">
                 <span>{{ control.label }}</span>
                 <UiSegmented :model-value="value(control.key)" :items="control.items" :aria-label="control.label" size="sm" @update:model-value="set(control.key, $event)" />
+              </div>
+              <template v-if="manifest.photo === 'optional'">
+                <div class="design-row">
+                  <span>照片</span>
+                  <UiSegmented :model-value="settings.photo.mode" :items="PHOTO_MODES" aria-label="照片" size="sm" @update:model-value="design.updatePhoto({ mode: $event as ResumeDesignV2['photo']['mode'] })" />
+                </div>
+                <div v-if="settings.photo.mode !== 'HIDE'" class="design-row">
+                  <span>照片形状</span>
+                  <UiSegmented :model-value="settings.photo.shape" :items="PHOTO_SHAPES" aria-label="照片形状" size="sm" @update:model-value="design.updatePhoto({ shape: $event as ResumeDesignV2['photo']['shape'] })" />
+                </div>
+              </template>
+              <div class="design-row">
+                <span>联系方式图标</span>
+                <UiSwitch :model-value="settings.contactIcons" label="联系方式图标" @update:model-value="set2('contactIcons', $event)" />
+              </div>
+              <div v-if="manifest.decorations" class="design-row">
+                <span>底纹与装饰</span>
+                <UiSwitch :model-value="settings.decorations" label="底纹与装饰" @update:model-value="set2('decorations', $event)" />
               </div>
             </div>
           </section>
 
           <section class="design-group">
-            <h3>模块显示与顺序 <small>拖动排序；隐藏只影响当前模板</small></h3>
+            <h3>板块 <small>拖动排序；点击名称可改标题（≤{{ SECTION_TITLE_MAX }} 字）</small></h3>
             <div ref="sectionList" class="section-list">
-              <div v-for="(section, index) in design.orderedSections.value" :key="section.key" class="section-row" :class="{ 'is-hidden': !section.visible }">
+              <div v-for="(section, index) in design.orderedSections.value" :key="section.key" class="section-row" :class="{ 'is-hidden': !section.visible, 'has-region': multiRegion }">
                 <span class="section-row__grip" title="拖动调整顺序" aria-hidden="true"><GripVertical :size="15" /></span>
-                <span class="section-row__label">{{ section.label }}</span>
-                <UiIconButton :icon="ChevronUp" size="sm" :label="`上移${section.label}`" :disabled="index === 0" @click="design.moveSection(index, index - 1)" />
-                <UiIconButton :icon="ChevronDown" size="sm" :label="`下移${section.label}`" :disabled="index === design.orderedSections.value.length - 1" @click="design.moveSection(index, index + 1)" />
-                <UiSwitch :model-value="section.visible" :label="`显示${section.label}`" class="section-row__switch" @update:model-value="design.toggleSection(section.key, $event)" />
+                <input
+                  v-if="editing === section.key"
+                  class="section-row__input"
+                  :value="section.title"
+                  :maxlength="SECTION_TITLE_MAX"
+                  :placeholder="section.defaultTitle"
+                  :aria-label="`${section.defaultTitle}的标题`"
+                  autofocus
+                  @blur="rename(section.key, $event)"
+                  @keydown.enter.prevent="($event.target as HTMLInputElement).blur()"
+                  @keydown.esc.prevent="editing = null"
+                >
+                <button v-else type="button" class="section-row__label" :title="`重命名${section.title}`" @click="editing = section.key">
+                  {{ section.title }}<small v-if="section.title !== section.defaultTitle">原：{{ section.defaultTitle }}</small>
+                </button>
+                <UiSegmented
+                  v-if="multiRegion"
+                  class="section-row__region"
+                  :model-value="section.region"
+                  :items="regionChoices"
+                  :aria-label="`${section.title}所在栏`"
+                  size="sm"
+                  @update:model-value="design.assignRegion(section.key, $event)"
+                />
+                <UiIconButton :icon="ChevronUp" size="sm" :label="`上移${section.title}`" :disabled="index === 0" @click="design.moveSection(index, index - 1)" />
+                <UiIconButton :icon="ChevronDown" size="sm" :label="`下移${section.title}`" :disabled="index === design.orderedSections.value.length - 1" @click="design.moveSection(index, index + 1)" />
+                <UiSwitch :model-value="section.visible" :label="`显示${section.title}`" class="section-row__switch" @update:model-value="design.toggleSection(section.key, $event)" />
               </div>
             </div>
           </section>
+
+          <footer class="design-panel__foot">
+            <UiButton variant="ghost" size="sm" :icon="RotateCcw" @click="design.resetToDefaults()">恢复模板默认</UiButton>
+          </footer>
         </template>
       </section>
     </div>
@@ -243,53 +324,66 @@ function set(key: keyof ResumeDesignSettings, next: string): void {
   letter-spacing: 0;
 }
 
-.preset-grid {
+.option-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
   gap: var(--space-2);
 }
 
-.preset {
-  height: 40px;
-  padding: 0 12px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
+.option {
+  min-height: 48px;
+  padding: 8px 12px;
+  display: grid;
+  align-content: center;
+  gap: 2px;
   border: 1px solid var(--border-default);
   border-radius: var(--radius-md);
   background: var(--surface-1);
   color: var(--text-secondary);
-  font-size: var(--fs-sm);
-  font-weight: 600;
+  text-align: left;
   transition: border-color var(--dur-fast), background-color var(--dur-fast), color var(--dur-fast);
 }
 
-.preset span:nth-child(2) {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-align: left;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.option strong {
+  font-size: var(--fs-sm);
+  font-weight: 650;
 }
 
-.preset__swatch {
-  width: 14px;
-  height: 14px;
-  flex: none;
-  border-radius: 50%;
-  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.12);
+.option small {
+  color: var(--text-tertiary);
+  font-size: 11px;
 }
 
-.preset:hover {
+.option--font-serif strong,
+.option--font-mixed strong {
+  font-family: 'Noto Serif SC', 'Source Serif 4', serif;
+}
+
+.option--font-tech small {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+}
+
+.option:hover {
   border-color: var(--border-strong);
   color: var(--text-primary);
 }
 
-.preset[aria-pressed='true'] {
-  border-color: var(--color-primary-border);
+.option[aria-checked='true'] {
+  border-color: var(--color-primary);
   background: var(--color-primary-soft);
   color: var(--color-primary-text);
+  box-shadow: 0 0 0 1px var(--color-primary);
+}
+
+.design-hint {
+  margin: 0;
+  color: var(--text-tertiary);
+  font-size: var(--fs-xs);
+}
+
+.design-panel__foot {
+  display: flex;
+  justify-content: flex-end;
 }
 
 .swatches {
@@ -341,56 +435,30 @@ function set(key: keyof ResumeDesignSettings, next: string): void {
   font-weight: 550;
 }
 
-.tile-grid {
-  display: grid;
-  gap: var(--space-2);
+.swatch--custom {
+  position: relative;
+  overflow: hidden;
+  background: conic-gradient(from 90deg, red, orange, yellow, lime, cyan, blue, magenta, red);
+  cursor: pointer;
 }
 
-.tile-grid--4 {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+.swatch--custom.is-active {
+  background: var(--swatch);
+  box-shadow: 0 0 0 2px var(--surface-1), 0 0 0 4px var(--swatch);
 }
 
-.tile-grid--5 {
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+.swatch--custom input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
 }
 
-.tile {
-  min-width: 0;
-  padding: 8px 8px 6px;
-  display: grid;
-  gap: 6px;
-  justify-items: center;
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-  background: var(--surface-1);
-  color: var(--text-secondary);
-  font-size: 11.5px;
-  font-weight: 600;
-  transition: border-color var(--dur-fast), background-color var(--dur-fast), color var(--dur-fast), transform var(--dur-fast) var(--ease-out);
+.swatch--custom:focus-within {
+  box-shadow: var(--focus-ring);
 }
 
-.tile :deep(.design-glyph) {
-  padding: 4px;
-  border-radius: var(--radius-sm);
-  background: var(--sheet-bg);
-  box-shadow: inset 0 0 0 1px var(--sheet-edge);
-  color: var(--sheet-ink);
-}
-
-.tile:hover {
-  border-color: var(--border-strong);
-  transform: translateY(-1px);
-}
-
-.tile[aria-checked='true'] {
-  border-color: var(--color-primary);
-  background: var(--color-primary-soft);
-  color: var(--color-primary-text);
-  box-shadow: 0 0 0 1px var(--color-primary);
-}
-
-.tile:focus-visible,
-.preset:focus-visible,
+.option:focus-visible,
 .swatch:focus-visible {
   outline: none;
   box-shadow: var(--focus-ring);
@@ -446,10 +514,53 @@ function set(key: keyof ResumeDesignSettings, next: string): void {
   background: var(--surface-2);
 }
 
+.section-row.has-region {
+  grid-template-columns: auto minmax(0, 1fr) auto auto auto auto;
+}
+
 .section-row__label {
-  padding-left: 4px;
+  min-width: 0;
+  padding: 4px;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  border-radius: var(--radius-sm);
   font-size: var(--fs-sm);
   font-weight: 600;
+  text-align: left;
+}
+
+.section-row__label:hover {
+  background: var(--surface-2);
+}
+
+.section-row__label small {
+  overflow: hidden;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.section-row__input {
+  min-width: 0;
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--color-primary);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+  color: var(--text-primary);
+  font-size: var(--fs-sm);
+}
+
+.section-row__input:focus {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.section-row__region {
+  margin-right: var(--space-1);
 }
 
 .section-row__switch {
@@ -461,10 +572,6 @@ function set(key: keyof ResumeDesignSettings, next: string): void {
     padding: var(--space-3);
   }
 
-  .tile-grid--4,
-  .tile-grid--5 {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
 
   .design-row {
     align-items: flex-start;

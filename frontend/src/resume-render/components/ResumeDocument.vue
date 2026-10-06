@@ -155,10 +155,13 @@ const scaledBox = computed(() => {
   return { width: `${width * scale.value}px`, height: `${(count * height + (count - 1) * pageGapPx.value) * scale.value}px` }
 })
 
+/** Clicks on a section emit its key; clicks on the page header (name, contacts) emit 'header'. */
 function onClick(event: MouseEvent): void {
   if (!props.interactive) return
-  const target = (event.target as HTMLElement | null)?.closest<HTMLElement>('.rr-pages [data-section]')
+  const element = event.target as HTMLElement | null
+  const target = element?.closest<HTMLElement>('.rr-pages [data-section]')
   if (target?.dataset.section) emit('sectionClick', target.dataset.section)
+  else if (element?.closest('.rr-pages .rr-page header')) emit('sectionClick', 'header')
 }
 
 defineExpose({ relayout, result })

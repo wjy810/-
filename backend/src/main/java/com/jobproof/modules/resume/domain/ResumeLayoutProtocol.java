@@ -9,6 +9,8 @@ public final class ResumeLayoutProtocol {
     public static final String V1 = "resume-layout-v1";
     public static final String V2 = "resume-layout-v2";
     public static final String V3 = "resume-layout-v3";
+    /** Built-in HTML templates rendered by the shared renderer; the definition is a template manifest. */
+    public static final String V4 = "resume-render-v4";
 
     private static final Set<String> SLOT_KEYS = Set.of(
             "summary", "education", "experience", "projects", "organizations",
@@ -19,6 +21,10 @@ public final class ResumeLayoutProtocol {
     private static final Set<String> DENSITIES = Set.of("COMPACT", "STANDARD", "AIRY");
 
     private ResumeLayoutProtocol() {
+    }
+
+    public static boolean isRenderV4(String protocol) {
+        return V4.equals(protocol);
     }
 
     public static ResumeLayoutDefinition validate(String protocol, ResumeLayoutDefinition definition) {

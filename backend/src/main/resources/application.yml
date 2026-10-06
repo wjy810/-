@@ -155,6 +155,12 @@ jobproof:
       provider: ${JOBPROOF_CAREER_SCAN_PROVIDER:clamav}
       timeout-seconds: ${JOBPROOF_CAREER_SCAN_TIMEOUT_SECONDS:90}
       defender-executable: ${JOBPROOF_DEFENDER_EXECUTABLE:C:/Program Files/Windows Defender/MpCmdRun.exe}
+  renderer:
+    # Resume renderer service (renderer/). Unset → HTML-template PDF exports fail as retryable.
+    url: ${JOBPROOF_RENDERER_URL:}
+    token: ${JOBPROOF_RENDERER_TOKEN:}
+    timeout-ms: ${JOBPROOF_RENDERER_TIMEOUT_MS:20000}
+    retries: 2
   templates:
     demo-enabled: false
     catalog-public-enabled: ${JOBPROOF_TEMPLATE_CATALOG_PUBLIC_ENABLED:true}

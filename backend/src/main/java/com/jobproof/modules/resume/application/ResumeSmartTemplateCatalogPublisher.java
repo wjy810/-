@@ -1,5 +1,6 @@
 package com.jobproof.modules.resume.application;
 
+import com.jobproof.modules.resume.domain.ResumeLayoutProtocol;
 import com.jobproof.modules.resume.infra.ResumeLayoutTemplateEntity;
 import com.jobproof.modules.resume.infra.ResumeLayoutTemplateJpaRepository;
 import com.jobproof.modules.resume.infra.ResumeLayoutTemplateVersionEntity;
@@ -17,7 +18,12 @@ import org.springframework.stereotype.Service;
 @Service
 public class ResumeSmartTemplateCatalogPublisher {
     private static final Map<String, Occupation> OCCUPATIONS = Map.of(
-            "rlt-b-tech-double-v1", new Occupation("TECHNOLOGY", "技术研发"));
+            "engineer", new Occupation("TECHNOLOGY", "技术研发"),
+            "banker", new Occupation("FINANCE", "财务金融"),
+            "academic", new Occupation("EDUCATION_RESEARCH", "教育科研"),
+            "ledger", new Occupation("PRODUCT_OPERATIONS", "产品运营"),
+            "editorial", new Occupation("DESIGN_CREATIVE", "设计创意"),
+            "bold", new Occupation("MARKETING_MEDIA", "市场传媒"));
 
     private final ResumeLayoutTemplateJpaRepository templates;
     private final ResumeLayoutTemplateVersionJpaRepository versions;
@@ -25,18 +31,20 @@ public class ResumeSmartTemplateCatalogPublisher {
     private final ResumeTemplateCatalogFacetJpaRepository facets;
     private final ClockPort clock;
     private final ResumeTemplateCatalogService catalogService;
+    private final BuiltInTemplateCatalog builtIns;
 
     public ResumeSmartTemplateCatalogPublisher(ResumeLayoutTemplateJpaRepository templates,
             ResumeLayoutTemplateVersionJpaRepository versions,
             ResumeTemplateCatalogEntryJpaRepository entries,
             ResumeTemplateCatalogFacetJpaRepository facets, ClockPort clock,
-            ResumeTemplateCatalogService catalogService) {
+            ResumeTemplateCatalogService catalogService, BuiltInTemplateCatalog builtIns) {
         this.templates = templates;
         this.versions = versions;
         this.entries = entries;
         this.facets = facets;
         this.clock = clock;
         this.catalogService = catalogService;
+        this.builtIns = builtIns;
     }
 
     public void sync(String templateId) {
@@ -63,7 +71,8 @@ public class ResumeSmartTemplateCatalogPublisher {
         entry.setEntryType("SMART_TEMPLATE");
         entry.setReferenceId(templateId);
         entry.setTitle(template.getDisplayName());
-        entry.setSummary("支持在线编辑、字段级 AI 候选和受控 PDF/DOCX 导出。");
+        entry.setSummary(builtIns.find(templateId).map(value -> value.manifest().summary())
+                .orElse("支持在线编辑、字段级 AI 候选和受控 PDF/DOCX 导出。"));
         entry.setCapability("SMART_EDITABLE");
         entry.setAssetKind("RESUME");
         entry.setLanguageCode(template.getLanguageCode());
@@ -77,7 +86,7 @@ public class ResumeSmartTemplateCatalogPublisher {
         entry.setPreviewUpdatedAt(now);
         entry.setSourceName("JobProof AI");
         entry.setSourceUri("/resume-templates/" + templateId);
-        entry.setAttribution("JobProof AI 独立受控版式");
+        entry.setAttribution(template.isBuiltin() ? "JobProof 内置模板" : "JobProof AI 独立受控版式");
         entry.setSearchText(template.getDisplayName() + " " + template.getFamilyName() + " " + templateId);
         entry.setPublicationStatus("PUBLISHED");
         entry.setPublishedAt(entry.getPublishedAt() == null ? now : entry.getPublishedAt());
@@ -110,9 +119,15 @@ public class ResumeSmartTemplateCatalogPublisher {
         });
     }
 
+    /**
+     * Built-in HTML templates export template-faithful PDF only; their Word file is the generic ATS
+     * layout, so the Word / WPS gates do not apply to them.
+     */
     private static boolean allGatesPassed(ResumeLayoutTemplateVersionEntity value) {
-        return value.isAuthorizationVerified() && value.isSecurityVerified() && value.isRenderVerified()
-                && value.isWordVerified() && value.isWpsVerified() && value.isAtsVerified();
+        boolean core = value.isAuthorizationVerified() && value.isSecurityVerified() && value.isRenderVerified()
+                && value.isAtsVerified();
+        return ResumeLayoutProtocol.isRenderV4(value.getRendererProtocol())
+                ? core : core && value.isWordVerified() && value.isWpsVerified();
     }
 
     private record Occupation(String code, String label) {}

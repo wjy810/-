@@ -8,7 +8,7 @@ import {
   Sparkles, Target, Undo2, X,
 } from 'lucide-vue-next'
 import BrandMark from '@/shared/ui/BrandMark.vue'
-import MiniResume from '@/shared/ui/MiniResume.vue'
+import { MANIFESTS } from '@/resume-render/templates/manifests'
 import UiButton from '@/shared/ui/UiButton.vue'
 import UiIllustration from '@/shared/ui/UiIllustration.vue'
 import type { IllustrationName } from '@/shared/ui/illustrations'
@@ -66,20 +66,18 @@ onBeforeUnmount(() => {
 const STEPS: Array<{ title: string; text: string; art: IllustrationName }> = [
   { title: '聊出经历', text: 'AI 一次只问一个问题，把课程、实习、项目里的细节挖出来。', art: 'hero-chat' },
   { title: '逐条确认', text: '每条建议标注来源事实，你点对勾才写入，随时撤销。', art: 'hero-check' },
-  { title: '实时排版', text: '右侧 A4 预览即时成形，12 款模板一键换版，导出 PDF。', art: 'hero-resume' },
+  { title: '实时排版', text: '右侧预览即时成形，16 套模板一键换版，导出的 PDF 与预览一致。', art: 'hero-resume' },
   { title: '对照岗位', text: '粘贴真实 JD，逐条对照证据，补强后再去模拟面试。', art: 'hero-target' },
 ]
 
-const TEMPLATES: Array<{ variant: 'banner' | 'sidebar' | 'classic' | 'minimal' | 'split'; accent: string; name: string; role: string; label: string }> = [
-  { variant: 'banner', accent: '#13786b', name: '林晓', role: '后端开发实习', label: '校园新锐' },
-  { variant: 'classic', accent: '#29286f', name: '周杰', role: '市场运营', label: '经典专业' },
-  { variant: 'sidebar', accent: '#4a44d9', name: 'Mia Chen', role: 'Data Analyst', label: '技术双栏' },
-  { variant: 'minimal', accent: '#ef7339', name: '陈一', role: '产品经理', label: 'ATS 极简' },
-  { variant: 'split', accent: '#2f6fb3', name: '王蕾', role: '财务分析', label: '金融稳健' },
-  { variant: 'banner', accent: '#9b6bf2', name: '许诺', role: '咨询顾问', label: '咨询精简' },
-  { variant: 'sidebar', accent: '#0b7451', name: '赵研', role: '科研助理', label: '学术研究' },
-  { variant: 'classic', accent: '#ae461c', name: 'Leo Wang', role: 'Software Engineer', label: '英文单页' },
-]
+/** Pre-rendered first pages of the built-in templates (scripts/render-template-thumbnails.mjs). */
+const THUMBNAILS = import.meta.glob<string>('../assets/templates/*.jpg', { eager: true, import: 'default' })
+const TEMPLATES = MANIFESTS.map(manifest => ({
+  id: manifest.id,
+  label: manifest.name,
+  image: THUMBNAILS[`../assets/templates/${manifest.id}.jpg`] ?? '',
+})).filter(item => item.image)
+const HERO_THUMBNAIL = TEMPLATES.find(item => item.id === 'meridian')?.image ?? TEMPLATES[0]?.image ?? ''
 
 const PRINCIPLES = [
   { icon: Sparkles, title: 'AI 只出候选', text: '帮写、润色、翻译、推荐都只是建议。没有你的确认，正式简历一个字都不会变。' },
@@ -239,7 +237,7 @@ const year = new Date().getFullYear()
                   <span class="mock-card__actions"><i>采纳</i><i>修改</i></span>
                 </div>
               </div>
-              <div class="mock-paper"><MiniResume variant="sidebar" accent="#4a44d9" /></div>
+              <div class="mock-paper"><img :src="HERO_THUMBNAIL" alt="" loading="lazy" decoding="async"></div>
             </div>
           </article>
           <article v-reveal="80" class="bento__card">
@@ -268,12 +266,12 @@ const year = new Date().getFullYear()
         <header v-reveal class="section__head">
           <p class="section__eyebrow">模板中心</p>
           <h2>一份内容，随心换版</h2>
-          <p>12 款智能模板共用同一份结构化内容；另有 2,000+ 份开源 Word 模板可预览下载。</p>
+          <p>{{ TEMPLATES.length }} 套模板共用同一份结构化内容：稳健、现代、设计感与行业专用，配色字体随你调整。另有开源 Word 模板可预览下载。</p>
         </header>
         <div class="marquee" aria-label="智能模板示例">
           <div class="marquee__track">
             <figure v-for="(item, index) in [...TEMPLATES, ...TEMPLATES]" :key="index" class="marquee__item" :aria-hidden="index >= TEMPLATES.length">
-              <MiniResume :variant="item.variant" :accent="item.accent" :name="item.name" :role="item.role" />
+              <img :src="item.image" :alt="index < TEMPLATES.length ? `${item.label}模板示例` : ''" width="400" height="566" loading="lazy" decoding="async">
               <figcaption>{{ item.label }}</figcaption>
             </figure>
           </div>
@@ -1106,6 +1104,20 @@ const year = new Date().getFullYear()
   display: grid;
   gap: var(--space-3);
   transition: transform var(--dur-base) var(--ease-out);
+}
+
+.marquee__item img,
+.mock-paper img {
+  width: 100%;
+  height: auto;
+  display: block;
+  border-radius: 3px;
+  background: var(--sheet-bg);
+  box-shadow: var(--shadow-lg);
+}
+
+.mock-paper img {
+  width: 210px;
 }
 
 .marquee__item:hover {

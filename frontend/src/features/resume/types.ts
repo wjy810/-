@@ -1,3 +1,4 @@
+import type { ResumeDesignV2 } from '@/resume-render/theme/design'
 export type ResumeMasterStatus = 'DRAFT' | 'PENDING_CONFIRMATION' | 'READY_TO_EXPORT' | 'ARCHIVED'
 
 export type ResumeVersionStatus =
@@ -219,7 +220,8 @@ export type ResumeLayoutView = {
   variantCode: string
   rendererProtocol?: string | null
   layoutDefinitionJson?: string | null
-  design?: ResumeDesignSettings | null
+  /** resume-design-v2 for built-in templates (resume-render-v4), v1 for layouts frozen with a retired template. */
+  design?: ResumeDesignV2 | ResumeDesignSettings | null
   status: 'VALID' | 'OVERFLOW' | 'FROZEN' | 'ARCHIVED' | string
   overflow: ResumeOverflowReport
   version: number

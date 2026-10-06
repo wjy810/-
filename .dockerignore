@@ -1,0 +1,9 @@
+**/node_modules
+**/dist
+**/target
+**/.local-data
+frontend/test-results
+frontend/playwright-report
+design/template-assets/src
+deploy/data
+deploy/.env

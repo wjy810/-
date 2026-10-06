@@ -75,7 +75,7 @@ export function createWorkbench(conversationId: () => string, options: { source?
 
   /** Click on a preview section → open that module in the editor. */
   function locateSection(section: string): void {
-    const type = SECTION_CARD[section]
+    const type = section === 'header' ? 'CONTACT' : SECTION_CARD[section]
     const card = guided.editableCards.value.find(item => item.cardType === type)
     if (card) openCard(card)
   }

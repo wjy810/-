@@ -26,7 +26,10 @@ import com.jobproof.modules.resume.application.ResumeTemplateService;
 import com.jobproof.modules.resume.application.ResumeTemplateService.ApplyCommand;
 import com.jobproof.modules.resume.application.ResumeTemplateService.LayoutView;
 import com.jobproof.modules.resume.application.ResumeTemplateService.TemplateDetailView;
+import com.jobproof.modules.resume.application.BuiltInTemplateCatalog;
 import com.jobproof.modules.resume.domain.ResumeDesignSettings;
+import com.jobproof.modules.resume.domain.ResumeDesignV2;
+import com.jobproof.modules.resume.domain.ResumeTemplateManifest;
 import com.jobproof.modules.resume.domain.ResumeLayoutDefinition;
 import com.jobproof.modules.resume.domain.ResumeLayoutProtocol;
 import com.jobproof.modules.resume.domain.ResumePdfExportMode;
@@ -59,19 +62,9 @@ public class AiResumeWorkbenchService {
     private static final String SCHEMA = "resume-content-v3";
     private static final String CONSENT_TYPE = "AI_RESUME_WORKBENCH";
     private static final String POLICY_VERSION = "2026-08-v1";
-    private static final String DEFAULT_TEMPLATE_ID = "rlt-b-campus-v1";
     private static final Set<String> IDENTITIES = Set.of("STUDENT", "GRADUATE", "PROFESSIONAL");
     private static final Set<String> SENSITIVE_KEYS = Set.of("age", "gender", "maritalstatus", "ethnicity",
             "年龄", "性别", "婚育", "民族");
-    private static final Map<String, String> LEGACY_TEMPLATE_CODES = Map.of(
-            "ATS", "rlt-b-ats-minimal-v1",
-            "TECH", "rlt-b-tech-double-v1",
-            "TABLE", "rlt-b-cn-table-v1");
-    private static final List<String> SMART_TEMPLATE_ORDER = List.of(
-            "rlt-b-ats-minimal-v1", "rlt-b-tech-single-v1", "rlt-b-tech-double-v1",
-            "rlt-b-campus-v1", "rlt-b-career-pro-v1", "rlt-b-consulting-v1",
-            "rlt-b-finance-v1", "rlt-b-product-ops-v1", "rlt-b-education-research-v1",
-            "rlt-b-english-single-v1", "rlt-b-cn-table-v1", "rlt-b-qa-data-v1");
     private static final Map<String, String> WRITING_STYLES = Map.of(
             "SYSTEM_RECOMMENDED", "系统推荐",
             "PROFESSIONAL_CONCISE", "专业简洁",
@@ -107,6 +100,7 @@ public class AiResumeWorkbenchService {
     private final AiResumeConversationEventService conversationEvents;
     private final CareerLibraryService careerLibrary;
     private final AiResumeChangeSetService changeSets;
+    private final BuiltInTemplateCatalog builtInTemplates;
     private final boolean enabled;
     private final String defaultModel;
 
@@ -116,7 +110,7 @@ public class AiResumeWorkbenchService {
             AiQuotaService quota, AiResumeSseService sse, AiGatewayService gateway, AuditService audit,
             FileAccessService files, AiResumeGenerationService generation,
             AiResumeConversationEventService conversationEvents, CareerLibraryService careerLibrary,
-            AiResumeChangeSetService changeSets,
+            AiResumeChangeSetService changeSets, BuiltInTemplateCatalog builtInTemplates,
             @Value("${jobproof.ai.workbench.enabled:false}") boolean enabled,
             @Value("${jobproof.ai.resume-model:qwen-plus}") String defaultModel) {
         this.jdbc = jdbc;
@@ -135,6 +129,7 @@ public class AiResumeWorkbenchService {
         this.conversationEvents = conversationEvents;
         this.careerLibrary = careerLibrary;
         this.changeSets = changeSets;
+        this.builtInTemplates = builtInTemplates;
         this.enabled = enabled;
         this.defaultModel = defaultModel;
     }
@@ -165,7 +160,7 @@ public class AiResumeWorkbenchService {
                 && !"FROZEN".equals(currentLayout.status())) {
             return view(current, conversation);
         }
-        DesignPreferenceView preference = ensureDesignPreference(current, conversation, template);
+        DesignPreferenceView preference = ensureDesignPreference(current, conversation, template, currentLayout);
         LayoutView layout = resumeTemplates.apply(current, templateId,
                 new ApplyCommand(conversation.masterId(), preference.variantCode(),
                         expectedLayoutVersion == null
@@ -188,8 +183,13 @@ public class AiResumeWorkbenchService {
         assertSeeker(current);
         ConversationRow conversation = requireConversation(current.accountId(), conversationId);
         List<SmartTemplateView> result = new ArrayList<>();
-        for (String templateId : SMART_TEMPLATE_ORDER) {
-            TemplateDetailView template = resumeTemplates.detail(current, templateId);
+        for (String templateId : builtInTemplates.ids()) {
+            TemplateDetailView template;
+            try {
+                template = resumeTemplates.detail(current, templateId);
+            } catch (AppException unavailable) {
+                continue; // retired by an operator
+            }
             result.add(smartTemplateView(current, conversation, template));
         }
         return List.copyOf(result);
@@ -234,6 +234,13 @@ public class AiResumeWorkbenchService {
         return task;
     }
 
+    /** The resume a conversation edits, for read-only flows such as the export preview. */
+    @Transactional(readOnly = true)
+    public String masterId(CurrentAccount current, String conversationId) {
+        assertSeeker(current);
+        return requireConversation(current.accountId(), conversationId).masterId();
+    }
+
     @Transactional
     public DesignPreferenceView saveDesign(CurrentAccount current, String conversationId, String templateId,
             String requestedVariant, JsonNode settings, Integer expectedVersion) {
@@ -247,14 +254,16 @@ public class AiResumeWorkbenchService {
         String variant = requestedVariant == null || requestedVariant.isBlank()
                 ? existing == null ? defaultVariant(template) : existing.variantCode()
                 : requestedVariant.trim().toUpperCase(Locale.ROOT);
+        if (isHtmlTemplate(template)) variant = defaultVariant(template);
         if (!template.variants().contains(variant)) {
             throw AppException.user("RESUME_DESIGN_PRESET_INVALID", "设计预设不属于当前模板");
         }
-        ResumeLayoutDefinition definition = layoutDefinition(template);
-        ResumeDesignSettings validated;
+        Object validated;
         try {
-            validated = ResumeDesignSettings.fromJson(settings, definition, variant,
-                    template.template().photoPolicy(), normalizedTemplateId);
+            validated = isHtmlTemplate(template)
+                    ? ResumeDesignV2.validate(manifest(template), settings)
+                    : ResumeDesignSettings.fromJson(settings, layoutDefinition(template), variant,
+                            template.template().photoPolicy(), normalizedTemplateId);
         } catch (IllegalArgumentException exception) {
             throw AppException.user("RESUME_DESIGN_INVALID", exception.getMessage());
         }
@@ -262,11 +271,11 @@ public class AiResumeWorkbenchService {
         if (existing == null) {
             jdbc.update("INSERT INTO resume_layout_preferences(id,account_id,master_id,branch_id,template_id,variant_code,design_schema_version,settings_json,version_no,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,0,?,?)",
                     Ids.newId(), current.accountId(), conversation.masterId(), conversation.activeBranchId(),
-                    normalizedTemplateId, variant, ResumeDesignSettings.SCHEMA,
+                    normalizedTemplateId, variant, designSchema(template),
                     json(validated), now, now);
         } else {
-            jdbc.update("UPDATE resume_layout_preferences SET variant_code=?,settings_json=?,version_no=version_no+1,updated_at=? WHERE id=?",
-                    variant, json(validated), now, existing.id());
+            jdbc.update("UPDATE resume_layout_preferences SET variant_code=?,design_schema_version=?,settings_json=?,version_no=version_no+1,updated_at=? WHERE id=?",
+                    variant, designSchema(template), json(validated), now, existing.id());
         }
         LayoutView currentLayout = currentLayout(current, conversation.masterId());
         if (currentLayout != null && normalizedTemplateId.equals(currentLayout.templateId())) {
@@ -883,9 +892,9 @@ public class AiResumeWorkbenchService {
                 json(traceableSummary(content, "COLLECTING_FACTS", revisionId, branchId)), now, now);
         ConversationRow createdConversation = requireConversation(current.accountId(), conversationId);
         TemplateDetailView initialTemplate = resumeTemplates.detail(current, layout.templateId());
-        DesignPreferenceView initialDesign = ensureDesignPreference(current, createdConversation, initialTemplate);
+        DesignPreferenceView initialDesign = ensureDesignPreference(current, createdConversation, initialTemplate, layout);
         jdbc.update("UPDATE resume_layout_instances SET branch_id=?,design_schema_version=?,design_json=?,updated_at=? WHERE id=?",
-                branchId, ResumeDesignSettings.SCHEMA, json(initialDesign.settings()), now, layout.id());
+                branchId, designSchema(initialTemplate), json(initialDesign.settings()), now, layout.id());
         insertInitialCards(current.accountId(), conversationId, identityType, now);
         Event event = appendEvent(current.accountId(), conversationId, "conversation.created",
                 Map.of("masterId", masterId, "branchId", branchId, "revisionId", revisionId), now);
@@ -1124,7 +1133,7 @@ public class AiResumeWorkbenchService {
             return resumeTemplates.apply(current, currentLayout.templateId(),
                     new ApplyCommand(masterId, currentLayout.variantCode(), null));
         }
-        String templateId = defaultTemplateId();
+        String templateId = builtInTemplates.defaultTemplateId(identityType);
         TemplateDetailView template = resumeTemplates.detail(current, templateId);
         return resumeTemplates.apply(current, templateId,
                 new ApplyCommand(masterId, defaultVariant(template), null));
@@ -1138,7 +1147,7 @@ public class AiResumeWorkbenchService {
         if (!"FROZEN".equals(currentLayout.status())) return currentLayout;
 
         TemplateDetailView template = resumeTemplates.detail(current, currentLayout.templateId());
-        DesignPreferenceView preference = ensureDesignPreference(current, conversation, template);
+        DesignPreferenceView preference = ensureDesignPreference(current, conversation, template, currentLayout);
         LayoutView editable = resumeTemplates.apply(current, currentLayout.templateId(),
                 new ApplyCommand(conversation.masterId(), preference.variantCode(), null));
         return resumeTemplates.configureDesign(current, editable.id(), conversation.activeBranchId(),
@@ -1150,18 +1159,26 @@ public class AiResumeWorkbenchService {
         return currentLayout.selected() ? currentLayout.layout() : null;
     }
 
-    private static String smartTemplateId(String selector) {
-        String normalized = selector == null ? "" : selector.trim();
-        String legacy = LEGACY_TEMPLATE_CODES.get(normalized.toUpperCase(Locale.ROOT));
-        String templateId = legacy == null ? normalized : legacy;
-        if (!ResumeTemplateService.SMART_TEMPLATE_IDS.contains(templateId)) {
-            throw AppException.user("AI_RESUME_TEMPLATE_UNSUPPORTED", "AI 工作台仅支持十二款结构化智能模板");
-        }
-        return templateId;
+    /** A built-in template id; ids of the retired v3 drafts and legacy codes map to their replacement. */
+    private String smartTemplateId(String selector) {
+        return builtInTemplates.resolve(selector).orElseThrow(() -> AppException.user(
+                "AI_RESUME_TEMPLATE_UNSUPPORTED", "AI 工作台不支持该模板，请从模板列表中选择"));
     }
 
-    private static String defaultTemplateId() {
-        return DEFAULT_TEMPLATE_ID;
+    private static boolean isHtmlTemplate(TemplateDetailView template) {
+        return ResumeLayoutProtocol.isRenderV4(template.rendererProtocol());
+    }
+
+    private static String designSchema(TemplateDetailView template) {
+        return isHtmlTemplate(template) ? ResumeDesignV2.SCHEMA : ResumeDesignSettings.SCHEMA;
+    }
+
+    private ResumeTemplateManifest manifest(TemplateDetailView template) {
+        try {
+            return ResumeTemplateManifest.parse(mapper, template.layoutDefinitionJson());
+        } catch (IllegalArgumentException exception) {
+            throw AppException.conflict("RESUME_TEMPLATE_DEFINITION_INVALID", "模板定义无法读取");
+        }
     }
 
     private static String defaultVariant(TemplateDetailView template) {
@@ -1192,6 +1209,8 @@ public class AiResumeWorkbenchService {
     }
 
     private List<DesignPresetView> designPresets(TemplateDetailView template) {
+        // Built-in templates expose palettes, header variants and fonts in their manifest instead of presets.
+        if (isHtmlTemplate(template)) return List.of();
         ResumeLayoutDefinition definition = layoutDefinition(template);
         return template.variants().stream().map(variant -> new DesignPresetView(
                 variant,
@@ -1228,23 +1247,43 @@ public class AiResumeWorkbenchService {
     private DesignPreferenceView designPreference(CurrentAccount current, ConversationRow conversation,
             TemplateDetailView template) {
         DesignPreferenceView existing = findDesignPreference(current, conversation, template);
+        if (existing != null && isHtmlTemplate(template)) {
+            // Stored settings stay usable when a template revision drops a palette or header variant.
+            return new DesignPreferenceView(existing.id(), existing.templateId(), existing.variantCode(),
+                    mapper.valueToTree(ResumeDesignV2.coerce(manifest(template), existing.settings())),
+                    existing.versionNo(), existing.updatedAt());
+        }
         if (existing != null) return existing;
         String variant = defaultVariant(template);
-        ResumeDesignSettings settings = ResumeDesignSettings.defaults(layoutDefinition(template), variant,
-                template.template().photoPolicy(), template.template().id());
+        Object settings = isHtmlTemplate(template)
+                ? ResumeDesignV2.defaults(manifest(template))
+                : ResumeDesignSettings.defaults(layoutDefinition(template), variant,
+                        template.template().photoPolicy(), template.template().id());
         return new DesignPreferenceView(null, template.template().id(), variant,
                 mapper.valueToTree(settings), 0, null);
     }
 
+    /**
+     * The saved design for this template, created on first use. A built-in template used for the first
+     * time inherits the general settings of the layout the user is switching from (DSN-06).
+     */
     private DesignPreferenceView ensureDesignPreference(CurrentAccount current, ConversationRow conversation,
-            TemplateDetailView template) {
+            TemplateDetailView template, LayoutView carryFrom) {
         DesignPreferenceView value = designPreference(current, conversation, template);
         if (value.id() != null) return value;
+        if (isHtmlTemplate(template) && carryFrom != null && carryFrom.design() != null
+                && !template.template().id().equals(carryFrom.templateId())) {
+            ResumeTemplateManifest previous = ResumeLayoutProtocol.isRenderV4(carryFrom.rendererProtocol())
+                    ? ResumeTemplateManifest.parse(mapper, carryFrom.layoutDefinitionJson()) : null;
+            value = new DesignPreferenceView(null, value.templateId(), value.variantCode(),
+                    mapper.valueToTree(ResumeDesignV2.carryOver(manifest(template), carryFrom.design(), previous)),
+                    0, null);
+        }
         Instant now = clock.now();
         String id = Ids.newId();
         jdbc.update("INSERT INTO resume_layout_preferences(id,account_id,master_id,branch_id,template_id,variant_code,design_schema_version,settings_json,version_no,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,0,?,?)",
                 id, current.accountId(), conversation.masterId(), conversation.activeBranchId(),
-                template.template().id(), value.variantCode(), ResumeDesignSettings.SCHEMA,
+                template.template().id(), value.variantCode(), designSchema(template),
                 json(value.settings()), now, now);
         return new DesignPreferenceView(id, value.templateId(), value.variantCode(), value.settings(), 0, now);
     }

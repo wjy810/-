@@ -25,5 +25,6 @@ export const manifest: TemplateManifest = {
   atsLevel: 'standard',
   decorations: false,
   sectionTitles: { experience: '实习经历', organizations: '校园经历' },
-  defaults: { photo: { mode: 'AUTO', shape: 'ROUNDED' }, sectionOrder: ['summary', 'education', 'experience', 'projects', 'organizations', 'honors', 'skills', 'certificates', 'languages'] },
+  // Students need one page: denser rhythm than the general templates.
+  defaults: { lineHeight: 'COMPACT', spacing: 'TIGHT', photo: { mode: 'AUTO', shape: 'ROUNDED' }, sectionOrder: ['summary', 'education', 'experience', 'projects', 'organizations', 'honors', 'skills', 'certificates', 'languages'] },
 }

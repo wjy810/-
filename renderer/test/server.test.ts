@@ -1,16 +1,18 @@
 /**
- * Integration: real Chromium + the built print entry. Skipped unless both are available, e.g.
- *   RENDERER_CHROMIUM_PATH=/path/to/chrome RENDERER_PRINT_DIR=../frontend/dist npm test
+ * Integration: real Chromium + the built print entry. Skipped unless both are available: Chromium from
+ * RENDERER_CHROMIUM_PATH or `npx playwright-core install chromium`, the print entry from `npm run build`:
+ *   RENDERER_PRINT_DIR=../frontend/dist npm test
  */
 import assert from 'node:assert/strict'
 import { existsSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { after, before, test } from 'node:test'
+import { chromium as playwrightChromium } from 'playwright-core'
 import { loadConfig } from '../src/config.ts'
 import { startServer } from '../src/server.ts'
 
 const printDir = resolve(process.env.RENDERER_PRINT_DIR ?? '../frontend/dist')
-const chromium = process.env.RENDERER_CHROMIUM_PATH
+const chromium = process.env.RENDERER_CHROMIUM_PATH || playwrightChromium.executablePath()
 const available = Boolean(chromium && existsSync(chromium) && existsSync(resolve(printDir, 'print.html')))
 const token = 'integration-token-0123456789'
 const port = 3199

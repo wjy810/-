@@ -19,6 +19,9 @@ public class ResumeLayoutTemplateEntity {
     @Column(name = "variants_json", columnDefinition = "TEXT") private String variantsJson;
     @Column(name = "tags_json", columnDefinition = "TEXT") private String tagsJson;
     private String status;
+    private boolean builtin;
+    @Column(name = "sort_order") private int sortOrder = 1000;
+    private boolean featured;
     @Column(name = "created_at") private Instant createdAt;
     @Column(name = "updated_at") private Instant updatedAt;
 
@@ -46,4 +49,10 @@ public class ResumeLayoutTemplateEntity {
     public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
     public void setUpdatedAt(Instant updatedAt) { this.updatedAt = updatedAt; }
+    public boolean isBuiltin() { return builtin; }
+    public void setBuiltin(boolean value) { builtin = value; }
+    public int getSortOrder() { return sortOrder; }
+    public void setSortOrder(int value) { sortOrder = value; }
+    public boolean isFeatured() { return featured; }
+    public void setFeatured(boolean value) { featured = value; }
 }

@@ -15,7 +15,7 @@ class FlywayMigrationIT {
     void freshDatabaseMigratesThroughLatestVersion() {
         Flyway flyway = flyway("fresh-" + UUID.randomUUID(), null);
 
-        assertThat(flyway.migrate().targetSchemaVersion).isEqualTo("67");
+        assertThat(flyway.migrate().targetSchemaVersion).isEqualTo("68");
     }
 
     @Test
@@ -25,7 +25,7 @@ class FlywayMigrationIT {
         assertThat(version39.migrate().targetSchemaVersion).isEqualTo("39");
 
         Flyway latest = flyway(database, null);
-        assertThat(latest.migrate().targetSchemaVersion).isEqualTo("67");
+        assertThat(latest.migrate().targetSchemaVersion).isEqualTo("68");
     }
 
     @Test
@@ -36,11 +36,28 @@ class FlywayMigrationIT {
         jdbc.update("INSERT INTO outbox_events (id, event_type, payload_json, created_at, published_at) VALUES ('done', 'X', '{}', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
         jdbc.update("INSERT INTO outbox_events (id, event_type, payload_json, created_at) VALUES ('open', 'X', '{}', CURRENT_TIMESTAMP)");
 
-        assertThat(flyway(database, null).migrate().targetSchemaVersion).isEqualTo("67");
+        assertThat(flyway(database, MigrationVersion.fromVersion("67")).migrate().targetSchemaVersion).isEqualTo("67");
 
         assertThat(jdbc.queryForObject("SELECT status FROM outbox_events WHERE id='done'", String.class)).isEqualTo("PUBLISHED");
         assertThat(jdbc.queryForObject("SELECT status FROM outbox_events WHERE id='open'", String.class)).isEqualTo("PENDING");
         assertThat(jdbc.queryForObject("SELECT attempts FROM outbox_events WHERE id='open'", Integer.class)).isZero();
+    }
+
+    @Test
+    void version68MarksExistingGateEvidenceAndAddsCatalogColumns() {
+        String database = "builtin-" + UUID.randomUUID();
+        assertThat(flyway(database, MigrationVersion.fromVersion("67")).migrate().targetSchemaVersion).isEqualTo("67");
+        JdbcTemplate jdbc = new JdbcTemplate(dataSource(database));
+        jdbc.update("UPDATE resume_layout_template_versions SET status='PUBLISHED' WHERE template_id='rlt-b-campus-v1'");
+
+        assertThat(flyway(database, null).migrate().targetSchemaVersion).isEqualTo("68");
+
+        assertThat(jdbc.queryForObject("SELECT verification_source FROM resume_layout_template_versions "
+                + "WHERE template_id='rlt-b-campus-v1'", String.class)).isEqualTo("ADMIN_EVIDENCE");
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM resume_layout_template_versions "
+                + "WHERE status='DRAFT' AND verification_source IS NULL", Integer.class)).isPositive();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM resume_layout_templates WHERE builtin=0 AND sort_order=1000 "
+                + "AND featured=0", Integer.class)).isEqualTo(12);
     }
 
     private static DriverManagerDataSource dataSource(String database) {

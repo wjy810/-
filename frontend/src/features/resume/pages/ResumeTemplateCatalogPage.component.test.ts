@@ -24,12 +24,12 @@ import ResumeTemplateCatalogPage from './ResumeTemplateCatalogPage.vue'
 
 const template = (id: string, pages = '1') => ({
   id, displayName: `模板 ${id}`, familyName: id, languageCode: 'zh-CN', recommendedPages: pages, atsCandidateLevel: 'HIGH',
-  photoPolicy: 'DISABLED', variants: ['MONO', 'BLUE'], tags: [], status: 'DEMO', rendererProtocol: 'resume-layout-v3', layoutDefinitionJson: '{}',
+  photoPolicy: 'DISABLED', variants: ['DEFAULT'], tags: [], status: 'PUBLISHED', rendererProtocol: 'resume-render-v4', layoutDefinitionJson: '{}',
 })
 
 function mountPage() {
   return mount(ResumeTemplateCatalogPage, {
-    global: { stubs: { ResumeTemplatePreview: true, UiTooltip: { template: '<slot />' } } },
+    global: { stubs: { TemplateThumbnail: true, UiTooltip: { template: '<slot />' } } },
   })
 }
 
@@ -41,7 +41,8 @@ describe('ResumeTemplateCatalogPage', () => {
     router.query = {}
     api.listTemplateCatalogFacets.mockResolvedValue([])
     api.listTemplateCatalog.mockResolvedValue({ items: [], total: 0, page: 0, size: 24 })
-    api.listResumeTemplates.mockResolvedValue({ items: [template('a'), template('b', '2')], total: 2, page: 0, size: 50 })
+    // 'retired-v3' is not a built-in template of this build and is not shown.
+    api.listResumeTemplates.mockResolvedValue({ items: [template('classic'), template('meridian', '1-2'), template('retired-v3')], total: 3, page: 0, size: 50 })
   })
 
   it('opens on the smart templates, rendered live, without querying the Word catalog', async () => {
@@ -56,8 +57,8 @@ describe('ResumeTemplateCatalogPage', () => {
     expect(wrapper.text()).not.toContain('建设中')
     expect(wrapper.find('.filter-band').exists()).toBe(false)
 
-    await wrapper.findAll('.smart-card button').at(1)!.trigger('click')
-    expect(router.push).toHaveBeenCalledWith({ path: '/ai-resume/new', query: { template: 'b' } })
+    await wrapper.findAll('.smart-card')[1]!.findAll('button').find(button => button.text().includes('用此模板创建'))!.trigger('click')
+    expect(router.push).toHaveBeenCalledWith({ path: '/ai-resume/new', query: { template: 'meridian' } })
   })
 
   it('switches to the Word catalog, syncing the tab to the URL', async () => {

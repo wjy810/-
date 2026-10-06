@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { computed, nextTick, ref } from 'vue'
 import { useLocalStorage } from '@vueuse/core'
-import { ChevronRight, Info, Maximize2, ZoomIn, ZoomOut } from 'lucide-vue-next'
+import { ChevronRight, Info, Maximize2, Minimize2, Undo2, ZoomIn, ZoomOut } from 'lucide-vue-next'
+import UiButton from '@/shared/ui/UiButton.vue'
 import UiIconButton from '@/shared/ui/UiIconButton.vue'
+import UiSkeleton from '@/shared/ui/UiSkeleton.vue'
 import { useScrollSurface } from '@/shared/composables/useScrollSurface'
-import ResumeTemplatePreview from '@/features/resume/components/ResumeTemplatePreview.vue'
+import ResumeDocument from '@/resume-render/components/ResumeDocument.vue'
 import { CARD_META, type CardType } from '../cardConfig'
 import { useWorkbench } from '../useWorkbench'
 
@@ -21,12 +23,19 @@ const surface = useScrollSurface(stage)
 const zoom = useLocalStorage<number | 'fit'>('jp:ai-resume:preview-zoom', 'fit')
 
 const zoomLabel = computed(() => zoom.value === 'fit' ? '适应' : `${Math.round(zoom.value * 100)}%`)
-const pagesWidth = computed(() => zoom.value === 'fit' ? 'min(100%, 760px)' : `${Math.round(A4_WIDTH * zoom.value)}px`)
+const overflow = design.overflow
+const result = design.layoutResult
 const status = computed(() => {
-  if (wb.pdf.overflowBlocked.value) return { tone: 'danger', text: `PDF 溢出 · ${wb.pdf.overflowSummary.value}` }
-  if (wb.session.ready.value) return { tone: 'success', text: '已满足第一版条件' }
-  return { tone: 'neutral', text: '还需目标岗位和教育/经历' }
+  if (overflow.value) {
+    const where = overflow.value.section ? `，从「${overflow.value.section}」开始` : ''
+    return { tone: 'danger', text: `超出 ${overflow.value.pageLimit} 页上限约 ${Math.max(1, Math.round(overflow.value.overflowMm))} 毫米${where}` }
+  }
+  const pages = result.value ? `共 ${result.value.pageCount} 页 · ` : ''
+  if (wb.session.ready.value) return { tone: 'success', text: `${pages}已满足第一版条件` }
+  return { tone: 'neutral', text: `${pages}还需目标岗位和教育/经历` }
 })
+const accentNote = computed(() => result.value?.accentAdjusted
+  ? `自定义强调色在白纸上对比度不足，预览与导出已自动加深为 ${result.value.accentAdjusted}` : '')
 
 function currentScale(): number {
   if (zoom.value !== 'fit') return zoom.value
@@ -42,30 +51,38 @@ function step(direction: 1 | -1): void {
   if (next) zoom.value = next
 }
 
+async function compact(): Promise<void> {
+  const outcome = await design.compact()
+  if (outcome === 'fit') wb.session.notify('已收紧间距与字号，内容已放进目标页数。')
+  else if (outcome === 'partial') wb.session.fail('已收紧到最紧凑的排版仍然超出；请精简内容或把目标页数改为自动。')
+}
+
 /** After a card is confirmed, briefly highlight where it landed on the page. */
 wb.session.onLanded(async (cardType) => {
   const section = CARD_META[cardType as CardType]?.section
   if (!section) return
   await nextTick()
-  const targets = stage.value?.querySelectorAll<HTMLElement>(`[data-section="${section}"]`)
+  const targets = stage.value?.querySelectorAll<HTMLElement>(`.rr-pages [data-section="${section}"]`)
   if (!targets?.length) return
   targets[0]!.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' })
   for (const target of targets) {
-    target.classList.remove('is-landed')
+    target.classList.remove('rr-flash')
     void target.offsetWidth
-    target.classList.add('is-landed')
-    target.addEventListener('animationend', () => target.classList.remove('is-landed'), { once: true })
+    target.classList.add('rr-flash')
+    target.addEventListener('animationend', () => target.classList.remove('rr-flash'), { once: true })
   }
 })
 </script>
 
 <template>
-  <section v-if="conversation" class="preview-pane" aria-label="A4 简历预览">
+  <section v-if="conversation" class="preview-pane" aria-label="简历预览">
     <header class="preview-pane__bar">
-      <div class="preview-pane__status" :class="`is-${status.tone}`">
+      <div class="preview-pane__status" :class="`is-${status.tone}`" role="status">
         <i aria-hidden="true" />
-        <span><strong>实时 A4 预览</strong><small>{{ status.text }}</small></span>
+        <span><strong>实时预览</strong><small>{{ status.text }}</small></span>
       </div>
+      <UiButton v-if="overflow && !design.compactUndo.value" size="sm" variant="secondary" :icon="Minimize2" :pending="design.compacting.value" @click="compact">一键紧凑</UiButton>
+      <UiButton v-if="design.compactUndo.value && !design.compacting.value" size="sm" variant="ghost" :icon="Undo2" @click="design.undoCompact()">撤销紧凑</UiButton>
       <div class="preview-pane__zoom" role="group" aria-label="预览缩放">
         <UiIconButton :icon="ZoomOut" size="sm" label="缩小" @click="step(-1)" />
         <button type="button" class="preview-pane__zoom-label" :title="zoom === 'fit' ? '当前为适应宽度' : '恢复适应宽度'" @click="zoom = 'fit'">{{ zoomLabel }}</button>
@@ -74,31 +91,37 @@ wb.session.onLanded(async (cardType) => {
       </div>
       <button class="preview-template" type="button" @click="wb.openView('templates')">
         <span>当前模板</span>
-        <strong>{{ design.activeTemplate.value?.displayName ?? '读取中' }}</strong>
+        <strong>{{ design.manifest.value?.name ?? design.activeTemplate.value?.displayName ?? '读取中' }}</strong>
         <ChevronRight :size="15" aria-hidden="true" />
       </button>
     </header>
+    <p v-if="accentNote" class="preview-pane__note"><Info :size="13" aria-hidden="true" />{{ accentNote }}</p>
 
     <div class="preview-pane__stage-shell scroll-edges" :class="{ 'can-scroll-up': surface.edges.canScrollUp, 'can-scroll-down': surface.edges.canScrollDown }">
-      <div ref="stage" class="preview-pane__stage" tabindex="0" aria-label="A4 简历预览滚动区域" :style="{ '--pages-width': pagesWidth }" @scroll.passive="surface.onScroll">
-        <ResumeTemplatePreview
-          :resume="wb.previewResume.value"
-          :content="wb.previewContent.value"
-          :design="design.activeDesign.value"
-          :template-id="design.activeTemplate.value?.templateId"
-          :photo-url="conversation.photo?.contentUrl"
-          :layout-definition-json="design.layoutJson.value"
-          :renderer-protocol="design.rendererProtocol.value"
-          :variant-code="design.activeVariant.value"
-          interactive
-          @section-click="wb.locateSection"
-        />
+      <div ref="stage" class="preview-pane__stage" tabindex="0" aria-label="简历预览滚动区域" @scroll.passive="surface.onScroll">
+        <div class="preview-pane__paper" :class="{ 'is-fit': zoom === 'fit' }">
+          <ResumeDocument
+            v-if="design.templateModule.value && design.activeDesign.value"
+            :template="design.templateModule.value"
+            :content="wb.previewContent.value"
+            :design="design.activeDesign.value"
+            :photo="conversation.photo?.contentUrl ?? null"
+            :fit="zoom === 'fit'"
+            :zoom="zoom === 'fit' ? 1 : zoom"
+            :debounce-ms="120"
+            interactive
+            @layout="design.reportLayout"
+            @section-click="wb.locateSection"
+          />
+          <p v-else-if="design.templateLoadError.value" class="preview-pane__error" role="alert">{{ design.templateLoadError.value }}</p>
+          <UiSkeleton v-else height="720px" radius="var(--radius-sm)" />
+        </div>
       </div>
     </div>
 
     <footer class="preview-pane__foot">
-      <span><Info :size="13" aria-hidden="true" />点击页面中的模块可直接编辑；只有确认后的内容会进入导出。</span>
-      <RouterLink :to="`/resumes/${conversation.masterId}/manual#export`">查看历史版本</RouterLink>
+      <span><Info :size="13" aria-hidden="true" />点击页面中的模块可直接编辑；预览与导出的 PDF 使用同一排版引擎。</span>
+      <RouterLink :to="`/resumes/${conversation.masterId}/manual#export`">版本与导出</RouterLink>
     </footer>
   </section>
 </template>
@@ -109,7 +132,7 @@ wb.session.onLanded(async (cardType) => {
   min-height: 0;
   height: 100%;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
   background: var(--bg-sunken);
 }
 
@@ -266,27 +289,34 @@ wb.session.onLanded(async (cardType) => {
   box-shadow: inset var(--focus-ring);
 }
 
-.preview-pane__stage :deep(.resume-pages) {
-  width: var(--pages-width);
-  transition: width var(--dur-slow) var(--ease-out);
+.preview-pane__paper {
+  margin: 0 auto;
 }
 
-.preview-pane__stage :deep(.resume-sheet) {
-  border: 0;
+.preview-pane__paper.is-fit {
+  max-width: 760px;
+}
+
+.preview-pane__paper :deep(.rr-page) {
   box-shadow: var(--shadow-paper, var(--shadow-lg));
 }
 
-.preview-pane__stage :deep(.resume-sheet__section[role='button']) {
-  transition: outline-color var(--dur-fast), background-color var(--dur-fast);
+.preview-pane__note {
+  margin: 0;
+  padding: 6px var(--space-4);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--color-info-soft, var(--surface-2));
+  color: var(--text-secondary);
+  font-size: var(--fs-xs);
 }
 
-.preview-pane__stage :deep(.resume-sheet__section[role='button']:focus-visible) {
-  outline: 2px solid var(--color-primary);
-  outline-offset: 3px;
-}
-
-.preview-pane__stage :deep(.resume-sheet__section.is-landed) {
-  animation: section-landed 1.4s var(--ease-out);
+.preview-pane__error {
+  padding: var(--space-6);
+  color: var(--color-danger-text);
+  text-align: center;
 }
 
 .preview-pane__foot {
@@ -315,17 +345,6 @@ wb.session.onLanded(async (cardType) => {
   font-weight: 600;
 }
 
-@keyframes section-landed {
-  0% {
-    background-color: color-mix(in srgb, var(--color-accent) 26%, transparent);
-    box-shadow: 0 0 0 6px color-mix(in srgb, var(--color-accent) 26%, transparent);
-  }
-  100% {
-    background-color: transparent;
-    box-shadow: 0 0 0 6px transparent;
-  }
-}
-
 @media (max-width: 1180px) {
   .preview-pane__zoom :deep(.ui-icon-btn:last-child) {
     display: none;
@@ -352,7 +371,7 @@ wb.session.onLanded(async (cardType) => {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .preview-pane__stage :deep(.resume-sheet__section.is-landed) {
+  .preview-pane__stage :deep(.rr-flash) {
     animation: none;
   }
 }

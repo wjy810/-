@@ -24,7 +24,7 @@ export const manifest: TemplateManifest = {
   atsLevel: 'strict',
   decorations: false,
   defaults: {
-    fontSize: 'S', spacing: 'TIGHT', pageMargin: 'NARROW', pageTarget: 'ONE', contactIcons: false,
+    fontSize: 'S', lineHeight: 'COMPACT', spacing: 'TIGHT', pageMargin: 'NARROW', pageTarget: 'ONE', contactIcons: false,
     sectionOrder: ['summary', 'education', 'experience', 'projects', 'organizations', 'skills', 'certificates', 'honors', 'languages'],
   },
 }

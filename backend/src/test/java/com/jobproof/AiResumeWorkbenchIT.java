@@ -1,5 +1,10 @@
 package com.jobproof;
 
+import com.jobproof.modules.resume.application.BuiltInTemplateCatalog;
+import com.jobproof.modules.resume.application.ResumeRenderPort;
+import com.jobproof.modules.resume.infra.ResumeRenderArtifactEntity;
+import com.jobproof.modules.resume.infra.ResumeRenderArtifactJpaRepository;
+import com.jobproof.support.TestResumeRenderer;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 import static org.mockito.ArgumentMatchers.any;
@@ -39,6 +44,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -80,6 +86,8 @@ class AiResumeWorkbenchIT {
     @Autowired AiQuotaService quota;
     @Autowired AsyncTaskJpaRepository asyncTasks;
     @Autowired AuditEventJpaRepository auditEvents;
+    @Autowired BuiltInTemplateCatalog builtInTemplates;
+    @Autowired ResumeRenderArtifactJpaRepository renderArtifacts;
     @MockBean ResumeAiCandidateService aiCandidates;
     @MockBean AiGatewayService gateway;
 
@@ -225,8 +233,10 @@ class AiResumeWorkbenchIT {
                         .cookie(owner.cookie()).contentType(MediaType.APPLICATION_JSON)
                         .content("{\"identityType\":\"GRADUATE\",\"title\":\"模板绑定验收\"}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.layout.templateId").value("rlt-b-campus-v1"))
-                .andExpect(jsonPath("$.data.layout.variantCode").value("NO_PHOTO"))
+                .andExpect(jsonPath("$.data.layout.templateId").value("campus"))
+                .andExpect(jsonPath("$.data.layout.variantCode").value("DEFAULT"))
+                .andExpect(jsonPath("$.data.layout.rendererProtocol").value("resume-render-v4"))
+                .andExpect(jsonPath("$.data.layout.design.schemaVersion").value("resume-design-v2"))
                 .andReturn());
         String conversationId = created.path("id").asText();
         String masterId = created.path("masterId").asText();
@@ -235,25 +245,31 @@ class AiResumeWorkbenchIT {
                 .andExpect(status().isOk()).andReturn());
         String initialHash = initialRevisions.get(0).path("contentHash").asText();
 
+        // Legacy codes and ids of the retired v3 drafts select their replacement.
         mockMvc.perform(post("/api/v1/ai-resume/conversations/{id}/template", conversationId)
                         .cookie(owner.cookie()).contentType(MediaType.APPLICATION_JSON)
                         .content("{\"templateCode\":\"TECH\"}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.layout.templateId").value("rlt-b-tech-double-v1"))
-                .andExpect(jsonPath("$.data.layout.variantCode").value("BLUE"));
-
+                .andExpect(jsonPath("$.data.layout.templateId").value("engineer"))
+                .andExpect(jsonPath("$.data.layout.status").value("VALID"));
+        mockMvc.perform(post("/api/v1/ai-resume/conversations/{id}/template", conversationId)
+                        .cookie(owner.cookie()).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"templateId\":\"rlt-b-finance-v1\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.layout.templateId").value("banker"));
         mockMvc.perform(post("/api/v1/ai-resume/conversations/{id}/template", conversationId)
                         .cookie(owner.cookie()).contentType(MediaType.APPLICATION_JSON)
                         .content("{\"templateCode\":\"TABLE\"}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.layout.templateId").value("rlt-b-cn-table-v1"))
-                .andExpect(jsonPath("$.data.layout.variantCode").value("STANDARD"));
+                .andExpect(jsonPath("$.data.layout.templateId").value("classic"))
+                .andExpect(jsonPath("$.data.activeTemplate.templateId").value("classic"));
 
         mockMvc.perform(get("/api/v1/resume-templates/layouts/current").param("masterId", masterId)
                         .cookie(owner.cookie()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.selected").value(true))
-                .andExpect(jsonPath("$.data.layout.templateId").value("rlt-b-cn-table-v1"));
+                .andExpect(jsonPath("$.data.layout.templateId").value("classic"))
+                .andExpect(jsonPath("$.data.layout.overflow.source").value("CLIENT_MEASURED"));
         mockMvc.perform(get("/api/v1/ai-resume/conversations/{id}/revisions", conversationId)
                         .cookie(owner.cookie()))
                 .andExpect(status().isOk())
@@ -269,21 +285,22 @@ class AiResumeWorkbenchIT {
     }
 
     @Test
-    void allIdentityTypesStartWithTheCampusTemplate() throws Exception {
+    void identityTypesStartWithTheirDefaultBuiltInTemplate() throws Exception {
         Session owner = seeker();
-        for (String identityType : List.of("STUDENT", "GRADUATE", "PROFESSIONAL")) {
+        Map<String, String> expected = Map.of("STUDENT", "campus", "GRADUATE", "campus", "PROFESSIONAL", "meridian");
+        for (Map.Entry<String, String> entry : expected.entrySet()) {
             mockMvc.perform(post("/api/v1/ai-resume/conversations")
                             .cookie(owner.cookie()).contentType(MediaType.APPLICATION_JSON)
                             .content("{\"identityType\":\"%s\",\"title\":\"默认模板-%s\"}"
-                                    .formatted(identityType, identityType)))
+                                    .formatted(entry.getKey(), entry.getKey())))
                     .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.data.layout.templateId").value("rlt-b-campus-v1"))
-                    .andExpect(jsonPath("$.data.layout.variantCode").value("NO_PHOTO"));
+                    .andExpect(jsonPath("$.data.layout.templateId").value(entry.getValue()))
+                    .andExpect(jsonPath("$.data.layout.variantCode").value("DEFAULT"));
         }
     }
 
     @Test
-    void listsTwelveServerTemplatesAndRemembersValidatedDesignWithOptimisticLocking() throws Exception {
+    void listsBuiltInTemplatesAndRemembersValidatedDesignWithOptimisticLocking() throws Exception {
         Session owner = seeker();
         JsonNode created = data(mockMvc.perform(post("/api/v1/ai-resume/conversations")
                         .cookie(owner.cookie()).contentType(MediaType.APPLICATION_JSON)
@@ -295,66 +312,79 @@ class AiResumeWorkbenchIT {
                         "/api/v1/ai-resume/conversations/{id}/smart-templates", conversationId)
                         .cookie(owner.cookie()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.length()").value(12))
-                .andExpect(jsonPath("$.data[0].rendererProtocol").value("resume-layout-v3"))
+                .andExpect(jsonPath("$.data.length()").value(builtInTemplates.all().size()))
+                .andExpect(jsonPath("$.data[0].templateId").value(builtInTemplates.ids().get(0)))
                 .andReturn());
         assertThat(templates).allSatisfy(template -> {
-            assertThat(template.path("layoutDefinitionJson").asText()).contains("organizations", "languages");
+            assertThat(template.path("rendererProtocol").asText()).isEqualTo("resume-render-v4");
+            assertThat(template.path("layoutDefinitionJson").asText()).contains("palettes", "regions");
             assertThat(template.path("design").path("settings").path("schemaVersion").asText())
-                    .isEqualTo("resume-design-v1");
-            assertThat(template.path("presets")).hasSize(2);
-            assertThat(template.path("presets").get(0).path("settings"))
-                    .isNotEqualTo(template.path("presets").get(1).path("settings"));
+                    .isEqualTo("resume-design-v2");
+            assertThat(template.path("presets")).isEmpty();
+            assertThat(template.path("docxAvailable").asBoolean()).isTrue();
         });
 
-        // Campus is the product default; activate ATS before exercising its persisted design version.
         JsonNode active = data(mockMvc.perform(post("/api/v1/ai-resume/conversations/{id}/template", conversationId)
                         .cookie(owner.cookie()).contentType(MediaType.APPLICATION_JSON)
-                        .content(mapper.writeValueAsString(Map.of("templateId", "rlt-b-ats-minimal-v1",
+                        .content(mapper.writeValueAsString(Map.of("templateId", "clarity",
                                 "expectedLayoutVersion", created.path("layout").path("version").asInt()))))
                 .andExpect(status().isOk()).andReturn());
         ObjectNode settings = (ObjectNode) active.path("activeDesign").path("settings").deepCopy();
-        settings.put("fontScale", "LARGE");
-        settings.put("dateFormat", "YYYY_CN_MM");
-        settings.put("accentColor", "#175CD3");
+        settings.put("fontSize", "L");
+        settings.put("dateFormat", "YYYY年MM月");
+        settings.put("customAccent", "#175CD3");
         settings.withArray("hiddenSections").add("certificates");
+        settings.putObject("sectionTitles").put("projects", "代表项目");
         String designBody = mapper.writeValueAsString(Map.of("settings", settings, "expectedVersion", 0));
         mockMvc.perform(put("/api/v1/ai-resume/conversations/{id}/design/{templateId}", conversationId,
-                        "rlt-b-ats-minimal-v1").cookie(owner.cookie()).contentType(MediaType.APPLICATION_JSON)
+                        "clarity").cookie(owner.cookie()).contentType(MediaType.APPLICATION_JSON)
                         .content(designBody))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.versionNo").value(1))
-                .andExpect(jsonPath("$.data.settings.fontScale").value("LARGE"))
+                .andExpect(jsonPath("$.data.settings.fontSize").value("L"))
+                .andExpect(jsonPath("$.data.settings.customAccent").value("#175cd3"))
                 .andExpect(jsonPath("$.data.settings.hiddenSections[0]").value("certificates"));
+        mockMvc.perform(get("/api/v1/ai-resume/conversations/{id}", conversationId).cookie(owner.cookie()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.layout.design.fontSize").value("L"))
+                .andExpect(jsonPath("$.data.layout.design.sectionTitles.projects").value("代表项目"));
 
         mockMvc.perform(put("/api/v1/ai-resume/conversations/{id}/design/{templateId}", conversationId,
-                        "rlt-b-ats-minimal-v1").cookie(owner.cookie()).contentType(MediaType.APPLICATION_JSON)
+                        "clarity").cookie(owner.cookie()).contentType(MediaType.APPLICATION_JSON)
                         .content(designBody))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.error.reason").value("RESUME_DESIGN_VERSION_CONFLICT"));
 
         ObjectNode invalid = settings.deepCopy();
-        invalid.put("accentColor", "#FF00FF");
+        invalid.put("paletteId", "neon");
         mockMvc.perform(put("/api/v1/ai-resume/conversations/{id}/design/{templateId}", conversationId,
-                        "rlt-b-ats-minimal-v1").cookie(owner.cookie()).contentType(MediaType.APPLICATION_JSON)
+                        "clarity").cookie(owner.cookie()).contentType(MediaType.APPLICATION_JSON)
                         .content(mapper.writeValueAsString(Map.of("settings", invalid, "expectedVersion", 1))))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error.reason").value("RESUME_DESIGN_INVALID"));
 
+        // A template used for the first time inherits the general settings, not the palette.
         JsonNode refreshed = data(mockMvc.perform(get("/api/v1/ai-resume/conversations/{id}", conversationId)
                 .cookie(owner.cookie())).andExpect(status().isOk()).andReturn());
         JsonNode selected = data(mockMvc.perform(post("/api/v1/ai-resume/conversations/{id}/template", conversationId)
                         .cookie(owner.cookie()).contentType(MediaType.APPLICATION_JSON)
-                        .content(mapper.writeValueAsString(Map.of("templateId", "rlt-b-tech-single-v1",
+                        .content(mapper.writeValueAsString(Map.of("templateId", "engineer",
                                 "expectedLayoutVersion", refreshed.path("layout").path("version").asInt()))))
-                .andExpect(status().isOk()).andReturn());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.activeDesign.settings.fontSize").value("L"))
+                .andExpect(jsonPath("$.data.activeDesign.settings.dateFormat").value("YYYY年MM月"))
+                .andExpect(jsonPath("$.data.activeDesign.settings.hiddenSections[0]").value("certificates"))
+                .andExpect(jsonPath("$.data.activeDesign.settings.sectionTitles.projects").value("代表项目"))
+                .andExpect(jsonPath("$.data.activeDesign.settings.paletteId")
+                        .value(builtInTemplates.find("engineer").orElseThrow().manifest().palettes().get(0).id()))
+                .andReturn());
         mockMvc.perform(post("/api/v1/ai-resume/conversations/{id}/template", conversationId)
                         .cookie(owner.cookie()).contentType(MediaType.APPLICATION_JSON)
-                        .content(("{\"templateId\":\"rlt-b-ats-minimal-v1\",\"expectedLayoutVersion\":%d}")
+                        .content(("{\"templateId\":\"clarity\",\"expectedLayoutVersion\":%d}")
                                 .formatted(selected.path("layout").path("version").asInt())))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.activeDesign.settings.fontScale").value("LARGE"))
-                .andExpect(jsonPath("$.data.activeDesign.settings.dateFormat").value("YYYY_CN_MM"));
+                .andExpect(jsonPath("$.data.activeDesign.settings.fontSize").value("L"))
+                .andExpect(jsonPath("$.data.activeDesign.settings.customAccent").value("#175cd3"));
 
         mockMvc.perform(get("/api/v1/ai-resume/conversations/{id}/revisions", conversationId)
                         .cookie(owner.cookie()))
@@ -363,50 +393,71 @@ class AiResumeWorkbenchIT {
     }
 
     @Test
-    void switchesARealDesignPresetTogetherWithTheActivePdfVariant() throws Exception {
+    void designSettingsAreValidatedAgainstTheTemplateManifest() throws Exception {
         Session owner = seeker();
         JsonNode created = data(mockMvc.perform(post("/api/v1/ai-resume/conversations")
                         .cookie(owner.cookie()).contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"identityType\":\"GRADUATE\",\"title\":\"双预设验收\"}"))
-                .andExpect(status().isOk()).andReturn());
+                        .content("{\"identityType\":\"PROFESSIONAL\",\"title\":\"设计校验验收\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.layout.templateId").value("meridian"))
+                .andReturn());
         String conversationId = created.path("id").asText();
+        ObjectNode settings = (ObjectNode) created.path("activeDesign").path("settings").deepCopy();
+        settings.putObject("regionAssignments").put("skills", "main");
+        settings.put("paletteId", "pine");
+        mockMvc.perform(put("/api/v1/ai-resume/conversations/{id}/design/{templateId}", conversationId,
+                        "meridian").cookie(owner.cookie()).contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(Map.of(
+                                "variantCode", "UNKNOWN", "settings", settings, "expectedVersion", 0))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.variantCode").value("DEFAULT"))
+                .andExpect(jsonPath("$.data.settings.regionAssignments.skills").value("main"))
+                .andExpect(jsonPath("$.data.settings.paletteId").value("pine"));
+
+        Map<String, java.util.function.Consumer<ObjectNode>> invalid = new LinkedHashMap<>();
+        invalid.put("unknown region", value -> value.putObject("regionAssignments").put("skills", "facts"));
+        invalid.put("title too long", value -> value.putObject("sectionTitles").put("skills", "一二三四五六七八九十一二三四五六七"));
+        invalid.put("unknown section", value -> value.putArray("hiddenSections").add("hobbies"));
+        invalid.put("bad colour", value -> value.put("customAccent", "blue"));
+        invalid.put("font not offered", value -> value.put("fontPairing", "tech"));
+        invalid.put("letter paper", value -> value.put("paperSize", "LETTER"));
+        invalid.put("bad enum", value -> value.put("spacing", "HUGE"));
+        for (Map.Entry<String, java.util.function.Consumer<ObjectNode>> entry : invalid.entrySet()) {
+            ObjectNode body = settings.deepCopy();
+            entry.getValue().accept(body);
+            mockMvc.perform(put("/api/v1/ai-resume/conversations/{id}/design/{templateId}", conversationId,
+                            "meridian").cookie(owner.cookie()).contentType(MediaType.APPLICATION_JSON)
+                            .content(mapper.writeValueAsString(Map.of("settings", body, "expectedVersion", 1))))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.error.reason").value("RESUME_DESIGN_INVALID"));
+        }
+
+        // Older clients still send v1 settings; they are converted, not rejected.
+        Map<String, Object> legacy = Map.of("schemaVersion", "resume-design-v1", "fontScale", "SMALL",
+                "accentColor", "#2F6B5B", "dateFormat", "YYYY_CN_MM");
+        mockMvc.perform(put("/api/v1/ai-resume/conversations/{id}/design/{templateId}", conversationId,
+                        "meridian").cookie(owner.cookie()).contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(Map.of("settings", legacy, "expectedVersion", 1))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.settings.schemaVersion").value("resume-design-v2"))
+                .andExpect(jsonPath("$.data.settings.fontSize").value("S"))
+                .andExpect(jsonPath("$.data.settings.paletteId").value("pine"))
+                .andExpect(jsonPath("$.data.settings.dateFormat").value("YYYY年MM月"));
+
         mockMvc.perform(post("/api/v1/ai-resume/conversations/{id}/template", conversationId)
                         .cookie(owner.cookie()).contentType(MediaType.APPLICATION_JSON)
-                        .content(mapper.writeValueAsString(Map.of("templateId", "rlt-b-ats-minimal-v1",
-                                "expectedLayoutVersion", created.path("layout").path("version").asInt()))))
+                        .content("{\"templateId\":\"classic\"}"))
                 .andExpect(status().isOk());
-        JsonNode templates = data(mockMvc.perform(get(
-                        "/api/v1/ai-resume/conversations/{id}/smart-templates", conversationId)
-                        .cookie(owner.cookie()))
-                .andExpect(status().isOk()).andReturn());
-        JsonNode ats = java.util.stream.StreamSupport.stream(templates.spliterator(), false)
-                .filter(template -> template.path("templateId").asText().equals("rlt-b-ats-minimal-v1"))
-                .findFirst().orElseThrow();
-        JsonNode alternate = ats.path("presets").get(1);
-
+        ObjectNode classic = (ObjectNode) data(mockMvc.perform(get("/api/v1/ai-resume/conversations/{id}", conversationId)
+                .cookie(owner.cookie())).andExpect(status().isOk()).andReturn())
+                .path("activeDesign").path("settings").deepCopy();
+        assertThat(classic.path("photo").path("mode").asText()).isEqualTo("HIDE");
+        classic.putObject("photo").put("mode", "SHOW").put("shape", "CIRCLE");
         mockMvc.perform(put("/api/v1/ai-resume/conversations/{id}/design/{templateId}", conversationId,
-                        "rlt-b-ats-minimal-v1").cookie(owner.cookie()).contentType(MediaType.APPLICATION_JSON)
-                        .content(mapper.writeValueAsString(Map.of(
-                                "variantCode", alternate.path("variantCode").asText(),
-                                "settings", alternate.path("settings"),
-                                "expectedVersion", 0))))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.variantCode").value("BLUE"))
-                .andExpect(jsonPath("$.data.settings.headerLayout").value("SPLIT"))
-                .andExpect(jsonPath("$.data.settings.headingStyle").value("SIDELINE"));
-
-        mockMvc.perform(get("/api/v1/ai-resume/conversations/{id}", conversationId).cookie(owner.cookie()))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.layout.variantCode").value("BLUE"))
-                .andExpect(jsonPath("$.data.activeDesign.variantCode").value("BLUE"));
-
-        mockMvc.perform(put("/api/v1/ai-resume/conversations/{id}/design/{templateId}", conversationId,
-                        "rlt-b-ats-minimal-v1").cookie(owner.cookie()).contentType(MediaType.APPLICATION_JSON)
-                        .content(mapper.writeValueAsString(Map.of(
-                                "variantCode", "UNKNOWN", "settings", alternate.path("settings"),
-                                "expectedVersion", 1))))
+                        "classic").cookie(owner.cookie()).contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(Map.of("settings", classic, "expectedVersion", 0))))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error.reason").value("RESUME_DESIGN_PRESET_INVALID"));
+                .andExpect(jsonPath("$.error.reason").value("RESUME_DESIGN_INVALID"));
     }
 
     @Test
@@ -441,6 +492,14 @@ class AiResumeWorkbenchIT {
                 .andExpect(status().isOk());
 
         JsonNode firstTask = startAndAwaitWorkbenchPdf(owner, conversationId);
+        ResumeRenderPort.RenderRequest request = TestResumeRenderer.last();
+        assertThat(request.templateId()).isEqualTo("campus");
+        assertThat(request.format()).isEqualTo("pdf");
+        assertThat(request.design().path("schemaVersion").asText()).isEqualTo("resume-design-v2");
+        assertThat(request.content().toString()).contains("Java 后端工程师", "PDF 验收大学")
+                .doesNotContain("这段待确认文字不能进入 PDF", "photoFileId");
+        assertThat(firstTask.path("result").path("atsCheck").path("passed").asBoolean()).isTrue();
+        assertThat(firstTask.path("result").path("pageCount").asInt()).isEqualTo(1);
         byte[] pdf = mockMvc.perform(get(firstTask.path("downloadUrl").asText()).cookie(owner.cookie()))
                 .andExpect(status().isOk())
                 .andExpect(result -> assertThat(result.getResponse().getContentType())
@@ -451,12 +510,16 @@ class AiResumeWorkbenchIT {
             assertThat(text).contains("Java 后端工程师", "PDF 验收大学")
                     .doesNotContain("这段待确认文字不能进入 PDF");
         }
+        ResumeRenderArtifactEntity artifact = renderArtifacts.findById(firstTask.path("id").asText()).orElseThrow();
+        assertThat(artifact.getRendererVersion()).isEqualTo("resume-render-v4");
+        assertThat(artifact.getStatus()).isEqualTo("SUCCEEDED");
+        assertThat(mapper.readTree(artifact.getValidationJson()).path("ats").path("checks").size()).isGreaterThan(3);
 
         mockMvc.perform(get("/api/v1/resume-templates/layouts/current").param("masterId", masterId)
                         .cookie(owner.cookie()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.layout.status").value("VALID"))
-                .andExpect(jsonPath("$.data.layout.templateId").value("rlt-b-campus-v1"));
+                .andExpect(jsonPath("$.data.layout.templateId").value("campus"));
 
         JsonNode secondTask = startAndAwaitWorkbenchPdf(owner, conversationId);
         assertThat(secondTask.path("id").asText()).isNotEqualTo(firstTask.path("id").asText());
@@ -464,135 +527,122 @@ class AiResumeWorkbenchIT {
                         .cookie(owner.cookie()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.layout.status").value("VALID"))
-                .andExpect(jsonPath("$.data.layout.templateId").value("rlt-b-campus-v1"));
+                .andExpect(jsonPath("$.data.layout.templateId").value("campus"));
     }
 
     @Test
-    void allTwentyFourSmartTemplatePresetsProduceCompleteDistinctPdfFromTheSameCanonicalContent() throws Exception {
+    void everyBuiltInTemplateExportsThroughTheRendererWithItsFrozenDesign() throws Exception {
         Session owner = seeker();
         JsonNode created = data(mockMvc.perform(post("/api/v1/ai-resume/conversations")
                         .cookie(owner.cookie()).contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"identityType\":\"PROFESSIONAL\",\"title\":\"十二模板 PDF 矩阵\"}"))
+                        .content("{\"identityType\":\"PROFESSIONAL\",\"title\":\"内置模板导出矩阵\"}"))
                 .andExpect(status().isOk()).andReturn());
         String conversationId = created.path("id").asText();
-        JsonNode target = card(created, "TARGET_JOB");
-        JsonNode withTarget = data(mockMvc.perform(post(
-                        "/api/v1/ai-resume/conversations/{id}/cards/{card}/submit",
-                        conversationId, target.path("id").asText()).cookie(owner.cookie())
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"payload\":{\"targetJob\":\"Platform Engineer\"},\"expectedVersion\":0}"))
-                .andExpect(status().isOk()).andReturn());
-        JsonNode current = submitCard(owner, conversationId, withTarget, "CONTACT", """
+        JsonNode current = submitCard(owner, conversationId, created, "TARGET_JOB", """
+                {"targetJob":"Platform Engineer"}
+                """);
+        current = submitCard(owner, conversationId, current, "CONTACT", """
                 {"name":"林知远","email":"lin.zhiyuan@example.com","phone":"13800001111","location":"杭州","links":["https://portfolio.example.com/lin"]}
                 """);
         current = submitCard(owner, conversationId, current, "SUMMARY", """
                 {"text":"平台工程师，重视可观测性、稳定交付与事实可追溯的技术决策。"}
                 """);
         current = submitCard(owner, conversationId, current, "EDUCATION", """
-                {"items":[{"school":"统一内容大学","major":"Computer Science","degree":"本科","startDate":"2018-09","endDate":"2022-06","description":"主修分布式系统与数据库。"}]}
+                {"items":[{"school":"统一内容大学","major":"Computer Science","degree":"本科","startDate":"2018-09","endDate":"2022-06"}]}
                 """);
         current = submitCard(owner, conversationId, current, "EXPERIENCE", """
-                {"items":[{"company":"星云基础设施科技有限公司","role":"Platform Engineer","startDate":"2022-07","current":true,"location":"杭州","description":"负责开发者平台与持续交付链路。","highlights":["统一发布流程并保留完整审计记录","Improved observability for production services"]}]}
+                {"items":[{"company":"星云基础设施科技有限公司","role":"Platform Engineer","startDate":"2022-07","current":true,"location":"杭州","description":"负责开发者平台与持续交付链路。","highlights":["统一发布流程并保留完整审计记录"]}]}
                 """);
-        current = submitCard(owner, conversationId, current, "PROJECTS", """
-                {"items":[{"name":"JobProof Resume Platform","role":"Backend Owner","startDate":"2024-03","endDate":"2025-02","description":"构建结构化简历冻结与异步导出流程。","highlights":["保持网页预览与 PDF 内容一致","Verified immutable snapshot hashes"]}]}
-                """);
-        current = submitCard(owner, conversationId, current, "SKILLS", """
-                {"items":[{"category":"Backend & Platform","items":["Java","Spring Boot","PostgreSQL","Docker","OpenTelemetry"]}]}
-                """);
-        submitCard(owner, conversationId, current, "CERTIFICATES", """
-                {"items":[{"name":"Cloud Native Associate","issuer":"CNCF Training","date":"2024-06",
-                  "description":"已确认取得该云原生资质，补充说明记录了对应证书名称、颁发机构、取得时间与学习范围，用于呈现可核实的技术学习经历，所有信息均来自用户确认事实，不增加未经确认的成绩或能力结论。"}]}
+        submitCard(owner, conversationId, current, "SKILLS", """
+                {"items":[{"category":"Backend & Platform","items":["Java","Spring Boot","OpenTelemetry"]}]}
                 """);
 
-        List<String> templateIds = List.of(
-                "rlt-b-ats-minimal-v1", "rlt-b-tech-single-v1", "rlt-b-tech-double-v1",
-                "rlt-b-campus-v1", "rlt-b-career-pro-v1", "rlt-b-consulting-v1",
-                "rlt-b-finance-v1", "rlt-b-product-ops-v1", "rlt-b-education-research-v1",
-                "rlt-b-english-single-v1", "rlt-b-cn-table-v1", "rlt-b-qa-data-v1");
-        JsonNode templates = data(mockMvc.perform(get(
-                        "/api/v1/ai-resume/conversations/{id}/smart-templates", conversationId)
-                        .cookie(owner.cookie()))
-                .andExpect(status().isOk()).andReturn());
-        for (String templateId : templateIds) {
-            JsonNode selected = data(mockMvc.perform(post(
-                            "/api/v1/ai-resume/conversations/{id}/template", conversationId)
+        for (BuiltInTemplateCatalog.Entry entry : builtInTemplates.all()) {
+            String templateId = entry.manifest().id();
+            mockMvc.perform(post("/api/v1/ai-resume/conversations/{id}/template", conversationId)
                             .cookie(owner.cookie()).contentType(MediaType.APPLICATION_JSON)
                             .content("{\"templateId\":\"%s\"}".formatted(templateId)))
                     .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.data.layout.templateId").value(templateId))
-                    .andReturn());
-            JsonNode template = smartTemplate(templates, templateId);
-            assertThat(template.path("presets")).as(templateId).hasSize(2);
-            BufferedImage firstPresetPage = null;
-            for (int presetIndex = 0; presetIndex < 2; presetIndex++) {
-                JsonNode preset = template.path("presets").get(presetIndex);
-                String variant = preset.path("variantCode").asText();
-                if (presetIndex == 0) {
-                    assertThat(selected.path("layout").path("variantCode").asText()).isEqualTo(variant);
-                } else {
-                    mockMvc.perform(put(
-                                    "/api/v1/ai-resume/conversations/{id}/design/{templateId}",
-                                    conversationId, templateId)
-                                    .cookie(owner.cookie()).contentType(MediaType.APPLICATION_JSON)
-                                    .content(mapper.writeValueAsString(Map.of(
-                                            "variantCode", variant,
-                                            "settings", preset.path("settings"),
-                                            "expectedVersion", 0))))
-                            .andExpect(status().isOk())
-                            .andExpect(jsonPath("$.data.variantCode").value(variant));
-                    mockMvc.perform(get("/api/v1/ai-resume/conversations/{id}", conversationId)
-                                    .cookie(owner.cookie()))
-                            .andExpect(status().isOk())
-                            .andExpect(jsonPath("$.data.layout.variantCode").value(variant))
-                            .andExpect(jsonPath("$.data.activeDesign.variantCode").value(variant));
-                }
-                JsonNode task = startAndAwaitWorkbenchPdf(owner, conversationId);
-                byte[] pdf = mockMvc.perform(get(task.path("downloadUrl").asText()).cookie(owner.cookie()))
-                        .andExpect(status().isOk()).andReturn().getResponse().getContentAsByteArray();
-                writePdfQaArtifact(templateId, variant, pdf);
-                try (PDDocument document = Loader.loadPDF(pdf)) {
-                    writePdfQaImages(templateId, variant, document);
-                    String caseName = templateId + ":" + variant;
-                    assertThat(document.getNumberOfPages()).as(caseName).isBetween(1, 2);
-                    String normalizedText = new PDFTextStripper().getText(document).replaceAll("\\s+", " ");
-                    assertThat(normalizedText).as(caseName)
-                            .contains(
-                                    "林知远", "Platform Engineer", "lin.zhiyuan@example.com", "杭州",
-                                    "统一内容大学", "Computer Science", "星云基础设施科技有限公司",
-                                    "Improved observability for production services", "JobProof Resume Platform",
-                                    "Verified immutable snapshot hashes", "OpenTelemetry", "Cloud Native Associate");
-                    for (int pageIndex = 0; pageIndex < document.getNumberOfPages(); pageIndex++) {
-                        int currentPage = pageIndex;
-                        assertThat(document.getPage(pageIndex).getMediaBox().getWidth())
-                                .as(caseName).isEqualTo(595.27563f);
-                        assertThat(document.getPage(pageIndex).getMediaBox().getHeight())
-                                .as(caseName).isEqualTo(841.8898f);
-                        assertThat(document.getPage(pageIndex).getResources().getFontNames())
-                                .as(caseName)
-                                .anySatisfy(name -> assertThat(document.getPage(currentPage).getResources()
-                                        .getFont(name).isEmbedded()).isTrue());
-                        assertThat(inkPixels(new PDFRenderer(document).renderImageWithDPI(pageIndex, 72)))
-                                .as(caseName + " page " + (pageIndex + 1)).isGreaterThan(1_000);
-                    }
-                    BufferedImage rendered = new PDFRenderer(document).renderImageWithDPI(0, 72);
-                    if (presetIndex == 0) {
-                        firstPresetPage = rendered;
-                    } else {
-                        assertThat(differentPixels(firstPresetPage, rendered)).as(caseName)
-                                .isGreaterThan(1_000);
-                    }
-                }
-            }
+                    .andExpect(jsonPath("$.data.layout.templateId").value(templateId));
+            JsonNode task = startAndAwaitWorkbenchPdf(owner, conversationId);
+            ResumeRenderPort.RenderRequest request = TestResumeRenderer.last();
+            assertThat(request.templateId()).as(templateId).isEqualTo(templateId);
+            assertThat(request.design().path("paletteId").asText()).as(templateId)
+                    .isEqualTo(entry.manifest().palettes().get(0).id());
+            assertThat(request.content().path("basics").path("name").asText()).isEqualTo("林知远");
+            int expectedLimit = switch (request.design().path("pageTarget").asText()) {
+                case "ONE" -> 1;
+                case "TWO" -> 2;
+                default -> entry.manifest().maxPages();
+            };
+            assertThat(request.pageLimit()).as(templateId).isEqualTo(expectedLimit);
+            assertThat(task.path("result").path("atsCheck").path("passed").asBoolean())
+                    .as(templateId + " " + task.path("result")).isTrue();
+
+            JsonNode afterExport = data(mockMvc.perform(get("/api/v1/ai-resume/conversations/{id}", conversationId)
+                    .cookie(owner.cookie())).andExpect(status().isOk()).andReturn());
+            String frozenLayoutId = afterExport.path("resume").path("versions").get(0).path("layoutInstanceId").asText();
+            mockMvc.perform(get("/api/v1/resume-templates/layouts/{id}", frozenLayoutId).cookie(owner.cookie()))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.status").value("FROZEN"))
+                    .andExpect(jsonPath("$.data.templateId").value(templateId))
+                    .andExpect(jsonPath("$.data.design.schemaVersion").value("resume-design-v2"));
         }
     }
 
     @Test
-    void longCanonicalContentPaginatesOrFailsBeforeTaskCreationWithoutSilentClipping() throws Exception {
+    void exportPreviewRendersTheFirstPageWithoutFreezingAnything() throws Exception {
         Session owner = seeker();
         JsonNode current = data(mockMvc.perform(post("/api/v1/ai-resume/conversations")
                         .cookie(owner.cookie()).contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"identityType\":\"PROFESSIONAL\",\"title\":\"长内容 PDF 分页验收\"}"))
+                        .content("{\"identityType\":\"PROFESSIONAL\",\"title\":\"导出预览验收\"}"))
+                .andExpect(status().isOk()).andReturn());
+        String conversationId = current.path("id").asText();
+        current = submitCard(owner, conversationId, current, "CONTACT", """
+                {"name":"预览验收","email":"preview@example.com","phone":"13800004444"}
+                """);
+        submitCard(owner, conversationId, current, "EDUCATION", """
+                {"items":[{"school":"预览大学","major":"统计","degree":"本科","startDate":"2019-09","endDate":"2023-06"}]}
+                """);
+        int versionsBefore = data(mockMvc.perform(get("/api/v1/ai-resume/conversations/{id}", conversationId)
+                .cookie(owner.cookie())).andExpect(status().isOk()).andReturn())
+                .path("resume").path("versions").size();
+
+        mockMvc.perform(post("/api/v1/ai-resume/conversations/{id}/export-preview", conversationId)
+                        .cookie(owner.cookie()).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"exportMode\":\"ANONYMOUS\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.pageCount").value(1))
+                .andExpect(jsonPath("$.data.pageLimit").value(2))
+                .andExpect(result -> assertThat(data(result).path("firstPageImage").asText())
+                        .startsWith("data:image/png;base64,"));
+        ResumeRenderPort.RenderRequest request = TestResumeRenderer.last();
+        assertThat(request.format()).isEqualTo("png");
+        assertThat(request.firstPageOnly()).isTrue();
+        assertThat(request.templateId()).isEqualTo("meridian");
+        assertThat(request.content().toString()).contains("预览大学").doesNotContain("预览验收", "preview@example.com");
+
+        TestResumeRenderer.failNext("RENDERER_UNAVAILABLE", true);
+        mockMvc.perform(post("/api/v1/ai-resume/conversations/{id}/export-preview", conversationId)
+                        .cookie(owner.cookie()))
+                .andExpect(status().isBadGateway())
+                .andExpect(jsonPath("$.error.reason").value("RENDERER_UNAVAILABLE"));
+        mockMvc.perform(get("/api/v1/ai-resume/conversations/{id}", conversationId).cookie(owner.cookie()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.resume.versions.length()").value(versionsBefore))
+                .andExpect(jsonPath("$.data.layout.status").value("VALID"));
+        Session stranger = seeker();
+        mockMvc.perform(post("/api/v1/ai-resume/conversations/{id}/export-preview", conversationId)
+                        .cookie(stranger.cookie()))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void pageLimitAndRendererOutagesFailTheExportWithoutAFile() throws Exception {
+        Session owner = seeker();
+        JsonNode current = data(mockMvc.perform(post("/api/v1/ai-resume/conversations")
+                        .cookie(owner.cookie()).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"identityType\":\"PROFESSIONAL\",\"title\":\"页数上限验收\"}"))
                 .andExpect(status().isOk()).andReturn());
         String conversationId = current.path("id").asText();
         current = submitCard(owner, conversationId, current, "TARGET_JOB", """
@@ -601,10 +651,7 @@ class AiResumeWorkbenchIT {
         current = submitCard(owner, conversationId, current, "CONTACT", """
                 {"name":"周明远","email":"zhou@example.com","phone":"13800002222","location":"上海"}
                 """);
-        current = submitCard(owner, conversationId, current, "SUMMARY", """
-                {"text":"专注平台稳定性、工程效率与可追溯交付。"}
-                """);
-        String experience = "负责平台稳定性建设、发布治理与问题复盘，确保结构化事实完整可追溯。 ".repeat(45)
+        String experience = "负责平台稳定性建设、发布治理与问题复盘，确保结构化事实完整可追溯。".repeat(45)
                 + "EXPERIENCE-LONG-END";
         current = submitCard(owner, conversationId, current, "EXPERIENCE",
                 mapper.writeValueAsString(Map.of("items", List.of(Map.of(
@@ -612,9 +659,8 @@ class AiResumeWorkbenchIT {
                         "role", "Senior Platform Engineer",
                         "startDate", "2020-01",
                         "current", true,
-                        "location", "上海",
                         "description", experience)))));
-        String project = "围绕异步任务、冻结快照与 PDF 渲染建立可复核的端到端验收。 ".repeat(22)
+        String project = "围绕异步任务、冻结快照与 PDF 渲染建立可复核的端到端验收。".repeat(22)
                 + "PROJECT-LONG-END";
         submitCard(owner, conversationId, current, "PROJECTS",
                 mapper.writeValueAsString(Map.of("items", List.of(Map.of(
@@ -624,80 +670,53 @@ class AiResumeWorkbenchIT {
                         "endDate", "2025-06",
                         "description", project)))));
 
-        mockMvc.perform(post("/api/v1/ai-resume/conversations/{id}/template", conversationId)
+        // The one-page banking template: rendering finds two pages, so no file is produced.
+        JsonNode selected = data(mockMvc.perform(post("/api/v1/ai-resume/conversations/{id}/template", conversationId)
                         .cookie(owner.cookie()).contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"templateId\":\"rlt-b-tech-double-v1\"}"))
-                .andExpect(status().isOk());
-        JsonNode task = startAndAwaitWorkbenchPdf(owner, conversationId);
-        byte[] pdf = mockMvc.perform(get(task.path("downloadUrl").asText()).cookie(owner.cookie()))
-                .andExpect(status().isOk()).andReturn().getResponse().getContentAsByteArray();
-        try (PDDocument document = Loader.loadPDF(pdf)) {
-            assertThat(document.getNumberOfPages()).isEqualTo(2);
-            assertThat(new PDFTextStripper().getText(document))
-                    .contains("EXPERIENCE-LONG-END", "PROJECT-LONG-END", "第 2 / 2 页");
-            assertThat(inkPixels(new PDFRenderer(document).renderImageWithDPI(1, 72))).isGreaterThan(1_000);
-        }
-
-        mockMvc.perform(post("/api/v1/ai-resume/conversations/{id}/template", conversationId)
-                        .cookie(owner.cookie()).contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"templateId\":\"rlt-b-career-pro-v1\"}"))
+                        .content("{\"templateId\":\"banker\"}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.layout.status").value("VALID"));
-        task = startAndAwaitWorkbenchPdf(owner, conversationId);
-        pdf = mockMvc.perform(get(task.path("downloadUrl").asText()).cookie(owner.cookie()))
+                .andExpect(jsonPath("$.data.activeDesign.settings.pageTarget").value("ONE"))
+                .andReturn());
+        JsonNode failed = startAndAwaitFailedWorkbenchPdf(owner, conversationId);
+        assertThat(failed.path("errorCode").asText()).isEqualTo("RESUME_PAGE_LIMIT_EXCEEDED");
+        assertThat(failed.path("failureReason").asText()).contains("超出 1 页上限");
+        assertThat(failed.path("downloadAvailable").asBoolean()).isFalse();
+        ResumeRenderArtifactEntity failedArtifact = renderArtifacts.findById(failed.path("id").asText()).orElseThrow();
+        assertThat(failedArtifact.getStatus()).isEqualTo("FAILED");
+        assertThat(failedArtifact.getFailureCode()).isEqualTo("RESUME_PAGE_LIMIT_EXCEEDED");
+        assertThat(failedArtifact.getFileId()).isNull();
+
+        ObjectNode twoPages = (ObjectNode) selected.path("activeDesign").path("settings").deepCopy();
+        twoPages.put("pageTarget", "TWO");
+        mockMvc.perform(put("/api/v1/ai-resume/conversations/{id}/design/{templateId}", conversationId,
+                        "banker").cookie(owner.cookie()).contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(Map.of("settings", twoPages,
+                                "expectedVersion", selected.path("activeDesign").path("versionNo").asInt()))))
+                .andExpect(status().isOk());
+        JsonNode succeeded = startAndAwaitWorkbenchPdf(owner, conversationId);
+        assertThat(TestResumeRenderer.last().pageLimit()).isEqualTo(2);
+        assertThat(succeeded.path("result").path("pageCount").asInt()).isEqualTo(2);
+        byte[] pdf = mockMvc.perform(get(succeeded.path("downloadUrl").asText()).cookie(owner.cookie()))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsByteArray();
         try (PDDocument document = Loader.loadPDF(pdf)) {
             assertThat(document.getNumberOfPages()).isEqualTo(2);
-            assertThat(new PDFTextStripper().getText(document))
-                    .contains("EXPERIENCE-LONG-END", "PROJECT-LONG-END", "第 2 / 2 页");
-            assertThat(inkPixels(new PDFRenderer(document).renderImageWithDPI(1, 72))).isGreaterThan(1_000);
+            assertThat(new PDFTextStripper().getText(document).replaceAll("\\s+", ""))
+                    .contains("EXPERIENCE-LONG-END", "PROJECT-LONG-END");
         }
 
-        current = data(mockMvc.perform(get("/api/v1/ai-resume/conversations/{id}", conversationId)
+        // An outage fails the task as retryable; nothing is rendered by another engine.
+        TestResumeRenderer.failNext("RENDERER_UNAVAILABLE", true);
+        JsonNode outage = startAndAwaitFailedWorkbenchPdf(owner, conversationId);
+        assertThat(outage.path("errorCode").asText()).isEqualTo("RENDERER_UNAVAILABLE");
+        assertThat(outage.path("failureReason").asText()).contains("稍后重试");
+        assertThat(outage.path("fileId").isMissingNode()).isTrue();
+        JsonNode retried = data(mockMvc.perform(post("/api/v1/tasks/{id}/retry", outage.path("id").asText())
                         .cookie(owner.cookie()))
                 .andExpect(status().isOk()).andReturn());
-        String compactExperience = "负责平台稳定性建设、发布治理与问题复盘，确保结构化事实完整可追溯。 ".repeat(28)
-                + "EXPERIENCE-COMPACT-END";
-        current = submitCard(owner, conversationId, current, "EXPERIENCE",
-                mapper.writeValueAsString(Map.of("items", List.of(Map.of(
-                        "company", "超长企业技术服务有限公司",
-                        "role", "Senior Platform Engineer",
-                        "startDate", "2020-01",
-                        "current", true,
-                        "location", "上海",
-                        "description", compactExperience)))));
-        String compactProject = "围绕异步任务、冻结快照与 PDF 渲染建立可复核的端到端验收。 ".repeat(12)
-                + "PROJECT-COMPACT-END";
-        submitCard(owner, conversationId, current, "PROJECTS",
-                mapper.writeValueAsString(Map.of("items", List.of(Map.of(
-                        "name", "Enterprise Resume Delivery Platform",
-                        "role", "Technical Lead",
-                        "startDate", "2023-03",
-                        "endDate", "2025-06",
-                        "description", compactProject)))));
-
-        task = startAndAwaitWorkbenchPdf(owner, conversationId);
-        pdf = mockMvc.perform(get(task.path("downloadUrl").asText()).cookie(owner.cookie()))
-                .andExpect(status().isOk()).andReturn().getResponse().getContentAsByteArray();
-        try (PDDocument document = Loader.loadPDF(pdf)) {
-            assertThat(document.getNumberOfPages()).isBetween(1, 2);
-            assertThat(new PDFTextStripper().getText(document))
-                    .contains("EXPERIENCE-COMPACT-END", "PROJECT-COMPACT-END");
-        }
-
-        mockMvc.perform(post("/api/v1/ai-resume/conversations/{id}/template", conversationId)
-                        .cookie(owner.cookie()).contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"templateId\":\"rlt-b-ats-minimal-v1\"}"))
+        await().atMost(Duration.ofSeconds(15)).untilAsserted(() -> mockMvc.perform(
+                        get("/api/v1/tasks/{id}", retried.path("id").asText()).cookie(owner.cookie()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.layout.status").value("VALID"));
-        task = startAndAwaitWorkbenchPdf(owner, conversationId);
-        pdf = mockMvc.perform(get(task.path("downloadUrl").asText()).cookie(owner.cookie()))
-                .andExpect(status().isOk()).andReturn().getResponse().getContentAsByteArray();
-        try (PDDocument document = Loader.loadPDF(pdf)) {
-            assertThat(document.getNumberOfPages()).isBetween(1, 2);
-            assertThat(new PDFTextStripper().getText(document))
-                    .contains("EXPERIENCE-COMPACT-END", "PROJECT-COMPACT-END");
-        }
+                .andExpect(jsonPath("$.data.status").value("SUCCEEDED")));
     }
 
     @Test
@@ -1072,33 +1091,32 @@ class AiResumeWorkbenchIT {
         submitCard(owner, conversationId, current, "SKILLS", """
                 {"items":[{"category":"产品运营","items":["数据分析","用户研究","增长实验"]}]}
                 """);
-        mockMvc.perform(post("/api/v1/ai-resume/conversations/{id}/template", conversationId)
+        JsonNode selected = data(mockMvc.perform(post("/api/v1/ai-resume/conversations/{id}/template", conversationId)
                         .cookie(owner.cookie()).contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"templateId\":\"rlt-b-campus-v1\"}"))
-                .andExpect(status().isOk());
-        JsonNode templates = data(mockMvc.perform(get(
-                        "/api/v1/ai-resume/conversations/{id}/smart-templates", conversationId)
-                        .cookie(owner.cookie()))
+                        .content("{\"templateId\":\"campus\"}"))
                 .andExpect(status().isOk()).andReturn());
-        JsonNode photoPreset = smartTemplate(templates, "rlt-b-campus-v1").path("presets").get(1);
+        ObjectNode settings = (ObjectNode) selected.path("activeDesign").path("settings").deepCopy();
+        settings.putObject("photo").put("mode", "SHOW").put("shape", "ROUNDED");
         mockMvc.perform(put("/api/v1/ai-resume/conversations/{id}/design/{templateId}", conversationId,
-                        "rlt-b-campus-v1").cookie(owner.cookie()).contentType(MediaType.APPLICATION_JSON)
-                        .content(mapper.writeValueAsString(Map.of(
-                                "variantCode", photoPreset.path("variantCode").asText(),
-                                "settings", photoPreset.path("settings"),
-                                "expectedVersion", 0))))
+                        "campus").cookie(owner.cookie()).contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(Map.of("settings", settings,
+                                "expectedVersion", selected.path("activeDesign").path("versionNo").asInt()))))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.settings.photoMode").value("SHOW"));
+                .andExpect(jsonPath("$.data.settings.photo.mode").value("SHOW"));
         mockMvc.perform(get("/api/v1/ai-resume/conversations/{id}", conversationId).cookie(owner.cookie()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.content.photoFileId").value(fileId))
-                .andExpect(jsonPath("$.data.layout.variantCode").value("PHOTO"))
-                .andExpect(jsonPath("$.data.activeDesign.settings.photoMode").value("SHOW"));
+                .andExpect(jsonPath("$.data.layout.design.photo.mode").value("SHOW"))
+                .andExpect(jsonPath("$.data.activeDesign.settings.photo.shape").value("ROUNDED"));
 
         JsonNode task = startAndAwaitWorkbenchPdf(owner, conversationId);
+        ResumeRenderPort.RenderRequest request = TestResumeRenderer.last();
+        assertThat(request.photo()).startsWith("data:image/png;base64,");
+        assertThat(java.util.Base64.getDecoder().decode(request.photo().substring("data:image/png;base64,".length())))
+                .isEqualTo(portraitPng());
+        assertThat(request.content().has("photoFileId")).isFalse();
         byte[] pdf = mockMvc.perform(get(task.path("downloadUrl").asText()).cookie(owner.cookie()))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsByteArray();
-        writePdfQaArtifact("rlt-b-campus-v1", "PHOTO-WITH-PORTRAIT", pdf);
         JsonNode afterExport = data(mockMvc.perform(get(
                         "/api/v1/ai-resume/conversations/{id}", conversationId).cookie(owner.cookie()))
                 .andExpect(status().isOk()).andReturn());
@@ -1108,34 +1126,29 @@ class AiResumeWorkbenchIT {
                         .cookie(owner.cookie()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("FROZEN"))
-                .andExpect(jsonPath("$.data.variantCode").value("PHOTO"))
-                .andExpect(jsonPath("$.data.design.photoMode").value("SHOW"));
+                .andExpect(jsonPath("$.data.design.photo.mode").value("SHOW"));
         try (PDDocument document = Loader.loadPDF(pdf)) {
-            writePdfQaImages("rlt-b-campus-v1", "PHOTO-WITH-PORTRAIT", document);
             assertThat(new PDFTextStripper().getText(document))
                     .contains("照片链路验收", "photo@example.com", "13800003333", "深圳",
-                            "portfolio.example.com/", "产品运营经理", "私有照片",
-                            "匿名验收大学", "星海零售科技", "会员增长平台", "数据分析");
-            assertThat(document.getPage(0).getResources().getXObjectNames()).anySatisfy(name ->
-                    assertThat(document.getPage(0).getResources().getXObject(name))
-                            .isInstanceOf(PDImageXObject.class));
+                            "产品运营经理", "私有照片", "匿名验收大学", "星海零售科技", "会员增长平台", "数据分析");
         }
 
         JsonNode anonymousTask = startAndAwaitWorkbenchPdf(owner, conversationId, "ANONYMOUS");
+        ResumeRenderPort.RenderRequest anonymousRequest = TestResumeRenderer.last();
+        assertThat(anonymousRequest.photo()).isNull();
+        assertThat(anonymousRequest.title()).isEqualTo("匿名简历");
+        assertThat(anonymousRequest.content().toString())
+                .contains("产品运营经理", "匿名验收大学", "星海零售科技")
+                .doesNotContain("照片链路验收", "photo@example.com", "13800003333", "portfolio.example.com");
         byte[] anonymousPdf = mockMvc.perform(get(anonymousTask.path("downloadUrl").asText()).cookie(owner.cookie()))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsByteArray();
-        writePdfQaArtifact("rlt-b-campus-v1", "PHOTO-ANONYMOUS", anonymousPdf);
         try (PDDocument document = Loader.loadPDF(anonymousPdf)) {
-            writePdfQaImages("rlt-b-campus-v1", "PHOTO-ANONYMOUS", document);
             String text = new PDFTextStripper().getText(document);
             assertThat(text)
                     .contains("产品运营经理", "私有照片", "匿名验收大学", "星海零售科技",
                             "会员增长平台", "数据分析")
                     .doesNotContain("照片链路验收", "photo@example.com", "13800003333", "深圳",
                             "portfolio.example.com/");
-            assertThat(document.getPage(0).getResources().getXObjectNames()).noneSatisfy(name ->
-                    assertThat(document.getPage(0).getResources().getXObject(name))
-                            .isInstanceOf(PDImageXObject.class));
         }
 
         JsonNode afterAnonymous = data(mockMvc.perform(get(
@@ -3037,6 +3050,23 @@ class AiResumeWorkbenchIT {
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.error.reason").value("AI_UNSUPPORTED_FACT"));
         assertThat(quota.current(owner.accountId()).remainingUnits()).isEqualTo(beforeQuota);
+    }
+
+    private JsonNode startAndAwaitFailedWorkbenchPdf(Session owner, String conversationId) throws Exception {
+        JsonNode started = data(mockMvc.perform(post("/api/v1/ai-resume/conversations/{id}/export-pdf", conversationId)
+                        .cookie(owner.cookie()))
+                .andExpect(status().isOk())
+                .andReturn());
+        AtomicReference<JsonNode> failed = new AtomicReference<>();
+        await().atMost(Duration.ofSeconds(15)).untilAsserted(() -> {
+            JsonNode task = data(mockMvc.perform(get("/api/v1/tasks/{id}", started.path("id").asText())
+                            .cookie(owner.cookie()))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.status").value("FAILED"))
+                    .andReturn());
+            failed.set(task);
+        });
+        return failed.get();
     }
 
     private JsonNode startAndAwaitWorkbenchPdf(Session owner, String conversationId) throws Exception {

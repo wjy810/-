@@ -5,11 +5,13 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jobproof.modules.resume.domain.ResumeDocumentModel;
 import com.jobproof.modules.resume.domain.ResumeDesignSettings;
+import com.jobproof.modules.resume.domain.ResumeDesignV2;
 import com.jobproof.modules.resume.domain.ResumeLayoutDefinition;
 import com.jobproof.modules.resume.domain.ResumeLayoutProtocol;
 import com.jobproof.modules.resume.domain.ResumeOverflowEngine;
 import com.jobproof.modules.resume.domain.ResumePdfPreflight;
 import com.jobproof.modules.resume.domain.ResumeStructuredContent;
+import com.jobproof.modules.resume.domain.ResumeTemplateManifest;
 import com.jobproof.modules.resume.infra.ResumeLayoutInstanceEntity;
 import com.jobproof.modules.resume.infra.ResumeLayoutInstanceJpaRepository;
 import com.jobproof.modules.resume.infra.ResumeLayoutTemplateEntity;
@@ -40,7 +42,13 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class ResumeTemplateService {
     private static final Set<String> EDITABLE_LAYOUT_STATUSES = Set.of("VALID", "OVERFLOW");
+    /** Built-in templates are measured where they are rendered (preview, renderer); see docs/phase2/03 §3.3. */
+    public static final ResumeOverflowEngine.Report CLIENT_MEASURED = new ResumeOverflowEngine.Report(true, 0, List.of());
+    /** Stored overflow of an editable built-in layout: no server estimate, the renderer decides at export. */
+    public static final String CLIENT_MEASURED_JSON =
+            "{\"valid\":true,\"consumedUnits\":0,\"items\":[],\"source\":\"CLIENT_MEASURED\"}";
 
+    /** The retired resume-layout-v3 drafts. Frozen versions bound to them still export. */
     public static final Set<String> SMART_TEMPLATE_IDS = Set.of(
             "rlt-b-ats-minimal-v1",
             "rlt-b-tech-single-v1",
@@ -88,7 +96,8 @@ public class ResumeTemplateService {
         List<ResumeLayoutTemplateEntity> matched = templates.findAll().stream()
                 .filter(this::isCatalogVisible)
                 .filter(value -> matches(value, query))
-                .sorted(Comparator.comparing(ResumeLayoutTemplateEntity::getDisplayName))
+                .sorted(Comparator.comparingInt(ResumeLayoutTemplateEntity::getSortOrder)
+                        .thenComparing(ResumeLayoutTemplateEntity::getDisplayName))
                 .toList();
         int from = Math.min(query.page() * query.size(), matched.size());
         int to = Math.min(from + query.size(), matched.size());
@@ -103,9 +112,9 @@ public class ResumeTemplateService {
         ResumeLayoutTemplateVersionEntity version = requireSelectableVersion(templateId);
         boolean docxAvailable = docxAvailable(version);
         return new TemplateDetailView(summary(template), version.getId(), version.getRevisionNo(),
-                version.getRendererProtocol(), json(definition(version)), readStrings(template.getVariantsJson()),
+                version.getRendererProtocol(), definitionJson(version), readStrings(template.getVariantsJson()),
                 version.getThumbnailUri(),
-                "ATS_CANDIDATE_LEVEL_UNVERIFIED", docxAvailable,
+                isRenderV4(version) ? "ATS_TEXT_CHECKED_ON_EXPORT" : "ATS_CANDIDATE_LEVEL_UNVERIFIED", docxAvailable,
                 docxAvailable ? null : docxUnavailableReason(version));
     }
 
@@ -114,10 +123,9 @@ public class ResumeTemplateService {
         assertUser(current);
         ResumeMasterEntity master = requireOwnMaster(current.accountId(), command.masterId());
         ResumeLayoutTemplateVersionEntity version = requireSelectableVersion(templateId);
-        ResumeDocumentModel document = documentOf(master);
-        ResumeLayoutDefinition definition = definition(version);
-        ResumeOverflowEngine.Report overflow = ResumePdfPreflight.evaluate(
-                document, definition, command.variantCode(), version.getRendererProtocol());
+        ResumeOverflowEngine.Report overflow = isRenderV4(version) ? CLIENT_MEASURED
+                : ResumePdfPreflight.evaluate(documentOf(master), definition(version), command.variantCode(),
+                        version.getRendererProtocol());
         boolean docxAvailable = docxAvailable(version);
         return new PreviewView(templateId, version.getId(), command.variantCode(), overflow,
                 readStrings(templates.getReferenceById(templateId).getVariantsJson()).contains(command.variantCode()),
@@ -130,7 +138,6 @@ public class ResumeTemplateService {
         ResumeMasterEntity master = requireOwnMaster(current.accountId(), command.masterId());
         ResumeLayoutTemplateVersionEntity version = requireSelectableVersion(templateId);
         assertVariant(templateId, command.variantCode());
-        ResumeLayoutDefinition resolvedDefinition = definition(version);
         ResumeLayoutInstanceEntity layout = editableLayout(current.accountId(), master.getId()).orElse(null);
         String priorTemplateId = layout == null ? null : templateIdOf(layout);
         Instant now = clock.now();
@@ -142,8 +149,27 @@ public class ResumeTemplateService {
             Versions.assertExpected(command.expectedVersion(), layout.getVersionNo());
             layout.setVersionNo(layout.getVersionNo() + 1);
         }
+        String priorDesign = layout.getDesignJson();
+        ResumeLayoutTemplateVersionEntity priorVersion = layout.getTemplateVersionId() == null ? null
+                : templateVersions.findById(layout.getTemplateVersionId()).orElse(null);
         layout.setTemplateVersionId(version.getId()); layout.setVariantCode(command.variantCode());
-        if (layout.getDesignJson() == null || !templateId.equals(priorTemplateId)) {
+        if (isRenderV4(version)) {
+            ResumeTemplateManifest manifest = manifestOf(version);
+            ResumeDesignV2 design = priorDesign != null && templateId.equals(priorTemplateId)
+                    && ResumeDesignV2.SCHEMA.equals(layout.getDesignSchemaVersion())
+                    ? ResumeDesignV2.coerce(manifest, readTree(priorDesign))
+                    : ResumeDesignV2.carryOver(manifest, readTree(priorDesign),
+                            priorVersion != null && isRenderV4(priorVersion) ? manifestOf(priorVersion) : null);
+            layout.setDesignSchemaVersion(ResumeDesignV2.SCHEMA);
+            layout.setDesignJson(json(design));
+            layout.setStatus("VALID"); layout.setOverflowJson(CLIENT_MEASURED_JSON);
+            layout.setContentVersionId(null); layout.setContentSnapshotJson(null); layout.setTemplateSnapshotJson(null);
+            layout.setUpdatedAt(now); layouts.save(layout);
+            return view(layout);
+        }
+        ResumeLayoutDefinition resolvedDefinition = definition(version);
+        if (layout.getDesignJson() == null || !templateId.equals(priorTemplateId)
+                || !ResumeDesignSettings.SCHEMA.equals(layout.getDesignSchemaVersion())) {
             ResumeLayoutTemplateEntity template = templates.getReferenceById(templateId);
             layout.setDesignSchemaVersion(ResumeDesignSettings.SCHEMA);
             layout.setDesignJson(json(ResumeDesignSettings.defaults(
@@ -176,6 +202,23 @@ public class ResumeTemplateService {
         ResumeLayoutTemplateEntity template = templates.findById(version.getTemplateId())
                 .orElseThrow(() -> AppException.conflict(
                         "RESUME_TEMPLATE_NOT_FOUND", "当前版式绑定的模板不存在"));
+        if (isRenderV4(version)) {
+            ResumeDesignV2 design;
+            try {
+                design = ResumeDesignV2.validate(manifestOf(version), settings);
+            } catch (IllegalArgumentException exception) {
+                throw AppException.user("RESUME_DESIGN_INVALID", exception.getMessage());
+            }
+            layout.setBranchId(branchId);
+            layout.setDesignSchemaVersion(ResumeDesignV2.SCHEMA);
+            layout.setDesignJson(json(design));
+            layout.setStatus("VALID");
+            layout.setOverflowJson(CLIENT_MEASURED_JSON);
+            if (bumpVersion) layout.setVersionNo(layout.getVersionNo() + 1);
+            layout.setUpdatedAt(clock.now());
+            layouts.save(layout);
+            return view(layout);
+        }
         ResumeLayoutDefinition base = definition(version);
         ResumeDesignSettings design;
         try {
@@ -237,7 +280,9 @@ public class ResumeTemplateService {
                 : resumeService.startPdfExport(current, layout.getContentVersionId());
     }
 
+    /** Built-in templates always offer the generic ATS Word file; legacy drafts need every gate. */
     private static boolean docxAvailable(ResumeLayoutTemplateVersionEntity version) {
+        if (version != null && isRenderV4(version)) return "PUBLISHED".equals(version.getStatus());
         return version != null
                 && DOCX_TEMPLATE_IDS.contains(version.getTemplateId())
                 && "PUBLISHED".equals(version.getStatus())
@@ -250,6 +295,7 @@ public class ResumeTemplateService {
     }
 
     private static String docxUnavailableReason(ResumeLayoutTemplateVersionEntity version) {
+        if (version != null && isRenderV4(version)) return "DOCX_TEMPLATE_NOT_PUBLISHED";
         if (version == null || !DOCX_TEMPLATE_IDS.contains(version.getTemplateId()))
             return "DOCX_TEMPLATE_NOT_ENABLED";
         if (!"PUBLISHED".equals(version.getStatus())) return "DOCX_TEMPLATE_NOT_PUBLISHED";
@@ -263,7 +309,7 @@ public class ResumeTemplateService {
                 value.getPhotoPolicy(), readStrings(value.getVariantsJson()), readStrings(value.getTagsJson()),
                 isDemoTemplate(value) ? "DEMO" : value.getStatus(),
                 previewVersion == null ? null : previewVersion.getRendererProtocol(),
-                previewVersion == null ? null : json(definition(previewVersion)),
+                previewVersion == null ? null : definitionJson(previewVersion),
                 previewVersion == null ? null : previewVersion.getThumbnailUri());
     }
 
@@ -286,6 +332,7 @@ public class ResumeTemplateService {
         ResumeLayoutTemplateVersionEntity version = templateVersions.findById(value.getTemplateVersionId())
                 .orElseThrow(() -> AppException.conflict(
                         "RESUME_TEMPLATE_VERSION_NOT_FOUND", "当前版式绑定的模板版本不存在"));
+        if (isRenderV4(version)) return view(value);
         ResumeLayoutDefinition base = definition(version);
         ResumeLayoutTemplateEntity template = templates.findById(version.getTemplateId()).orElse(null);
         ResumeDesignSettings design = ResumeDesignSettings.fromJson(readTree(value.getDesignJson()), base,
@@ -307,7 +354,7 @@ public class ResumeTemplateService {
                 template == null ? null : template.getDisplayName(),
                 value.getVariantCode(),
                 version == null ? null : version.getRendererProtocol(),
-                version == null ? null : json(definition(version)),
+                version == null ? null : definitionJson(version),
                 readTree(value.getDesignJson()),
                 status,
                 overflow,
@@ -428,6 +475,27 @@ public class ResumeTemplateService {
         } catch (JsonProcessingException | IllegalArgumentException exception) {
             throw AppException.conflict("RESUME_TEMPLATE_DEFINITION_INVALID", "模板版式定义无法读取");
         }
+    }
+
+    /** The definition clients receive: the v3 layout (normalized) or the v4 template manifest. */
+    private String definitionJson(ResumeLayoutTemplateVersionEntity version) {
+        if (isRenderV4(version)) {
+            manifestOf(version);
+            return version.getDefinitionJson();
+        }
+        return json(definition(version));
+    }
+
+    private ResumeTemplateManifest manifestOf(ResumeLayoutTemplateVersionEntity version) {
+        try {
+            return ResumeTemplateManifest.parse(mapper, version.getDefinitionJson());
+        } catch (IllegalArgumentException exception) {
+            throw AppException.conflict("RESUME_TEMPLATE_DEFINITION_INVALID", "模板定义无法读取");
+        }
+    }
+
+    private static boolean isRenderV4(ResumeLayoutTemplateVersionEntity version) {
+        return ResumeLayoutProtocol.isRenderV4(version.getRendererProtocol());
     }
 
     private List<String> readStrings(String json) {

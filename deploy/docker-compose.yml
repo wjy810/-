@@ -53,6 +53,25 @@ services:
     security_opt:
       - no-new-privileges:true
 
+  renderer:
+    build:
+      context: ..
+      dockerfile: renderer/Dockerfile
+    restart: unless-stopped
+    environment:
+      RENDERER_TOKEN: ${JOBPROOF_RENDERER_TOKEN}
+    # Internal only: no published port; it fetches nothing outside its own static print pages.
+    shm_size: 256m
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3100/readyz').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 20s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    mem_limit: 640m
+    security_opt:
+      - no-new-privileges:true
+
   app:
     build:
       context: ../backend
@@ -64,7 +83,8 @@ services:
       JOBPROOF_REDIS_HOST: redis
       JOBPROOF_MINIO_ENDPOINT: http://minio:9000
       JOBPROOF_TEMPLATE_MALWARE_SCAN_HOST: clamav
-      JOBPROOF_TEMPLATES_DEMO_ENABLED: "true"
+      JOBPROOF_RENDERER_URL: http://renderer:3100
+      JOBPROOF_RENDERER_TOKEN: ${JOBPROOF_RENDERER_TOKEN}
     volumes:
       - ./data:/var/lib/jobproof
     tmpfs:
@@ -76,6 +96,9 @@ services:
         condition: service_healthy
       clamav:
         condition: service_healthy
+      # Startup order only: a renderer outage affects exports, not the rest of the app.
+      renderer:
+        condition: service_started
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/actuator/health"]
       interval: 20s

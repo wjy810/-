@@ -33,6 +33,7 @@ import com.jobproof.modules.airesume.application.AiResumeWorkbenchService.Writin
 import com.jobproof.modules.airesume.application.AiResumeWorkbenchService.CareerEvidencePreferenceView;
 import com.jobproof.modules.airesume.application.AiResumeWorkbenchService.DesignPreferenceView;
 import com.jobproof.modules.airesume.application.AiResumeWorkbenchService.SmartTemplateView;
+import com.jobproof.modules.resume.application.ResumeExportPreviewService;
 import com.jobproof.modules.resume.domain.ResumePdfExportMode;
 import com.jobproof.modules.task.application.TaskView;
 import jakarta.validation.Valid;
@@ -73,6 +74,7 @@ public class AiResumeWorkbenchController {
     private final AiResumeSseService events;
     private final AiQuotaService quota;
     private final ObjectMapper mapper;
+    private final ResumeExportPreviewService exportPreview;
 
     public AiResumeWorkbenchController(AiResumeWorkbenchService workbench,
             AiResumeChangeSetService changeSets,
@@ -82,7 +84,7 @@ public class AiResumeWorkbenchController {
             AiResumeCredentialRecommendationService credentialRecommendations,
             AiResumeSkillSuggestionService skillSuggestions,
             AiResumeSummarySuggestionService summarySuggestions, AiResumeSseService events,
-            AiQuotaService quota, ObjectMapper mapper) {
+            AiQuotaService quota, ObjectMapper mapper, ResumeExportPreviewService exportPreview) {
         this.workbench = workbench;
         this.changeSets = changeSets;
         this.descriptionSuggestions = descriptionSuggestions;
@@ -94,6 +96,7 @@ public class AiResumeWorkbenchController {
         this.events = events;
         this.quota = quota;
         this.mapper = mapper;
+        this.exportPreview = exportPreview;
     }
 
     @PostMapping("/conversations")
@@ -209,6 +212,15 @@ public class AiResumeWorkbenchController {
             @RequestBody(required = false) ExportPdfRequest request) {
         ResumePdfExportMode mode = ResumePdfExportMode.parse(request == null ? null : request.exportMode());
         return ApiResponse.ok(workbench.exportPdf(SecurityConfig.currentAccount(), conversationId, mode));
+    }
+
+    /** First page of the PDF an export would produce, from the renderer service; nothing is stored. */
+    @PostMapping("/conversations/{conversationId}/export-preview")
+    public ApiResponse<ResumeExportPreviewService.PreviewView> exportPreview(@PathVariable String conversationId,
+            @RequestBody(required = false) ExportPdfRequest request) {
+        ResumePdfExportMode mode = ResumePdfExportMode.parse(request == null ? null : request.exportMode());
+        var current = SecurityConfig.currentAccount();
+        return ApiResponse.ok(exportPreview.preview(current.accountId(), workbench.masterId(current, conversationId), mode));
     }
 
     @PostMapping("/conversations/{conversationId}/messages")

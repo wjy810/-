@@ -43,7 +43,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
-@SpringBootTest
+@SpringBootTest(properties = "jobproof.templates.builtin.retire-legacy=false")
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 class ResumeTemplateCenterIT {
@@ -83,10 +83,19 @@ class ResumeTemplateCenterIT {
                 .andExpect(jsonPath("$.data.total").value(1))
                 .andExpect(jsonPath("$.data.items[0].id").value(TEMPLATE_ID))
                 .andExpect(jsonPath("$.data.items[0].status").value("DEMO"));
-        mockMvc.perform(get("/api/v1/resume-templates").cookie(owner).queryParam("language", "en"))
+        mockMvc.perform(get("/api/v1/resume-templates").cookie(owner).queryParam("language", "en")
+                        .queryParam("atsLevel", "HIGH_UNVERIFIED"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.total").value(1))
                 .andExpect(jsonPath("$.data.items[0].id").value("rlt-b-english-single-v1"));
+        // The built-in English template is published, not a demo draft.
+        mockMvc.perform(get("/api/v1/resume-templates").cookie(owner).queryParam("language", "en")
+                        .queryParam("atsLevel", "HIGH"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.total").value(1))
+                .andExpect(jsonPath("$.data.items[0].id").value("harvard"))
+                .andExpect(jsonPath("$.data.items[0].status").value("PUBLISHED"))
+                .andExpect(jsonPath("$.data.items[0].rendererProtocol").value("resume-render-v4"));
 
         JsonNode master = createBlankResume(owner, "模板冻结链路");
         Map<String, Object> update = new LinkedHashMap<>();

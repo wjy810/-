@@ -18,6 +18,8 @@ import com.jobproof.modules.resume.domain.ResumeImportHeuristic;
 import com.jobproof.modules.resume.domain.ResumeMasterPolicy;
 import com.jobproof.modules.resume.domain.ResumeMasterStatus;
 import com.jobproof.modules.resume.domain.ResumePdfExportMode;
+import com.jobproof.modules.resume.domain.ResumeAtsTextCheck;
+import com.jobproof.modules.resume.domain.ResumeLayoutProtocol;
 import com.jobproof.modules.resume.domain.ResumePdfRenderer;
 import com.jobproof.modules.resume.domain.ResumeTaskTypes;
 import com.jobproof.modules.resume.domain.ResumeTemplateCode;
@@ -51,6 +53,7 @@ import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
+import java.util.Optional;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -579,18 +582,12 @@ public class ResumeService implements DeletionModuleHandler, AccountExportContri
                 payload);
     }
 
+    /**
+     * Step 1 of a PDF export (docs/phase2/03 §5.4). Built-in HTML templates return a job for the
+     * renderer service, which runs outside any transaction; legacy layouts render here with PDFBox.
+     */
     @Transactional
-    public void completePdfExport(
-            String taskId,
-            String accountId,
-            String resumeVersionId,
-            String requestedRendererVersion) {
-        completePdfExport(taskId, accountId, resumeVersionId, requestedRendererVersion,
-                ResumePdfExportMode.STANDARD);
-    }
-
-    @Transactional
-    public void completePdfExport(
+    public Optional<HtmlPdfJob> preparePdfExport(
             String taskId,
             String accountId,
             String resumeVersionId,
@@ -598,20 +595,24 @@ public class ResumeService implements DeletionModuleHandler, AccountExportContri
             ResumePdfExportMode exportMode) {
         ResumePdfExportMode mode = exportMode == null ? ResumePdfExportMode.STANDARD : exportMode;
         if (!taskService.stillRunning(taskId)) {
-            return;
+            return Optional.empty();
         }
         if (!ResumePdfRenderer.VERSION.equals(requestedRendererVersion)) {
             taskService.markFailed(taskId, "PDF 渲染器版本已过期，请重新发起导出");
-            return;
+            return Optional.empty();
         }
         ResumeVersionEntity version = requireOwnVersion(accountId, resumeVersionId);
         if (!ResumeVersionStatus.parse(version.getStatus()).pdfExportable()) {
             taskService.markFailed(taskId, "版本已不是可导出状态");
-            return;
+            return Optional.empty();
         }
         String pdfTitle = readSnapshotTitle(version.getSnapshotJson());
         ResumeLayoutCoordinator.RenderContext renderContext = layoutCoordinator.renderContext(accountId, version)
                 .orElse(null);
+        if (renderContext != null && renderContext.html() != null) {
+            taskService.updateProgress(taskId, 20, "RENDER_PREPARED");
+            return Optional.of(new HtmlPdfJob(taskId, accountId, version.getId(), mode, pdfTitle, renderContext));
+        }
         byte[] pdf = renderContext == null
                 ? ResumePdfRenderer.render(pdfTitle, readSnapshotBody(version.getSnapshotJson()))
                 : ResumePdfRenderer.render(
@@ -631,6 +632,82 @@ public class ResumeService implements DeletionModuleHandler, AccountExportContri
                 "exportMode", mode.name(),
                 "fileId", fileId,
                 "fileHash", fileHash)));
+        return Optional.empty();
+    }
+
+    /** Render input for the export preview of a resume's current layout; nothing is frozen or stored. */
+    @Transactional(readOnly = true)
+    public Optional<HtmlPdfJob> exportPreview(String accountId, String masterId, ResumePdfExportMode exportMode) {
+        ResumePdfExportMode mode = exportMode == null ? ResumePdfExportMode.STANDARD : exportMode;
+        ResumeMasterEntity master = requireOwnMaster(accountId, masterId);
+        String snapshot = writeJson(exportSnapshot(master, mode));
+        return layoutCoordinator.previewContext(accountId, masterId, snapshot)
+                .map(context -> new HtmlPdfJob(null, accountId, null, mode, readSnapshotTitle(snapshot), context));
+    }
+
+    /** Step 3 of an HTML-template export: store the rendered PDF and its checks. */
+    @Transactional
+    public void completeHtmlPdfExport(HtmlPdfJob job, ResumeRenderPort.RenderedDocument pdf,
+            ResumeAtsTextCheck.Result ats) {
+        if (!taskService.stillRunning(job.taskId())) return;
+        String fileId = storePdf(job.accountId(), job.resumeVersionId(), job.mode(), pdf.body());
+        String fileHash = sha256(pdf.body());
+        Map<String, Object> validation = new LinkedHashMap<>();
+        validation.put("pdfMagic", hasPdfMagic(pdf.body()));
+        validation.put("exportMode", job.mode().name());
+        validation.put("byteLength", pdf.body().length);
+        validation.put("pageCount", pdf.pageCount());
+        validation.put("pageLimit", job.context().html().pageLimit());
+        validation.put("renderMs", pdf.renderMs());
+        validation.put("ats", ats);
+        Instant now = clock.now();
+        ResumeRenderArtifactEntity artifact = new ResumeRenderArtifactEntity();
+        artifact.setId(job.taskId());
+        artifact.setAccountId(job.accountId());
+        artifact.setLayoutInstanceId(job.context().layoutInstanceId());
+        artifact.setFormat("PDF");
+        artifact.setStatus("SUCCEEDED");
+        artifact.setRendererVersion(ResumeLayoutProtocol.V4);
+        artifact.setContentVersionId(job.resumeVersionId());
+        artifact.setTemplateVersionId(job.context().templateVersionId());
+        artifact.setFileId(fileId);
+        artifact.setFileHash(fileHash);
+        artifact.setValidationJson(writeJson(validation));
+        artifact.setCreatedAt(now);
+        artifact.setUpdatedAt(now);
+        renderArtifacts.save(artifact);
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("resumeVersionId", job.resumeVersionId());
+        result.put("rendererVersion", ResumeLayoutProtocol.V4);
+        result.put("exportMode", job.mode().name());
+        result.put("fileId", fileId);
+        result.put("fileHash", fileHash);
+        result.put("pageCount", pdf.pageCount());
+        result.put("atsCheck", ats);
+        taskService.markSucceeded(job.taskId(), ResumeLayoutProtocol.V4, writeJson(result));
+    }
+
+    /** An HTML-template export that produced no file: keep the reason next to the task. */
+    @Transactional
+    public void failHtmlPdfExport(HtmlPdfJob job, String code, String reason, Map<String, Object> details) {
+        if (!taskService.stillRunning(job.taskId())) return;
+        Instant now = clock.now();
+        ResumeRenderArtifactEntity artifact = new ResumeRenderArtifactEntity();
+        artifact.setId(job.taskId());
+        artifact.setAccountId(job.accountId());
+        artifact.setLayoutInstanceId(job.context().layoutInstanceId());
+        artifact.setFormat("PDF");
+        artifact.setStatus("FAILED");
+        artifact.setRendererVersion(ResumeLayoutProtocol.V4);
+        artifact.setContentVersionId(job.resumeVersionId());
+        artifact.setTemplateVersionId(job.context().templateVersionId());
+        artifact.setValidationJson(writeJson(details == null ? Map.of() : details));
+        artifact.setFailureCode(code);
+        artifact.setFailureMessage(reason.length() > 1000 ? reason.substring(0, 1000) : reason);
+        artifact.setCreatedAt(now);
+        artifact.setUpdatedAt(now);
+        renderArtifacts.save(artifact);
+        taskService.markFailed(job.taskId(), code, reason);
     }
 
     @Transactional
@@ -680,7 +757,7 @@ public class ResumeService implements DeletionModuleHandler, AccountExportContri
                 context.document(),
                 context.definition(),
                 context.variantCode(),
-                context.rendererProtocol(),
+                context.definitionProtocol(),
                 context.templateId());
         ResumeDocxRenderer.Inspection inspection = ResumeDocxRenderer.inspect(
                 docx, title, context.document(), context.definition());
@@ -1371,6 +1448,10 @@ public class ResumeService implements DeletionModuleHandler, AccountExportContri
 
     private record PendingAi(boolean any, List<String> ids) {
     }
+
+    /** A PDF export waiting for the renderer service; holds no entities. */
+    public record HtmlPdfJob(String taskId, String accountId, String resumeVersionId, ResumePdfExportMode mode,
+            String title, ResumeLayoutCoordinator.RenderContext context) {}
 
     public record CreateCommand(String mode, String title, String templateCode, String importText) {
     }

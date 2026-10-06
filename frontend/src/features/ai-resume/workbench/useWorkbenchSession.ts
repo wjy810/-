@@ -52,8 +52,14 @@ export function useWorkbenchSession(conversationId: () => string) {
   const aiUsable = computed(() => Boolean(conversation.value?.aiAvailable) && conversation.value?.consent.status === 'GRANTED')
   const quota = computed(() => conversation.value?.quota ?? null)
 
-  function notify(message: string): void {
-    if (!disposed) toast.success(message, { dedupeKey: NOTICE_KEY })
+  /** A success notice; `action` adds a button (e.g. undo) and keeps the notice up for `timeoutMs`. */
+  function notify(message: string, action?: { label: string; run: () => unknown; timeoutMs?: number }): void {
+    if (disposed) return
+    toast.success(message, {
+      dedupeKey: NOTICE_KEY,
+      duration: action?.timeoutMs,
+      action: action ? { label: action.label, onClick: () => { void action.run() } } : undefined,
+    })
   }
 
   function fail(message: string): void {

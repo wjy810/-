@@ -1,4 +1,5 @@
-import type { ResumeCandidateView, ResumeDesignSettings, ResumeLayoutView, ResumeMasterView } from '@/features/resume/types'
+import type { ResumeCandidateView, ResumeLayoutView, ResumeMasterView } from '@/features/resume/types'
+import type { ResumeDesignV2 } from '@/resume-render/theme/design'
 
 export type AiIdentity = 'STUDENT' | 'GRADUATE' | 'PROFESSIONAL'
 export type AiResumePdfExportMode = 'STANDARD' | 'ANONYMOUS'
@@ -307,15 +308,16 @@ export type AiResumeDesignPreference = {
   id?: string | null
   templateId: string
   variantCode: string
-  settings: ResumeDesignSettings
+  settings: ResumeDesignV2
   versionNo: number
   updatedAt?: string | null
 }
 
+/** Presets belonged to the retired v3 templates; built-in templates expose palettes in their manifest. */
 export type AiResumeDesignPreset = {
   variantCode: string
   displayName: string
-  settings: ResumeDesignSettings
+  settings: Record<string, unknown>
 }
 
 export type AiSmartTemplate = {

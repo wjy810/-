@@ -23,7 +23,9 @@ public record TaskView(
         Instant updatedAt,
         @JsonInclude(JsonInclude.Include.NON_NULL) String fileId,
         boolean downloadAvailable,
-        @JsonInclude(JsonInclude.Include.NON_NULL) String downloadUrl) {
+        @JsonInclude(JsonInclude.Include.NON_NULL) String downloadUrl,
+        /** Export outcome a user may see: page count and the ATS text check. Never the raw payload. */
+        @JsonInclude(JsonInclude.Include.NON_NULL) JsonNode result) {
 
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final String FILES_DOWNLOAD_PREFIX = "/api/v1/files/";
@@ -47,7 +49,23 @@ public record TaskView(
                 entity.getUpdatedAt(),
                 fileId,
                 downloadAvailable,
-                downloadUrl);
+                downloadUrl,
+                extractResult(entity));
+    }
+
+    static JsonNode extractResult(AsyncTaskEntity entity) {
+        if (entity == null || !TaskStatus.SUCCEEDED.name().equals(entity.getStatus())) return null;
+        String payload = entity.getPayloadJson();
+        if (payload == null || payload.isBlank()) return null;
+        try {
+            JsonNode node = JSON.readTree(payload);
+            com.fasterxml.jackson.databind.node.ObjectNode result = JSON.createObjectNode();
+            if (node.path("pageCount").isInt()) result.put("pageCount", node.path("pageCount").asInt());
+            if (node.path("atsCheck").isObject()) result.set("atsCheck", node.path("atsCheck"));
+            return result.isEmpty() ? null : result;
+        } catch (Exception ignored) {
+            return null;
+        }
     }
 
     public TaskStatus statusEnum() {

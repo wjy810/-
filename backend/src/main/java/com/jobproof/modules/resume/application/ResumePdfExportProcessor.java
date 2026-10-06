@@ -19,11 +19,14 @@ public class ResumePdfExportProcessor {
     private final TaskService taskService;
     private final ResumeService resumeService;
     private final ObjectMapper objectMapper;
+    private final ResumeHtmlPdfExporter htmlExporter;
 
-    public ResumePdfExportProcessor(TaskService taskService, ResumeService resumeService, ObjectMapper objectMapper) {
+    public ResumePdfExportProcessor(TaskService taskService, ResumeService resumeService, ObjectMapper objectMapper,
+            ResumeHtmlPdfExporter htmlExporter) {
         this.taskService = taskService;
         this.resumeService = resumeService;
         this.objectMapper = objectMapper;
+        this.htmlExporter = htmlExporter;
     }
 
     public void processDue() {
@@ -38,12 +41,14 @@ public class ResumePdfExportProcessor {
                 taskService.markFailed(task.getId(), "PDF 渲染器版本已过期，请重新发起导出");
                 return;
             }
-            resumeService.completePdfExport(
+            // Prepare and persist run in their own transactions; rendering holds none (docs/phase2/03 §5.4).
+            resumeService.preparePdfExport(
                     task.getId(),
                     task.getAccountId(),
                     payload.path("resumeVersionId").asText(),
                     rendererVersion,
-                    ResumePdfExportMode.parse(payload.path("exportMode").asText(null)));
+                    ResumePdfExportMode.parse(payload.path("exportMode").asText(null)))
+                    .ifPresent(htmlExporter::export);
         } catch (Exception e) {
             log.warn("resume pdf export failed taskId={}", task.getId(), e);
             taskService.markFailed(task.getId(), "PDF 导出失败，可手动重试");

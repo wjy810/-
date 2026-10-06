@@ -4,42 +4,65 @@ import { Check, LoaderCircle } from 'lucide-vue-next'
 import UiSegmented from '@/shared/ui/UiSegmented.vue'
 import UiSkeleton from '@/shared/ui/UiSkeleton.vue'
 import { useScrollSurface } from '@/shared/composables/useScrollSurface'
-import ResumeTemplatePreview from '@/features/resume/components/ResumeTemplatePreview.vue'
+import TemplateThumbnail from '@/resume-render/components/TemplateThumbnail.vue'
+import { sampleFor } from '@/resume-render/samples'
+import type { TemplateCategory, TemplateManifest } from '@/resume-render/templates/manifest'
+import { manifestOf } from '@/resume-render/templates/manifests'
 import type { AiSmartTemplate } from '../../types'
 import { useWorkbench } from '../useWorkbench'
 
-type Filter = 'all' | 'single' | 'multi' | 'english'
+type Filter = 'all' | TemplateCategory
+
+const CATEGORY_LABELS: Record<TemplateCategory, string> = { steady: '稳健', modern: '现代', design: '设计感', industry: '行业' }
 
 const wb = useWorkbench()
 const design = wb.design
-const templates = wb.session.templates
 const filter = ref<Filter>('all')
 const scroller = ref<HTMLElement | null>(null)
 const surface = useScrollSurface(scroller)
 
-function matches(template: AiSmartTemplate, value: Filter): boolean {
-  if (value === 'single') return template.recommendedPages === '1'
-  if (value === 'multi') return template.recommendedPages !== '1'
-  if (value === 'english') return template.languageCode.toLowerCase().startsWith('en')
-  return true
+/** Server list (availability, saved design) joined with this build's manifests (layout code). */
+const templates = computed(() => wb.session.templates.value
+  .map(template => ({ template, manifest: manifestOf(template.templateId) }))
+  .filter((entry): entry is { template: AiSmartTemplate; manifest: TemplateManifest } => Boolean(entry.manifest)))
+
+const filters = computed(() => (['all', 'steady', 'modern', 'design', 'industry'] as const).map(value => ({
+  value,
+  label: value === 'all' ? '全部' : CATEGORY_LABELS[value],
+  count: templates.value.filter(entry => value === 'all' || entry.manifest.category === value).length,
+})))
+const visible = computed(() => templates.value.filter(entry => filter.value === 'all' || entry.manifest.category === filter.value))
+const activeId = computed(() => design.activeTemplate.value?.templateId)
+
+/** Thumbnails show the user's own resume once it has a name and some content; before that, a sample. */
+const ownContent = computed(() => {
+  const content = wb.previewContent.value
+  const basics = (content.basics ?? {}) as Record<string, unknown>
+  const filled = ['experiences', 'education', 'projects'].some(key => Array.isArray(content[key]) && (content[key] as unknown[]).length > 0)
+  return typeof basics.name === 'string' && basics.name.trim() && filled ? content : null
+})
+function contentFor(manifest: TemplateManifest): unknown {
+  return ownContent.value ?? sampleFor(manifest.locale, manifest.id === 'campus' ? 'campus' : undefined)
 }
 
-const filters = computed(() => ([
-  { value: 'all', label: '全部' },
-  { value: 'single', label: '单页' },
-  { value: 'multi', label: '多页' },
-  { value: 'english', label: '英文' },
-] as const).map(item => ({ ...item, count: templates.value.filter(template => matches(template, item.value)).length })))
-const visible = computed(() => templates.value.filter(template => matches(template, filter.value)))
-const activeId = computed(() => design.activeTemplate.value?.templateId)
+function tags(manifest: TemplateManifest): string[] {
+  const result = [manifest.maxPages === 1 ? '单页' : `最多 ${manifest.maxPages} 页`]
+  if (manifest.photo === 'optional') result.push('可放照片')
+  if (manifest.locale === 'en') result.push('英文')
+  if (manifest.atsLevel === 'strict') result.push('ATS 友好')
+  return result
+}
 </script>
 
 <template>
   <div class="template-view scroll-edges" :class="{ 'can-scroll-up': surface.edges.canScrollUp, 'can-scroll-down': surface.edges.canScrollDown }">
     <div ref="scroller" class="template-view__scroll" @scroll.passive="surface.onScroll">
       <header class="template-view__head">
-        <div class="template-view__title"><strong>{{ templates.length || 12 }} 款智能模板</strong><span>同一份结构化内容，一键换版；设计设置按模板分别记忆</span></div>
-        <UiSegmented v-model="filter" :items="filters" aria-label="筛选模板" size="sm" />
+        <div class="template-view__title">
+          <strong>{{ templates.length }} 款模板</strong>
+          <span>同一份内容一键换版；字号、间距等通用设置随你走，配色与版式按模板记忆{{ ownContent ? '' : ' · 缩略图为示例内容' }}</span>
+        </div>
+        <UiSegmented v-model="filter" :items="filters" aria-label="按风格筛选模板" size="sm" />
       </header>
 
       <div v-if="wb.session.templatesPending.value && !templates.length" class="template-gallery" aria-busy="true">
@@ -48,30 +71,34 @@ const activeId = computed(() => design.activeTemplate.value?.templateId)
 
       <div v-else class="template-gallery">
         <button
-          v-for="template in visible"
+          v-for="{ template, manifest } in visible"
           :key="template.templateId"
           type="button"
           class="template-card"
           :aria-pressed="activeId === template.templateId"
           :disabled="design.templatePending.value"
+          :title="`适合：${manifest.bestFor}`"
           @click="design.changeTemplate(template.templateId)"
         >
           <span class="template-card__thumb">
-            <ResumeTemplatePreview
-              :resume="wb.previewResume.value"
-              :content="wb.previewContent.value"
-              :design="template.design.settings"
+            <TemplateThumbnail
               :template-id="template.templateId"
-              :layout-definition-json="template.layoutDefinitionJson"
-              :renderer-protocol="template.rendererProtocol"
-              :variant-code="template.design.variantCode"
-              compact
+              :content="contentFor(manifest)"
+              :design="template.design.settings"
+              :photo="ownContent ? wb.session.conversation.value?.photo?.contentUrl ?? null : null"
+              :label="`${manifest.name}模板缩略图`"
             />
             <span v-if="design.switchingTemplateId.value === template.templateId" class="template-card__busy"><LoaderCircle :size="22" aria-hidden="true" />正在换版</span>
           </span>
           <span class="template-card__meta">
-            <strong>{{ template.displayName }}</strong>
-            <small>{{ template.recommendedPages }} 页 · {{ template.languageCode }}</small>
+            <span class="template-card__name"><strong>{{ manifest.name }}</strong><em>{{ manifest.nameEn }}</em></span>
+            <small class="template-card__summary">{{ manifest.summary }}</small>
+            <span class="template-card__foot">
+              <span class="template-card__palettes" aria-hidden="true">
+                <i v-for="palette in manifest.palettes" :key="palette.id" :style="{ background: palette.accent }" />
+              </span>
+              <small>{{ tags(manifest).join(' · ') }}</small>
+            </span>
           </span>
           <span v-if="activeId === template.templateId" class="template-card__check"><Check :size="13" :stroke-width="3" aria-hidden="true" />当前</span>
         </button>
@@ -119,7 +146,7 @@ const activeId = computed(() => design.activeTemplate.value?.templateId)
 
 .template-gallery {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
   gap: var(--space-3);
 }
 
@@ -168,14 +195,6 @@ const activeId = computed(() => design.activeTemplate.value?.templateId)
   pointer-events: none;
 }
 
-.template-card__thumb :deep(.resume-pages) {
-  width: 100%;
-}
-
-.template-card__thumb :deep(.resume-sheet) {
-  border: 0;
-  box-shadow: none;
-}
 
 .template-card__busy {
   position: absolute;
@@ -202,17 +221,56 @@ const activeId = computed(() => design.activeTemplate.value?.templateId)
   padding: 0 2px 2px;
 }
 
-.template-card__meta strong {
-  overflow: hidden;
+.template-card__name {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+
+.template-card__name strong {
   font-size: var(--fs-sm);
   font-weight: 650;
+}
+
+.template-card__name em {
+  overflow: hidden;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  font-style: normal;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.template-card__meta small {
+.template-card__summary {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  color: var(--text-secondary);
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+.template-card__foot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
   color: var(--text-tertiary);
   font-size: 11px;
+}
+
+.template-card__palettes {
+  display: inline-flex;
+  gap: 3px;
+}
+
+.template-card__palettes i {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.12);
 }
 
 .template-card__check {

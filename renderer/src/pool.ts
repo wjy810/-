@@ -58,7 +58,8 @@ export class PagePool {
   }
 
   private async openPage(): Promise<Page> {
-    const page = await this.browser!.newPage({ viewport: { width: 1200, height: 1600 }, deviceScaleFactor: 1 })
+    // The user agent becomes the PDF "Creator"; keep it neutral instead of HeadlessChrome.
+    const page = await this.browser!.newPage({ viewport: { width: 1200, height: 1600 }, deviceScaleFactor: 1, userAgent: 'JobProof Resume Renderer' })
     await page.route('**/*', (route) => {
       const url = route.request().url()
       if (url.startsWith(`${this.origin}/`) || url.startsWith('data:') || url.startsWith('blob:')) return route.continue()

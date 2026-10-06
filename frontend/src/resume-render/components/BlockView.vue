@@ -15,7 +15,12 @@ const separator = computed(() => (props.locale === 'en' ? ', ' : '、'))
 <template>
   <div
     class="rr-block"
-    :class="[`rr-block--${part.type}`, { 'rr-block--start': block.withHeading, 'rr-block--cont': part.type === 'timeline' && !part.head }]"
+    :class="[`rr-block--${part.type}`, {
+      'rr-block--start': block.withHeading,
+      'rr-block--cont': part.type === 'timeline' && !part.head,
+      'rr-block--joined': block.joined,
+      'rr-block--row': block.row,
+    }]"
     :data-block="block.id"
     :data-section="block.sectionKey"
   >

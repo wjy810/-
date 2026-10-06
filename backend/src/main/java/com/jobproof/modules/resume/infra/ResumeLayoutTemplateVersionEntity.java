@@ -25,6 +25,7 @@ public class ResumeLayoutTemplateVersionEntity {
     @Column(name = "wps_verified") private boolean wpsVerified;
     @Column(name = "ats_verified") private boolean atsVerified;
     @Column(name = "test_report_json", columnDefinition = "LONGTEXT") private String testReportJson;
+    @Column(name = "verification_source") private String verificationSource;
     @Column(name = "version_no") private int versionNo;
     @Column(name = "published_at") private Instant publishedAt;
     @Column(name = "retired_at") private Instant retiredAt;
@@ -52,4 +53,6 @@ public class ResumeLayoutTemplateVersionEntity {
     public Instant getRetiredAt() { return retiredAt; } public void setRetiredAt(Instant value) { retiredAt = value; }
     public Instant getCreatedAt() { return createdAt; } public void setCreatedAt(Instant value) { createdAt = value; }
     public Instant getUpdatedAt() { return updatedAt; } public void setUpdatedAt(Instant value) { updatedAt = value; }
+    public String getVerificationSource() { return verificationSource; }
+    public void setVerificationSource(String value) { verificationSource = value; }
 }

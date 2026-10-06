@@ -243,7 +243,7 @@ onMounted(() => {
       <header class="page-head catalog-head">
         <div>
           <h1 class="page-head__title">简历模板中心</h1>
-          <p class="page-head__sub">12 款智能模板可在线编辑、与 AI 协作并一键换版；另有开源 Word 模板可检索、预览和下载。</p>
+          <p class="page-head__sub">16 套智能模板可在线编辑、与 AI 协作并一键换版，导出的 PDF 与预览一致；另有开源 Word 模板可检索、预览和下载。</p>
         </div>
         <RouterLink class="btn btn--ghost" to="/resumes">
           <JobProofIcon name="resume-all-resumes" :size="15" />

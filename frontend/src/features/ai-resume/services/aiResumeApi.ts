@@ -231,6 +231,27 @@ export function saveAiResumeDesign(
   )
 }
 
+export type AiResumeExportPreview = {
+  pageCount: number
+  pageLimit: number
+  overflowMm: number
+  overflowSection?: string | null
+  /** PNG data URL of the first page, rendered by the same service that produces the PDF. */
+  firstPageImage: string
+}
+
+export function fetchAiResumeExportPreview(
+  conversationId: string,
+  exportMode: AiResumePdfExportMode = 'STANDARD',
+  signal?: AbortSignal,
+): Promise<AiResumeExportPreview> {
+  return api<AiResumeExportPreview>(`${ROOT}/conversations/${encodeURIComponent(conversationId)}/export-preview`, {
+    method: 'POST',
+    body: JSON.stringify({ exportMode }),
+    signal,
+  })
+}
+
 export function exportAiResumePdf(
   conversationId: string,
   exportMode: AiResumePdfExportMode = 'STANDARD',

@@ -8,6 +8,10 @@
   --r-section-gap: calc(var(--r-size) * var(--r-leading) * 1.15 * var(--r-gap));
   --r-item-gap: calc(var(--r-size) * var(--r-leading) * 0.6 * var(--r-gap));
   --r-line-gap: calc(var(--r-size) * 0.25 * var(--r-gap));
+  /* Between consecutive one-line rows (skill groups, certificates, languages). */
+  --r-row-gap: calc(var(--r-size) * var(--r-leading) * 0.24 * var(--r-gap));
+  /* Between bullets; also between the parts of an entry split for pagination. */
+  --r-bullet-gap: var(--r-line-gap);
   position: relative;
   color: var(--r-ink);
   font-family: var(--r-font-body);
@@ -97,7 +101,9 @@
 .rr-block { padding-bottom: var(--r-item-gap); }
 .rr-block--start { padding-top: calc(var(--r-section-gap) - var(--r-item-gap)); }
 .rr-region > .rr-block--start:first-child { padding-top: 0; }
-.rr-block--cont { padding-bottom: var(--r-line-gap); }
+/* A split entry reads as one entry: its parts are spaced like bullets, the last part like an entry. */
+.rr-block--joined { padding-bottom: var(--r-bullet-gap); }
+.rr-block--row { padding-bottom: var(--r-row-gap); }
 
 /* Section heading */
 .rr-heading {
@@ -151,7 +157,7 @@
  * Paint order is PDF text order (what ATS parsers read). Text containers are never positioned;
  * markers and decorations use grid cells, backgrounds or z-index: -1 layers instead.
  */
-.rr-bullets { display: grid; gap: var(--r-line-gap); }
+.rr-bullets { display: grid; gap: var(--r-bullet-gap); }
 .rr-bullets li { display: grid; grid-template-columns: 3.4mm minmax(0, 1fr); }
 .rr-bullets li::before {
   content: '';
@@ -198,6 +204,7 @@
 /* Workbench interaction (screen only). */
 .rr-interactive .rr-pages [data-section] { cursor: pointer; border-radius: 1mm; transition: background-color 120ms ease, box-shadow 120ms ease; }
 .rr-interactive .rr-pages [data-section]:hover { box-shadow: 0 0 0 1.5mm color-mix(in srgb, var(--r-accent) 9%, transparent); background: color-mix(in srgb, var(--r-accent) 9%, transparent); }
+.rr-interactive .rr-pages .rr-page header { cursor: pointer; }
 .rr-pages [data-section].rr-flash { animation: rr-flash 900ms ease 2; }
 @keyframes rr-flash { 50% { box-shadow: 0 0 0 1.5mm color-mix(in srgb, var(--r-accent) 28%, transparent); background: color-mix(in srgb, var(--r-accent) 14%, transparent); } }
 

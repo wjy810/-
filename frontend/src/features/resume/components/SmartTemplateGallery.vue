@@ -1,55 +1,53 @@
 <script setup lang="ts">
-/** The 12 smart templates, rendered live with sample content; picking one starts an AI resume with it. */
-import { computed, onMounted, ref } from 'vue'
+/**
+ * Built-in templates rendered live with sample content (TPL-02). The server says which templates are
+ * available; this build's manifests say how they look. Picking one starts an AI resume with it.
+ */
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { ArrowRight, Image, ImageOff, ScanText, Sparkles } from 'lucide-vue-next'
+import { ArrowRight, Sparkles } from 'lucide-vue-next'
 import UiButton from '@/shared/ui/UiButton.vue'
 import UiErrorState from '@/shared/ui/UiErrorState.vue'
 import UiSegmented from '@/shared/ui/UiSegmented.vue'
 import UiSkeleton from '@/shared/ui/UiSkeleton.vue'
-import ResumeTemplatePreview from './ResumeTemplatePreview.vue'
-import { SAMPLE_CONTENT, SAMPLE_RESUME } from '../sampleResume'
+import TemplateThumbnail from '@/resume-render/components/TemplateThumbnail.vue'
+import { sampleFor } from '@/resume-render/samples'
+import type { TemplateCategory, TemplateManifest } from '@/resume-render/templates/manifest'
+import { manifestOf } from '@/resume-render/templates/manifests'
 import { listResumeTemplates } from '../services/resumeApi'
-import type { ResumeTemplateSummary } from '../types'
+import { TEMPLATE_CATEGORY_LABELS, templateFacts } from '../templateFacts'
 
-type Filter = 'all' | 'single' | 'multi' | 'photo' | 'english'
+type Filter = 'all' | TemplateCategory
 
 const router = useRouter()
-const templates = ref<ResumeTemplateSummary[]>([])
+const manifests = ref<TemplateManifest[]>([])
 const loading = ref(true)
 const error = ref<unknown>(null)
 const filter = ref<Filter>('all')
+/** Palette shown on each card; switching it only changes the preview. */
+const palettes = reactive<Record<string, string>>({})
 
-function matches(template: ResumeTemplateSummary, value: Filter): boolean {
-  if (value === 'single') return template.recommendedPages === '1'
-  if (value === 'multi') return template.recommendedPages !== '1'
-  if (value === 'photo') return template.photoPolicy !== 'DISABLED'
-  if (value === 'english') return template.languageCode.toLowerCase().startsWith('en')
-  return true
+const filters = computed(() => (['all', 'steady', 'modern', 'design', 'industry'] as const).map(value => ({
+  value,
+  label: value === 'all' ? '全部' : TEMPLATE_CATEGORY_LABELS[value],
+  count: manifests.value.filter(manifest => value === 'all' || manifest.category === value).length,
+})))
+const visible = computed(() => manifests.value.filter(manifest => filter.value === 'all' || manifest.category === filter.value))
+
+function sample(manifest: TemplateManifest): unknown {
+  return sampleFor(manifest.locale, manifest.id === 'campus' ? 'campus' : undefined)
 }
 
-const filters = computed(() => ([
-  { value: 'all', label: '全部' },
-  { value: 'single', label: '单页' },
-  { value: 'multi', label: '多页' },
-  { value: 'photo', label: '支持照片' },
-  { value: 'english', label: '英文' },
-] as const).map(item => ({ ...item, count: templates.value.filter(template => matches(template, item.value)).length })))
-const visible = computed(() => templates.value.filter(template => matches(template, filter.value)))
-
-function photoText(policy: string): string {
-  return policy === 'DISABLED' ? '无照片' : policy === 'REQUIRED' ? '含照片' : '照片可选'
-}
-
-function start(template: ResumeTemplateSummary): void {
-  void router.push({ path: '/ai-resume/new', query: { template: template.id } })
+function start(manifest: TemplateManifest): void {
+  void router.push({ path: '/ai-resume/new', query: { template: manifest.id } })
 }
 
 async function load(): Promise<void> {
   loading.value = true
   error.value = null
   try {
-    templates.value = (await listResumeTemplates({ size: 50 })).items
+    const available = (await listResumeTemplates({ size: 50 })).items
+    manifests.value = available.map(item => manifestOf(item.id)).filter((item): item is TemplateManifest => Boolean(item))
   } catch (reason) {
     error.value = reason
   } finally {
@@ -64,47 +62,55 @@ onMounted(load)
   <section id="capability-panel-SMART_EDITABLE" class="smart-gallery" role="tabpanel" aria-labelledby="capability-tab-SMART_EDITABLE">
     <header class="smart-gallery__head">
       <div class="smart-gallery__intro">
-        <h2><Sparkles :size="18" aria-hidden="true" />智能模板</h2>
-        <p>同一份结构化内容随时换版，在 AI 简历工作台中在线编辑、逐条确认，并导出 PDF。预览使用示例内容。</p>
+        <h2><Sparkles :size="18" aria-hidden="true" />智能模板 <small>{{ manifests.length }} 款</small></h2>
+        <p>同一份结构化内容随时换版；在 AI 简历工作台中在线编辑、逐条确认，导出的 PDF 与预览一致。缩略图使用示例内容。</p>
       </div>
-      <UiSegmented v-model="filter" :items="filters" aria-label="筛选智能模板" size="sm" />
+      <UiSegmented v-model="filter" :items="filters" aria-label="按风格筛选模板" size="sm" />
     </header>
 
     <UiErrorState v-if="error" :error="error" title="智能模板读取失败" compact @retry="load" />
 
     <div v-else-if="loading" class="smart-gallery__grid" aria-busy="true">
-      <UiSkeleton v-for="index in 8" :key="index" height="360px" radius="var(--radius-lg)" />
+      <UiSkeleton v-for="index in 8" :key="index" height="380px" radius="var(--radius-lg)" />
     </div>
 
     <div v-else class="smart-gallery__grid">
-      <article v-for="template in visible" :key="template.id" class="smart-card">
-        <RouterLink class="smart-card__preview" :to="{ name: 'resume-template-detail', params: { templateId: template.id } }" :aria-label="`查看${template.displayName}详情`">
-          <ResumeTemplatePreview
-            :resume="SAMPLE_RESUME"
-            :content="SAMPLE_CONTENT"
-            :template-id="template.id"
-            :layout-definition-json="template.layoutDefinitionJson ?? undefined"
-            :renderer-protocol="template.rendererProtocol ?? undefined"
-            :variant-code="template.variants[0] ?? 'MONO'"
-            compact
+      <article v-for="manifest in visible" :key="manifest.id" class="smart-card">
+        <RouterLink class="smart-card__preview" :to="{ name: 'resume-template-detail', params: { templateId: manifest.id } }" :aria-label="`查看${manifest.name}模板详情`">
+          <TemplateThumbnail
+            class="smart-card__paper"
+            :template-id="manifest.id"
+            :content="sample(manifest)"
+            :design="{ paletteId: palettes[manifest.id] ?? manifest.palettes[0]!.id }"
+            :label="`${manifest.name}模板示例`"
           />
         </RouterLink>
         <div class="smart-card__body">
-          <h3>{{ template.displayName }}</h3>
-          <div class="smart-card__facts">
-            <span><ScanText :size="12" aria-hidden="true" />{{ template.recommendedPages }} 页</span>
-            <span>
-              <ImageOff v-if="template.photoPolicy === 'DISABLED'" :size="12" aria-hidden="true" />
-              <Image v-else :size="12" aria-hidden="true" />{{ photoText(template.photoPolicy) }}
+          <div class="smart-card__title">
+            <h3>{{ manifest.name }}<small>{{ manifest.nameEn }}</small></h3>
+            <span class="smart-card__palettes" role="radiogroup" :aria-label="`${manifest.name}配色`">
+              <button
+                v-for="palette in manifest.palettes"
+                :key="palette.id"
+                type="button"
+                role="radio"
+                :aria-checked="(palettes[manifest.id] ?? manifest.palettes[0]!.id) === palette.id"
+                :aria-label="palette.name"
+                :title="palette.name"
+                :style="{ '--swatch': palette.accent }"
+                @click="palettes[manifest.id] = palette.id"
+              />
             </span>
-            <span>{{ template.languageCode.startsWith('en') ? '英文' : '中文' }}</span>
-            <span v-if="template.variants.length > 1">{{ template.variants.length }} 种配色</span>
           </div>
-          <UiButton size="sm" variant="soft" block :icon-right="ArrowRight" @click="start(template)">用此模板创建</UiButton>
+          <p class="smart-card__summary">{{ manifest.summary }}</p>
+          <div class="smart-card__facts">
+            <span v-for="fact in templateFacts(manifest)" :key="fact">{{ fact }}</span>
+          </div>
+          <UiButton size="sm" variant="soft" block :icon-right="ArrowRight" @click="start(manifest)">用此模板创建</UiButton>
         </div>
       </article>
     </div>
-    <p v-if="!loading && !error && templates.length && !visible.length" class="smart-gallery__empty">没有符合条件的模板。</p>
+    <p v-if="!loading && !error && manifests.length && !visible.length" class="smart-gallery__empty">没有符合条件的模板。</p>
   </section>
 </template>
 
@@ -179,19 +185,14 @@ onMounted(load)
   background-size: 16px 16px;
 }
 
-.smart-card__preview :deep(.resume-pages) {
-  width: 100%;
-  margin: 0;
-}
-
-.smart-card__preview :deep(.resume-sheet) {
-  border: 0;
+.smart-card__paper {
   border-radius: 3px 3px 0 0;
   box-shadow: var(--shadow-md);
+  aspect-ratio: 210 / 250;
   transition: transform var(--dur-slow) var(--ease-out);
 }
 
-.smart-card:hover .smart-card__preview :deep(.resume-sheet) {
+.smart-card:hover .smart-card__paper {
   transform: translateY(-4px);
 }
 
@@ -207,12 +208,64 @@ onMounted(load)
   border-top: 1px solid var(--border-subtle);
 }
 
+.smart-card__title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
 .smart-card__body h3 {
-  overflow: hidden;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
   font-size: var(--fs-body);
   font-weight: 700;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+}
+
+.smart-card__body h3 small,
+.smart-gallery__head h2 small {
+  color: var(--text-tertiary);
+  font-size: var(--fs-xs);
+  font-weight: 500;
+}
+
+.smart-card__palettes {
+  display: inline-flex;
+  gap: 5px;
+}
+
+.smart-card__palettes button {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--swatch);
+  box-shadow: 0 0 0 1px var(--border-default);
+  transition: transform var(--dur-fast) var(--ease-spring), box-shadow var(--dur-fast);
+}
+
+.smart-card__palettes button:hover {
+  transform: scale(1.15);
+}
+
+.smart-card__palettes button[aria-checked='true'] {
+  box-shadow: 0 0 0 2px var(--surface-1), 0 0 0 3.5px var(--swatch);
+}
+
+.smart-card__palettes button:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.smart-card__summary {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  color: var(--text-secondary);
+  font-size: var(--fs-xs);
+  line-height: 1.55;
 }
 
 .smart-card__facts {

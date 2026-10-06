@@ -18,6 +18,10 @@ export interface Block {
   withHeading: boolean
   /** 0-based position of the section in reading order (for numbered headings). */
   sectionIndex: number
+  /** The next block continues the same entry (a split timeline entry): bullet spacing follows. */
+  joined: boolean
+  /** A one-line row (skill group, list item) followed by another row of its section. */
+  row: boolean
   part: BlockPart
 }
 
@@ -65,8 +69,12 @@ export function buildBlocks(document: RenderDocument, manifest: TemplateManifest
   for (const region of manifest.regions) {
     document.sections.forEach((section, sectionIndex) => {
       if (regionFor(section.key, manifest, design) !== region.id) return
-      partsOf(section).forEach((part, index) => {
-        blocks.push({ id: `${section.key}:${partId(part)}`, region: region.id, section, sectionKey: section.key, withHeading: index === 0, sectionIndex, part })
+      const parts = partsOf(section)
+      parts.forEach((part, index) => {
+        const next = parts[index + 1]
+        const joined = part.type === 'timeline' && next?.type === 'timeline' && next.item === part.item
+        const row = (part.type === 'skill' || part.type === 'list') && next !== undefined
+        blocks.push({ id: `${section.key}:${partId(part)}`, region: region.id, section, sectionKey: section.key, withHeading: index === 0, sectionIndex, joined, row, part })
       })
     })
   }

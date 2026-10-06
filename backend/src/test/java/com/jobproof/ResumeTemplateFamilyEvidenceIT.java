@@ -37,7 +37,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 
-@SpringBootTest
+@SpringBootTest(properties = "jobproof.templates.builtin.retire-legacy=false")
 @ActiveProfiles("test")
 class ResumeTemplateFamilyEvidenceIT {
     private static final boolean GENERATE_VISUAL_EVIDENCE =
@@ -241,6 +241,8 @@ class ResumeTemplateFamilyEvidenceIT {
         }
         List<Family> result = new ArrayList<>();
         for (ResumeLayoutTemplateEntity template : templateRows) {
+            // The twelve resume-layout-v3 families; built-in HTML templates are covered by the renderer tests.
+            if (template.isBuiltin()) continue;
             ResumeLayoutTemplateVersionEntity version = seededRevisions.get(template.getId());
             assertThat(version).as(template.getId() + " seeded R1").isNotNull();
             ResumeLayoutDefinition definition = ResumeLayoutProtocol.validate(

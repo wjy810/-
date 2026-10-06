@@ -15,6 +15,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jobproof.modules.identity.infra.AccountEntity;
 import com.jobproof.modules.identity.infra.AccountJpaRepository;
 import com.jobproof.modules.audit.infra.AuditEventJpaRepository;
+import com.jobproof.modules.resume.application.BuiltInTemplateCatalog;
 import com.jobproof.modules.resume.application.ResumeSmartTemplateCatalogPublisher;
 import com.jobproof.modules.resume.infra.ResumeTemplateCatalogFacetJpaRepository;
 import com.jobproof.modules.resume.infra.ResumeRenderArtifactJpaRepository;
@@ -40,7 +41,7 @@ import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
-@SpringBootTest
+@SpringBootTest(properties = "jobproof.templates.builtin.retire-legacy=false")
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
@@ -58,6 +59,7 @@ class ResumeTemplatePublishGateIT {
     @Autowired ResumeSmartTemplateCatalogPublisher smartCatalogPublisher;
     @Autowired ResumeTemplateCatalogFacetJpaRepository catalogFacets;
     @Autowired PlatformTransactionManager transactionManager;
+    @Autowired BuiltInTemplateCatalog builtInTemplates;
 
     @Test
     void publishReadsImmutableServerEvidenceAndNotClientBooleans() throws Exception {
@@ -68,7 +70,7 @@ class ResumeTemplatePublishGateIT {
         accounts.saveAndFlush(account);
         mockMvc.perform(get("/api/v1/admin/resume-templates/families").cookie(admin))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.length()").value(12));
+                .andExpect(jsonPath("$.data.length()").value(12 + builtInTemplates.all().size()));
         String independentEvidenceId = uploadEvidence(admin, "INDEPENDENT_DESIGN", "independent-source");
         String securityEvidenceId = uploadEvidence(admin, "SECURITY_SCAN", "security-pass");
 
