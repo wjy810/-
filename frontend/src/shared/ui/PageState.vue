@@ -21,7 +21,7 @@ const props = withDefaults(defineProps<{
   empty?: boolean
   errorTitle?: string
   compact?: boolean
-}>(), { loading: false, error: null, loaded: false, empty: false, errorTitle: '加载没有成功', compact: false })
+}>(), { loading: false, error: undefined, loaded: false, empty: false, errorTitle: '加载没有成功', compact: false })
 defineEmits<{ retry: [] }>()
 
 const state = computed<'skeleton' | 'error' | 'empty' | 'content'>(() => {
