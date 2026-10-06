@@ -30,6 +30,8 @@ jobproof:
       - ${JOBPROOF_PUBLIC_ORIGIN:http://47.242.17.130}
   policies:
     registration-enabled: ${JOBPROOF_REGISTRATION_ENABLED:true}
+    # Production does not open registration on the built-in reference text.
+    require-published: ${JOBPROOF_REQUIRE_PUBLISHED_POLICIES:true}
   verification:
     enabled: true
     email-provider: ${JOBPROOF_VERIFICATION_EMAIL_PROVIDER:qq-smtp}

@@ -58,7 +58,7 @@ public class ContactVerificationService {
                 CODE_LENGTH,
                 properties.getVerification().getCodeTtlMinutes(),
                 properties.getVerification().getResendCooldownSeconds(),
-                properties.getPolicies().isRegistrationEnabled(),
+                properties.getPolicies().isRegistrationOpen(),
                 properties.getPolicies().getTermsVersion(),
                 properties.getPolicies().getPrivacyVersion());
     }

@@ -8,6 +8,8 @@ import { usePreferencesStore } from '@/stores/preferences'
 import { notificationKeys } from '@/features/notification/queries'
 import { fetchWhatsNew } from '@/features/updates/services/updatesApi'
 import type { ReleaseDetail } from '@/features/updates/types'
+import { useCapabilitiesStore } from '@/stores/capabilities'
+import FeatureUnavailable from '@/features/site/FeatureUnavailable.vue'
 import AppSidebar from './parts/AppSidebar.vue'
 import AppTopbar from './parts/AppTopbar.vue'
 import PublicTopbar from './parts/PublicTopbar.vue'
@@ -19,6 +21,8 @@ const route = useRoute()
 const session = useSessionStore()
 const preferences = usePreferencesStore()
 const queryClient = useQueryClient()
+const capabilities = useCapabilitiesStore()
+void capabilities.load()
 const compact = useMediaQuery('(max-width: 1279px)')
 const mobile = useMediaQuery('(max-width: 959px)')
 
@@ -68,7 +72,8 @@ onMounted(() => {
       <AppTopbar :mobile-open="mobileNavOpen" @toggle-mobile="mobileNavOpen = !mobileNavOpen" @open-notifications="notificationsOpen = true" />
       <main id="main-content" class="shell__content" :class="{ 'is-wide': wide }" tabindex="-1">
         <RouterView v-slot="{ Component, route: viewRoute }">
-          <component :is="Component" :key="viewKey(viewRoute)" />
+          <FeatureUnavailable v-if="!capabilities.enabled(viewRoute.meta.feature)" :feature="viewRoute.meta.feature!" />
+          <component :is="Component" v-else :key="viewKey(viewRoute)" />
         </RouterView>
       </main>
     </div>

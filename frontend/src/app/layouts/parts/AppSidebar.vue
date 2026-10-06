@@ -10,6 +10,7 @@ import { useSessionStore } from '@/stores/session'
 import { usePreferencesStore } from '@/stores/preferences'
 import { useCommandPaletteStore } from '@/stores/commandPalette'
 import { useUnreadCount } from '@/features/notification/queries'
+import { useCapabilitiesStore } from '@/stores/capabilities'
 import { NAV_GROUPS, isNavActive } from '../navigation'
 
 const props = defineProps<{ collapsed: boolean; mobileOpen: boolean }>()
@@ -21,6 +22,7 @@ const session = useSessionStore()
 const preferences = usePreferencesStore()
 const palette = useCommandPaletteStore()
 const unread = useUnreadCount()
+const capabilities = useCapabilitiesStore()
 
 const groups = computed(() => NAV_GROUPS.filter(group => !group.adminOnly || session.isAdmin))
 const unreadText = computed(() => {
@@ -93,6 +95,7 @@ async function logout(): Promise<void> {
               >
                 <component :is="item.icon" class="nav-link__icon" :size="18" :stroke-width="1.85" />
                 <span v-if="showLabels" class="nav-link__label">{{ item.label }}</span>
+                <span v-if="showLabels && !capabilities.enabled(item.feature)" class="nav-link__off">未开放</span>
                 <span v-if="item.badge === 'unread' && unreadText" class="nav-link__badge" :class="{ 'is-dot': !showLabels }">
                   {{ showLabels ? unreadText : '' }}
                 </span>
@@ -310,6 +313,16 @@ async function logout(): Promise<void> {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.nav-link__off {
+  margin-left: auto;
+  padding: 1px 6px;
+  border-radius: var(--radius-full);
+  color: var(--text-tertiary);
+  background: var(--surface-3);
+  font-size: 11px;
+  line-height: 16px;
 }
 
 .nav-link__badge {

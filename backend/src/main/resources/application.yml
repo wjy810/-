@@ -115,6 +115,18 @@ jobproof:
     registration-enabled: ${JOBPROOF_REGISTRATION_ENABLED:false}
     terms-version: ${JOBPROOF_TERMS_VERSION:2026-08-26-v1}
     privacy-version: ${JOBPROOF_PRIVACY_VERSION:2026-08-26-v1}
+    # Official texts (UTF-8 Markdown). Unset → the built-in reference text, marked as unpublished.
+    terms-path: ${JOBPROOF_TERMS_PATH:}
+    privacy-path: ${JOBPROOF_PRIVACY_PATH:}
+    require-published: ${JOBPROOF_REQUIRE_PUBLISHED_POLICIES:false}
+  operator:
+    name: ${JOBPROOF_OPERATOR_NAME:}
+    icp-record: ${JOBPROOF_OPERATOR_ICP:}
+    public-security-record: ${JOBPROOF_OPERATOR_PSB:}
+    contact-email: ${JOBPROOF_OPERATOR_EMAIL:}
+    contact-phone: ${JOBPROOF_OPERATOR_PHONE:}
+    address: ${JOBPROOF_OPERATOR_ADDRESS:}
+    feedback-url: ${JOBPROOF_OPERATOR_FEEDBACK_URL:}
   export:
     download-ttl-hours: 1
   share:

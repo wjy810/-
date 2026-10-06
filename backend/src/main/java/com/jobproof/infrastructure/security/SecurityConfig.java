@@ -45,6 +45,7 @@ public class SecurityConfig {
                                 "/api/v1/template-catalog/*", "/api/v1/template-catalog/*/thumbnail",
                                 "/api/v1/template-catalog/*/preview-pages/*").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/job-taxonomy").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/capabilities", "/api/v1/policies/*").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/updates", "/api/v1/updates/**").permitAll()
                         .requestMatchers("/internal/dev/**").permitAll()
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()

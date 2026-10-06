@@ -16,6 +16,7 @@ import { vReveal } from '@/shared/directives/reveal'
 import { authLandingMode } from '@/features/identity/authLanding'
 import { useSessionStore } from '@/stores/session'
 import { usePreferencesStore } from '@/stores/preferences'
+import OperatorInfo from '@/features/site/OperatorInfo.vue'
 
 const AuthDialog = defineAsyncComponent(() => import('@/features/identity/components/AuthDialog.vue'))
 
@@ -348,6 +349,7 @@ const year = new Date().getFullYear()
           <RouterLink to="/privacy">隐私政策</RouterLink>
         </nav>
         <p class="footer__copy">© {{ year }} JobProof AI</p>
+        <OperatorInfo class="footer__operator" />
       </div>
     </footer>
 
@@ -1361,6 +1363,10 @@ const year = new Date().getFullYear()
 .footer__links a {
   color: var(--text-secondary);
   font-size: var(--fs-sm);
+}
+
+.footer__operator {
+  width: 100%;
 }
 
 /* ---------- Responsive ---------- */

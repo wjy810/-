@@ -87,6 +87,8 @@ services:
       JOBPROOF_RENDERER_TOKEN: ${JOBPROOF_RENDERER_TOKEN}
     volumes:
       - ./data:/var/lib/jobproof
+      # Official terms.md / privacy.md (see JOBPROOF_TERMS_PATH in .env.example).
+      - ./policies:/etc/jobproof/policies:ro
     tmpfs:
       - /tmp:size=384m,mode=1777
     depends_on:

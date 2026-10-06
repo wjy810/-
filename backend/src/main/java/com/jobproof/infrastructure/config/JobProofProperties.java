@@ -15,6 +15,7 @@ public class JobProofProperties {
     private final Ai ai = new Ai();
     private final Verification verification = new Verification();
     private final Policies policies = new Policies();
+    private final Operator operator = new Operator();
 
     public Cookie getCookie() {
         return cookie;
@@ -46,6 +47,10 @@ public class JobProofProperties {
 
     public Policies getPolicies() {
         return policies;
+    }
+
+    public Operator getOperator() {
+        return operator;
     }
 
     public static class Cookie {
@@ -258,11 +263,58 @@ public class JobProofProperties {
         private boolean registrationEnabled;
         private String termsVersion = "2026-08-26-v1";
         private String privacyVersion = "2026-08-26-v1";
+        /** UTF-8 Markdown files with the operator's official texts; unset → the built-in reference text. */
+        private String termsPath = "";
+        private String privacyPath = "";
+        /** When true, registration stays closed until both official texts are configured. */
+        private boolean requirePublished;
         public boolean isRegistrationEnabled() { return registrationEnabled; }
         public void setRegistrationEnabled(boolean value) { this.registrationEnabled = value; }
         public String getTermsVersion() { return termsVersion; }
         public void setTermsVersion(String value) { this.termsVersion = value; }
         public String getPrivacyVersion() { return privacyVersion; }
         public void setPrivacyVersion(String value) { this.privacyVersion = value; }
+        public String getTermsPath() { return termsPath; }
+        public void setTermsPath(String value) { this.termsPath = value == null ? "" : value.trim(); }
+        public String getPrivacyPath() { return privacyPath; }
+        public void setPrivacyPath(String value) { this.privacyPath = value == null ? "" : value.trim(); }
+        public boolean isRequirePublished() { return requirePublished; }
+        public void setRequirePublished(boolean value) { this.requirePublished = value; }
+
+        /** Both official texts are configured and readable. */
+        public boolean isPublished() { return readable(termsPath) && readable(privacyPath); }
+
+        /** Registration is open only when enabled and, if required, the official texts exist. */
+        public boolean isRegistrationOpen() { return registrationEnabled && (!requirePublished || isPublished()); }
+
+        private static boolean readable(String path) {
+            return !path.isBlank() && java.nio.file.Files.isReadable(java.nio.file.Path.of(path));
+        }
+    }
+
+    /** Who runs this deployment; shown in the footer, legal pages and error help. Blank values are hidden. */
+    public static class Operator {
+        private String name = "";
+        private String icpRecord = "";
+        private String publicSecurityRecord = "";
+        private String contactEmail = "";
+        private String contactPhone = "";
+        private String address = "";
+        private String feedbackUrl = "";
+        public String getName() { return name; }
+        public void setName(String value) { this.name = clean(value); }
+        public String getIcpRecord() { return icpRecord; }
+        public void setIcpRecord(String value) { this.icpRecord = clean(value); }
+        public String getPublicSecurityRecord() { return publicSecurityRecord; }
+        public void setPublicSecurityRecord(String value) { this.publicSecurityRecord = clean(value); }
+        public String getContactEmail() { return contactEmail; }
+        public void setContactEmail(String value) { this.contactEmail = clean(value); }
+        public String getContactPhone() { return contactPhone; }
+        public void setContactPhone(String value) { this.contactPhone = clean(value); }
+        public String getAddress() { return address; }
+        public void setAddress(String value) { this.address = clean(value); }
+        public String getFeedbackUrl() { return feedbackUrl; }
+        public void setFeedbackUrl(String value) { this.feedbackUrl = clean(value); }
+        private static String clean(String value) { return value == null ? "" : value.trim(); }
     }
 }

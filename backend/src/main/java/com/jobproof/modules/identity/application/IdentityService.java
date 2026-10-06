@@ -123,7 +123,7 @@ public class IdentityService implements SessionAuthenticator {
             String password,
             boolean acceptedTerms,
             boolean acceptedPrivacy) {
-        if (!properties.getPolicies().isRegistrationEnabled()) {
+        if (!properties.getPolicies().isRegistrationOpen()) {
             throw AppException.dependency("REGISTRATION_UNAVAILABLE", "账号注册暂未开放");
         }
         if (!acceptedTerms || !acceptedPrivacy) {

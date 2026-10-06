@@ -1,3 +1,5 @@
+import type { FeatureKey } from '@/shared/api/capabilities'
+
 export {}
 
 declare module 'vue-router' {
@@ -11,5 +13,7 @@ declare module 'vue-router' {
     title?: string
     /** Lets the page use the full content width. */
     wide?: boolean
+    /** Deployment feature switch; when off the layout shows the "not available" page instead. */
+    feature?: FeatureKey
   }
 }
