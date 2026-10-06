@@ -7,6 +7,7 @@ import com.jobproof.shared.id.Ids;
 import com.jobproof.shared.time.ClockPort;
 import java.io.IOException;
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -89,7 +90,12 @@ public class JobMatchSseService {
             catch (IOException | IllegalStateException exception) { list.remove(emitter); emitter.complete(); }
         }
     }
-    private void send(SseEmitter emitter, Event event) throws IOException { emitter.send(SseEmitter.event().id(String.valueOf(event.sequence())).name(event.type()).data(event.payload())); }
+    /** Each event carries the time it happened, so replayed events are not shown as new. */
+    private void send(SseEmitter emitter, Event event) throws IOException {
+        Map<String, Object> data = new LinkedHashMap<>(event.payload());
+        data.put("at", event.createdAt().toString());
+        emitter.send(SseEmitter.event().id(String.valueOf(event.sequence())).name(event.type()).data(data));
+    }
     private String json(Object value) { try { return mapper.writeValueAsString(value); } catch (Exception e) { throw new IllegalStateException(e); } }
     private Map<String, Object> read(String value) { try { return mapper.readValue(value, new TypeReference<>() {}); } catch (Exception e) { return Map.of("unavailable", true); } }
     public record Event(String matchId, long sequence, String type, Map<String, Object> payload, Instant createdAt) {}

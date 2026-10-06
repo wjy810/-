@@ -9,7 +9,6 @@ import com.jobproof.modules.jobmatch.application.JobMatchService.AnalysisStart;
 import com.jobproof.modules.jobmatch.application.JobMatchService.AnalyzeCommand;
 import com.jobproof.modules.jobmatch.application.JobMatchService.AuthorizationCommand;
 import com.jobproof.modules.jobmatch.application.JobMatchService.CapabilitiesView;
-import com.jobproof.modules.jobmatch.application.JobMatchService.CareerDirection;
 import com.jobproof.modules.jobmatch.application.JobMatchService.ClarificationCommand;
 import com.jobproof.modules.jobmatch.application.JobMatchService.ClaimView;
 import com.jobproof.modules.jobmatch.application.JobMatchService.CreateCommand;
@@ -29,6 +28,7 @@ import com.jobproof.modules.jobmatch.application.JobMatchService.RedactionPrevie
 import com.jobproof.modules.jobmatch.application.JobMatchService.ReportView;
 import com.jobproof.modules.jobmatch.application.JobMatchService.ResumeOption;
 import com.jobproof.modules.jobmatch.application.JobMatchService.ResumeSelectionCommand;
+import com.jobproof.modules.jobmatch.application.JobMatchService.SimilarDirectionsView;
 import com.jobproof.modules.jobmatch.application.JobMatchSseService;
 import com.jobproof.modules.jobmatch.domain.JobMatchModels.EvidenceCandidate;
 import com.jobproof.modules.resumeimport.application.ResumeImportService;
@@ -273,7 +273,7 @@ public class JobMatchController {
     }
 
     @GetMapping("/{id}/similar-jobs")
-    public ApiResponse<List<CareerDirection>> similarJobs(@PathVariable String id) {
+    public ApiResponse<SimilarDirectionsView> similarJobs(@PathVariable String id) {
         return ApiResponse.ok(matches.careerDirections(current(), id));
     }
 

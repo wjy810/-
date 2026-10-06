@@ -34,6 +34,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -44,6 +46,7 @@ public class JobMatchService {
     public static final String AUTH_POLICY = "job-match-authorization-v1";
     public static final List<String> SENSITIVE_FIELDS = List.of("phone", "email", "fullAddress", "identityNumber",
             "age", "gender", "maritalStatus", "ethnicity", "photoRef", "photo", "avatar");
+    private static final Pattern LATIN_TOKEN = Pattern.compile("[a-z0-9+#.]+");
 
     private final JdbcTemplate jdbc;
     private final ObjectMapper mapper;
@@ -535,23 +538,93 @@ public class JobMatchService {
         return "LANGUAGES";
     }
 
+    /**
+     * Taxonomy directions whose name or alias names a skill from the frozen resume's skills section.
+     * Only directions with at least one shared skill are returned, most shared first; the target
+     * direction itself is left out. No score is derived: the shared skills are the whole basis.
+     */
     @Transactional(readOnly = true)
-    public List<CareerDirection> careerDirections(CurrentAccount current, String matchId) {
+    public SimilarDirectionsView careerDirections(CurrentAccount current, String matchId) {
         MatchRow row = owned(current, matchId, false);
-        Map<String, Object> job = jdbc.queryForMap("SELECT title,company_name FROM jobs WHERE id=?", row.jobId());
-        String title = String.valueOf(job.getOrDefault("title", "目标岗位"));
-        List<String> skills = requirementTerms(matchId).stream().limit(6).toList();
-        List<CareerDirection> directions = jdbc.query("SELECT id,display_name,node_level,code FROM job_taxonomy_nodes WHERE status='ACTIVE' AND node_level IN ('GROUP','ROLE') ORDER BY sort_order,display_name",
-                (rs, n) -> {
+        List<String> skills = row.resumeRevisionId() == null ? List.of() : resumeSkills(row);
+        if (skills.isEmpty()) return new SimilarDirectionsView(List.of(), List.of());
+        String target = compactLower(jdbc.query("SELECT title FROM jobs WHERE id=?", (rs, n) -> rs.getString(1),
+                row.jobId()).stream().findFirst().orElse(""));
+        Map<String, List<String>> aliases = new LinkedHashMap<>();
+        jdbc.query("SELECT node_id,alias_name FROM job_taxonomy_aliases", rs -> {
+            aliases.computeIfAbsent(rs.getString("node_id"), ignored -> new ArrayList<>()).add(rs.getString("alias_name"));
+        });
+        List<CareerDirection> directions = new ArrayList<>();
+        jdbc.query("""
+                SELECT n.id,n.display_name,c.display_name category_name
+                  FROM job_taxonomy_nodes n
+                  JOIN job_taxonomy_nodes g ON g.id=n.parent_id
+                  JOIN job_taxonomy_nodes c ON c.id=g.parent_id
+                 WHERE n.node_level='JOB' AND n.status='PUBLISHED'
+                 ORDER BY c.sort_order,n.sort_order,n.display_name
+                """, rs -> {
                     String name = rs.getString("display_name");
-                    int score = relevance(new LinkedHashSet<>(skills), name + " " + title);
-                    return new CareerDirection(rs.getString("id"), name, rs.getString("node_level"),
-                            Math.max(35, Math.min(92, 45 + score)),
-                            "基于目标岗位要求与当前简历中已确认的技能方向", skills.stream().limit(3).toList(),
-                            List.of("该方向不是实时招聘职位，请结合真实岗位进一步确认"));
+                    if (!target.isEmpty() && target.contains(compactLower(name))) return;
+                    List<String> terms = new ArrayList<>(List.of(name.split("/")));
+                    terms.addAll(aliases.getOrDefault(rs.getString("id"), List.of()));
+                    List<String> shared = skills.stream()
+                            .filter(skill -> terms.stream().anyMatch(term -> namesSkill(term, skill))).toList();
+                    if (!shared.isEmpty()) {
+                        directions.add(new CareerDirection(rs.getString("id"), name, rs.getString("category_name"), shared));
+                    }
                 });
-        return directions.stream().sorted(Comparator.comparingInt(CareerDirection::matchScore).reversed())
-                .limit(8).toList();
+        List<CareerDirection> ranked = directions.stream()
+                .sorted(Comparator.comparingInt((CareerDirection item) -> item.sharedSkills().size()).reversed())
+                .limit(12).toList();
+        return new SimilarDirectionsView(skills, ranked);
+    }
+
+    /** Skill names from the skills section of the match's frozen resume revision, in resume order. */
+    private List<String> resumeSkills(MatchRow row) {
+        String content = jdbc.query("SELECT content_json FROM resume_revisions WHERE id=? AND account_id=?",
+                (rs, n) -> rs.getString(1), row.resumeRevisionId(), row.accountId()).stream().findFirst().orElse(null);
+        JsonNode sections = readNode(content).path("skills");
+        Map<String, String> unique = new LinkedHashMap<>();
+        if (sections.isArray()) {
+            for (JsonNode entry : sections) {
+                if (entry.isTextual()) addSkills(unique, entry.asText());
+                addSkills(unique, entry.path("name").asText(""));
+                for (JsonNode item : entry.path("items")) addSkills(unique, item.asText(""));
+            }
+        }
+        return unique.values().stream().limit(60).toList();
+    }
+
+    private static void addSkills(Map<String, String> unique, String value) {
+        for (String part : value.split("[、,，;；|\\n]+")) {
+            String skill = part.trim();
+            if (!skill.isEmpty() && skill.length() <= 40) unique.putIfAbsent(compactLower(skill), skill);
+        }
+    }
+
+    /**
+     * Whether a direction term (a taxonomy name part or alias) names the skill. Chinese terms match
+     * when the skill contains them ("数据挖掘与分析" → 数据挖掘); Latin terms must equal a whole token so
+     * "Go" never matches "Django".
+     */
+    static boolean namesSkill(String term, String skill) {
+        String t = compactLower(term);
+        String s = compactLower(skill);
+        if (t.isEmpty() || s.isEmpty()) return false;
+        if (t.equals(s)) return true;
+        if (t.codePoints().anyMatch(code -> Character.UnicodeScript.of(code) == Character.UnicodeScript.HAN)) {
+            return t.codePointCount(0, t.length()) >= 2 && s.contains(t);
+        }
+        Matcher tokens = LATIN_TOKEN.matcher(s);
+        while (tokens.find()) {
+            String token = tokens.group().replaceAll("\\.+$", "");
+            if (token.equals(t)) return true;
+        }
+        return false;
+    }
+
+    private static String compactLower(String value) {
+        return value == null ? "" : value.replaceAll("\\s+", "").toLowerCase(Locale.ROOT);
     }
 
     @Transactional(readOnly = true)
@@ -566,15 +639,17 @@ public class JobMatchService {
                  WHERE t.account_id=? AND t.archived_at IS NULL ORDER BY t.updated_at DESC
                 """, this::summary, current.accountId());
         int completed = (int) items.stream().filter(item -> "COMPLETED".equals(item.status())).count();
-        int average = (int) Math.round(items.stream().filter(item -> item.score() != null)
-                .mapToInt(item -> item.score()).average().orElse(0));
+        int pending = (int) items.stream().filter(item -> !Set.of("COMPLETED", "CANCELLED").contains(item.status())).count();
+        java.util.OptionalDouble scored = items.stream().filter(item -> item.score() != null)
+                .mapToInt(item -> item.score()).average();
+        Integer average = scored.isPresent() ? (int) Math.round(scored.getAsDouble()) : null;
         int optimized = jdbc.queryForObject("""
                 SELECT COUNT(DISTINCT r.match_id)
                   FROM match_advice_items a
                   JOIN match_reports r ON r.id=a.report_id
                  WHERE a.account_id=? AND a.status='APPLIED' AND r.match_id IS NOT NULL
                 """, Integer.class, current.accountId());
-        return new DashboardView(items.size(), completed, average, optimized, items.stream().limit(6).toList());
+        return new DashboardView(items.size(), completed, pending, average, optimized, items.stream().limit(6).toList());
     }
 
     @Transactional(readOnly = true)
@@ -658,7 +733,10 @@ public class JobMatchService {
                 this::claim, row.currentReportId());
         List<ImprovementView> plan = jdbc.query("SELECT * FROM job_match_improvement_tasks WHERE report_id=? ORDER BY phase_code,priority_code,created_at",
                 this::improvement, row.currentReportId());
-        return new ReportView(row.currentReportId(), matchId, report, claims, plan,
+        List<EvidenceSourceView> sources = jdbc.query("SELECT id,source_type,title FROM job_match_evidence_items WHERE match_id=? AND account_id=? ORDER BY created_at,id",
+                (rs, n) -> new EvidenceSourceView(rs.getString("id"), rs.getString("source_type"), rs.getString("title")),
+                matchId, row.accountId());
+        return new ReportView(row.currentReportId(), matchId, report, claims, plan, sources,
                 row.status(), row.updatedAt());
     }
 
@@ -811,9 +889,11 @@ public class JobMatchService {
     public record RedactionPreview(String matchId, String resumeRevisionId, List<Map<String, Object>> includedSources, List<String> excludedFields, String notice) {}
     public record ClaimView(String id, String requirementId, String conclusionType, Integer score, int confidence, List<Object> evidenceIds, String reasoning, String feedback, String feedbackRequestId, int version) {}
     public record ImprovementView(String id, String gapCode, String phase, String title, String task, String expectedOutput, String acceptanceCriteria, int estimatedHours, String priority, String status, int version) {}
-    public record ReportView(String id, String matchId, Map<String, Object> report, List<ClaimView> claims, List<ImprovementView> learningPlan, String status, Instant updatedAt) {}
+    /** evidenceSources names the authorized items that claims and evidenceIds refer to. */
+    public record ReportView(String id, String matchId, Map<String, Object> report, List<ClaimView> claims, List<ImprovementView> learningPlan, List<EvidenceSourceView> evidenceSources, String status, Instant updatedAt) {}
     public record MatchSummary(String id, String title, String company, String resumeTitle, String status, Integer score, String confidence, int progress, Instant updatedAt) {}
-    public record DashboardView(int total, int completed, int averageScore, int optimized, List<MatchSummary> recent) {}
+    /** averageScore is null until a report has a score; pending counts matches still in progress. */
+    public record DashboardView(int total, int completed, int pending, Integer averageScore, int optimized, List<MatchSummary> recent) {}
     public record HistoryPage(List<MatchSummary> items, int page, int size, long total, int totalPages) {}
     public record ReportVersionView(String id, String reportId, int version, int score, int confidence,
             String recommendation, boolean current, Instant createdAt) {}
@@ -821,7 +901,9 @@ public class JobMatchService {
     public record ReportComparisonView(int fromVersion, int toVersion, List<ReportDelta> changes,
             List<Map<String, Object>> beforeSuggestions, List<Map<String, Object>> afterSuggestions) {}
     public record OptimizationLink(String conversationId, String resumeMasterId, String resumeRevisionId, String jobMatchId, String path) {}
-    public record CareerDirection(String taxonomyNodeId, String title, String level, int matchScore, String reason, List<String> matchedSignals, List<String> gaps) {}
+    public record CareerDirection(String taxonomyNodeId, String title, String category, List<String> sharedSkills) {}
+    public record SimilarDirectionsView(List<String> resumeSkills, List<CareerDirection> directions) {}
+    public record EvidenceSourceView(String id, String sourceType, String title) {}
     public record MatchRow(String id, String accountId, String jobId, String jobVersionId, String status, String resumeMasterId, String resumeBranchId, String resumeRevisionId, String resumeImportId, String authorizationId, String currentReportId, String analysisTaskId, String analysisRequestId, String quotaReservationId, String evidenceMode, int progress, String checkpoint, String errorCode, int version, Instant createdAt, Instant updatedAt) {}
     private record ResumeRef(String masterId, String branchId, String revisionId) {}
 }

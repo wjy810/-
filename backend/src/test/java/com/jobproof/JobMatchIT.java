@@ -129,6 +129,7 @@ class JobMatchIT {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.report.score").isNumber())
                 .andExpect(jsonPath("$.data.report.ai.summary").exists())
+                .andExpect(jsonPath("$.data.evidenceSources").isArray())
                 .andExpect(jsonPath("$.data.status").value("COMPLETED"));
 
         JsonNode optimization = data(mockMvc.perform(post("/api/v1/job-matches/{id}/actions/resume-optimization", matchId)
@@ -178,11 +179,75 @@ class JobMatchIT {
         assertThat(quota.path("usedUnits").asInt()).isEqualTo(1);
         assertThat(completed.path("progress").asInt()).isEqualTo(100);
 
+        mockMvc.perform(get("/api/v1/job-matches/dashboard").cookie(owner))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.completed").value(1))
+                .andExpect(jsonPath("$.data.pending").value(0))
+                .andExpect(jsonPath("$.data.averageScore").isNumber());
+
         mockMvc.perform(get("/api/v1/job-matches/history").cookie(owner)
                         .param("page", "0").param("size", "10"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.items[0].id").value(matchId))
                 .andExpect(jsonPath("$.data.total").value(1));
+    }
+
+    @Test
+    void similarDirectionsListOnlyDirectionsThatShareResumeSkills() throws Exception {
+        MockCookie owner = registerAndLogin("match-similar+" + System.nanoTime() + "@example.com");
+        createStructuredResume(owner);
+        JsonNode created = createMatch(owner, "create-similar-" + UUID.randomUUID());
+        String matchId = created.path("id").asText();
+        JsonNode corrected = confirmJd(owner, created);
+        JsonNode options = data(mockMvc.perform(get("/api/v1/job-matches/{id}/resume-options", matchId)
+                        .cookie(owner)).andExpect(status().isOk()).andReturn());
+        String revisionId = options.get(0).path("revisionId").asText();
+        jdbc.update("UPDATE resume_revisions SET content_json=? WHERE id=?", """
+                {"schemaVersion":"resume-content-v3","basics":{"name":"测试用户"},
+                "summary":"","education":[],"experiences":[],"projects":[],"organizations":[],
+                "skills":[{"category":"语言与框架","items":["Java","Python","Spring Boot"]},
+                          {"category":"内容与数据","items":["视频剪辑、数据挖掘与分析"]}],
+                "certificates":[],"honors":[],"languages":[]}
+                """, revisionId);
+        mockMvc.perform(put("/api/v1/job-matches/{id}/resume-selection", matchId)
+                        .cookie(owner).contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(Map.of(
+                                "resumeRevisionId", revisionId,
+                                "expectedVersion", corrected.path("version").asInt()))))
+                .andExpect(status().isOk());
+
+        // No report yet: the dashboard has no average to show rather than a zero.
+        mockMvc.perform(get("/api/v1/job-matches/dashboard").cookie(owner))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.pending").value(1))
+                .andExpect(jsonPath("$.data.averageScore").doesNotExist());
+
+        JsonNode similar = data(mockMvc.perform(get("/api/v1/job-matches/{id}/similar-jobs", matchId).cookie(owner))
+                .andExpect(status().isOk()).andReturn());
+        assertThat(similar.path("resumeSkills").toString())
+                .contains("Java", "Python", "Spring Boot", "视频剪辑", "数据挖掘与分析");
+        Map<String, List<String>> shared = new LinkedHashMap<>();
+        for (JsonNode direction : similar.path("directions")) {
+            assertThat(direction.has("matchScore")).isFalse();
+            assertThat(direction.path("category").asText()).isNotBlank();
+            List<String> skills = new java.util.ArrayList<>();
+            direction.path("sharedSkills").forEach(skill -> skills.add(skill.asText()));
+            assertThat(skills).isNotEmpty();
+            shared.put(direction.path("title").asText(), skills);
+        }
+        assertThat(shared).containsEntry("Python", List.of("Python"))
+                .containsEntry("视频剪辑", List.of("视频剪辑"))
+                .containsEntry("数据挖掘", List.of("数据挖掘与分析"))
+                // The target role itself and directions without a shared skill are not listed.
+                .doesNotContainKeys("Java", "会计", "护士/护理", "JavaScript");
+
+        jdbc.update("UPDATE resume_revisions SET content_json=? WHERE id=?",
+                "{\"schemaVersion\":\"resume-content-v3\",\"skills\":[{\"category\":\"通用\",\"items\":[\"沟通\"]}]}",
+                revisionId);
+        mockMvc.perform(get("/api/v1/job-matches/{id}/similar-jobs", matchId).cookie(owner))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.resumeSkills[0]").value("沟通"))
+                .andExpect(jsonPath("$.data.directions.length()").value(0));
     }
 
     @Test

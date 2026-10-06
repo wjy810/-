@@ -36,7 +36,6 @@ const SCRIPT_HEX_ALLOWED = {
   // Pending tokenisation (docs/phase2/00 X-7); ceilings drop to 0 when done.
   'src/features/career-planning/components/CareerAbilityCanvas.vue': 13,
   'src/features/career-planning/pages/CareerCanvasOverviewPage.vue': 8,
-  'src/features/job-match/pages/JobMatchReportPage.vue': 6,
 }
 const SCRIPT_HEX_EXEMPT = /^src\/(design|resume-render)\//
 

@@ -1,9 +1,9 @@
 import { api, apiDownload } from '@/shared/api/client'
 import type { TaskView } from '@/shared/api/task'
 import type {
-  AnalysisStart, CareerDirection, EvidenceCandidate, ImprovementTask, JobMatch, JobMatchDashboard,
+  AnalysisStart, EvidenceCandidate, ImprovementTask, JobMatch, JobMatchDashboard,
   JobMatchHistoryPage, JobMatchReport, JobMatchReportComparison, JobMatchReportVersion, JobMatchSummary,
-  MatchCapabilities, RedactionPreview, ResumeImportSession, ResumeOption,
+  MatchCapabilities, RedactionPreview, ResumeImportSession, ResumeOption, SimilarDirections,
 } from '../types'
 
 const ROOT = '/api/v1/job-matches'
@@ -62,7 +62,7 @@ export const compareMatchReportVersions = (id: string, fromVersion: number, toVe
 export const sendClaimFeedback = (id: string, claimId: string, feedback: string, expectedVersion: number) => api(`${ROOT}/${encoded(id)}/report/claims/${encoded(claimId)}/feedback`, { method: 'POST', body: JSON.stringify({ feedback, expectedVersion, requestId: mutationId(`claim-${claimId}`, id, expectedVersion) }) })
 export const updateImprovement = (id: string, taskId: string, status: string, expectedVersion: number) => api<ImprovementTask>(`${ROOT}/${encoded(id)}/learning-tasks/${encoded(taskId)}`, { method: 'PATCH', body: JSON.stringify({ status, expectedVersion, requestId: mutationId(`learning-${taskId}`, id, expectedVersion) }) })
 export const createResumeOptimization = (id: string, expectedVersion: number) => api<{ path: string }>(`${ROOT}/${encoded(id)}/actions/resume-optimization`, { method: 'POST', body: JSON.stringify({ expectedVersion, requestId: mutationId('resume-optimization', id, expectedVersion) }) })
-export const fetchCareerDirections = (id: string) => api<CareerDirection[]>(`${ROOT}/${encoded(id)}/similar-jobs`)
+export const fetchCareerDirections = (id: string) => api<SimilarDirections>(`${ROOT}/${encoded(id)}/similar-jobs`)
 export const createReportExport = (id: string, format: string, expectedVersion: number) => api<{ id: string; taskId?: string; status: string }>(`${ROOT}/${encoded(id)}/exports`, { method: 'POST', body: JSON.stringify({ format, sections: ['ALL'], redacted: true, language: 'zh-CN', expectedVersion, requestId: mutationId(`export-${format}`, id, expectedVersion) }) })
 export const fetchReportExport = (exportId: string) => api<{ id: string; status: string; taskId?: string; downloadUrl?: string; errorCode?: string }>(`${ROOT}/exports/${encoded(exportId)}`)
 export const downloadReportExport = (exportId: string) => apiDownload(`${ROOT}/exports/${encoded(exportId)}/download`)

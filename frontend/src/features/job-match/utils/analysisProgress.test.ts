@@ -1,97 +1,50 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
-  analysisCheckpointIndex,
-  analysisCheckpointState,
-  analysisEtaLabel,
-  nextDisplayedProgress,
+  ANALYSIS_STAGES,
+  analysisStageIndex,
+  analysisStageState,
+  analysisStatusText,
+  pauseReasonText,
+  serverProgressPercent,
 } from './analysisProgress.ts'
 
-test('keeps a failed AI run at the semantic-analysis checkpoint', () => {
-  const current = analysisCheckpointIndex('ANALYSIS_PAUSED', 'ANALYSIS_PAUSED', 72)
-  assert.equal(current, 4)
-  assert.deepEqual(
-    Array.from({ length: 7 }, (_, index) => analysisCheckpointState(index, current, 'ANALYSIS_PAUSED')),
-    ['done', 'done', 'done', 'done', 'paused', 'pending', 'pending'],
-  )
+function states(checkpoint: string, status: Parameters<typeof analysisStageState>[2]) {
+  const current = analysisStageIndex(checkpoint)
+  return ANALYSIS_STAGES.map((_, index) => analysisStageState(index, current, status))
+}
+
+test('stage states follow the checkpoint the server reported', () => {
+  assert.deepEqual(states('FREEZE_INPUTS', 'ANALYZING'), ['active', 'pending', 'pending', 'pending', 'pending'])
+  assert.deepEqual(states('AI_SEMANTIC_ANALYSIS', 'ANALYZING'), ['done', 'done', 'active', 'pending', 'pending'])
+  assert.deepEqual(states('RULE_REPORT_READY', 'ANALYZING'), ['done', 'done', 'active', 'pending', 'pending'])
+  assert.deepEqual(states('FACT_VALIDATION', 'ANALYZING'), ['done', 'done', 'done', 'active', 'pending'])
+  assert.deepEqual(states('REPORT_READY', 'COMPLETED'), ['done', 'done', 'done', 'done', 'done'])
 })
 
-test('uses exact live checkpoints while analysis is running', () => {
-  const current = analysisCheckpointIndex('FACT_VALIDATION', 'ANALYZING', 82)
-  assert.equal(current, 5)
-  assert.equal(analysisCheckpointState(4, current, 'ANALYZING'), 'done')
-  assert.equal(analysisCheckpointState(5, current, 'ANALYZING'), 'active')
-  assert.equal(analysisCheckpointState(6, current, 'ANALYZING'), 'pending')
+test('an unknown checkpoint claims no finished stage', () => {
+  assert.equal(analysisStageIndex('SOMETHING_NEW'), -1)
+  assert.deepEqual(states('SOMETHING_NEW', 'ANALYZING'), ['pending', 'pending', 'pending', 'pending', 'pending'])
+  assert.equal(analysisStatusText('ANALYZING', 'SOMETHING_NEW'), '分析进行中')
 })
 
-test('uses durable progress while a resumed task still carries the paused checkpoint code', () => {
-  assert.equal(analysisCheckpointIndex('ANALYSIS_PAUSED', 'ANALYZING', 72), 4)
+test('a resumed run waits at the first stage instead of guessing where it stopped', () => {
+  assert.deepEqual(states('ANALYSIS_PAUSED', 'ANALYZING'), ['active', 'pending', 'pending', 'pending', 'pending'])
+  assert.equal(analysisStatusText('ANALYZING', 'ANALYSIS_PAUSED'), '已提交恢复，等待后台开始')
 })
 
-test('moves continuously within a checkpoint without claiming completion', () => {
-  let displayed = 72
-  for (let tick = 0; tick < 180; tick += 1) {
-    displayed = nextDisplayedProgress({
-      current: displayed,
-      authoritative: 72,
-      checkpoint: 'AI_SEMANTIC_ANALYSIS',
-      status: 'ANALYZING',
-      deltaMs: 400,
-    })
-  }
-
-  assert.ok(displayed > 72, `expected progress to move beyond 72, received ${displayed}`)
-  assert.ok(displayed <= 84, `expected the AI checkpoint ceiling to be respected, received ${displayed}`)
+test('only a positive server percentage is shown', () => {
+  assert.equal(serverProgressPercent(72), 72)
+  assert.equal(serverProgressPercent(88.6), 89)
+  assert.equal(serverProgressPercent(140), 100)
+  assert.equal(serverProgressPercent(0), null)
+  assert.equal(serverProgressPercent(undefined), null)
+  assert.equal(serverProgressPercent(Number.NaN), null)
 })
 
-test('smoothly catches up to newer server progress and never reaches 100 while running', () => {
-  const caughtUp = nextDisplayedProgress({
-    current: 52,
-    authoritative: 72,
-    checkpoint: 'AI_SEMANTIC_ANALYSIS',
-    status: 'ANALYZING',
-    deltaMs: 400,
-  })
-
-  assert.ok(caughtUp > 52)
-  assert.ok(caughtUp < 72)
-  assert.equal(nextDisplayedProgress({
-    current: 98,
-    authoritative: 99,
-    checkpoint: 'REPORT_READY',
-    status: 'ANALYZING',
-    deltaMs: 400,
-  }), 98)
-  assert.equal(nextDisplayedProgress({
-    current: 98,
-    authoritative: 100,
-    checkpoint: 'REPORT_READY',
-    status: 'COMPLETED',
-    deltaMs: 400,
-  }), 100)
-})
-
-test('stops cosmetic progress when analysis is paused', () => {
-  assert.equal(nextDisplayedProgress({
-    current: 76.4,
-    authoritative: 72,
-    checkpoint: 'ANALYSIS_PAUSED',
-    status: 'ANALYSIS_PAUSED',
-    deltaMs: 400,
-  }), 76.4)
-})
-
-test('uses conservative ETA ranges and explains a long provider wait', () => {
-  assert.equal(
-    analysisEtaLabel('AI_SEMANTIC_ANALYSIS', 'ANALYZING', 4_000),
-    '预计还需约 30–45 秒',
-  )
-  assert.equal(
-    analysisEtaLabel('AI_SEMANTIC_ANALYSIS', 'ANALYZING', 65_000),
-    '正在等待 AI 返回，通常还需 1–2 分钟',
-  )
-  assert.equal(
-    analysisEtaLabel('FACT_VALIDATION', 'ANALYSIS_PAUSED', 65_000),
-    '进度已保存，可随时恢复',
-  )
+test('pause reasons are plain language, not error codes', () => {
+  assert.equal(pauseReasonText('JOB_MATCH_AI_SCHEMA_INVALID'), 'AI 返回的内容没有通过结构与事实来源校验。')
+  assert.equal(pauseReasonText('JOB_MATCH_AI_FAILED'), 'AI 服务这次没有完成分析。')
+  assert.equal(pauseReasonText(null), 'AI 服务这次没有完成分析。')
+  assert.doesNotMatch(pauseReasonText('JOB_MATCH_AI_FAILED'), /[A-Z_]{4,}/)
 })

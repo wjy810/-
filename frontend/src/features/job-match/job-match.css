@@ -256,3 +256,53 @@
   .jm-primary, .jm-secondary, .jm-text-btn, .jm-danger, .jm-source-tabs button, .jm-tabs button,
   .jm-url-form input, .jm-field input:not([type=checkbox]):not([type=radio]), .jm-search, .jm-requirement button { min-height: 44px; }
 }
+
+/* Server-reported analysis state, provenance labels and honest empty states (docs/phase2/00 F-1, F-2, BE-2). */
+.jm-checkpoints { margin: 0; padding: 0; list-style: none; }
+.jm-progress-ring.is-indeterminate { background: var(--surface-2); }
+.jm-progress-ring.is-indeterminate svg { color: var(--color-primary); }
+.jm-progress-ring p > span { max-width: 136px; line-height: 1.45; }
+.jm-progress-log h2 { display: flex; align-items: center; gap: 8px; }
+.jm-analysis-stopped { display: grid; align-content: center; color: var(--text-secondary); font-size: 14px; line-height: 1.6; }
+.jm-discovery strong.jm-discovery__text { font-size: 14px; }
+.jm-log-line.is-empty { color: var(--text-secondary); font-size: 13px; }
+.jm-tech-details { padding: 0 18px 14px; color: var(--text-secondary); font-size: 12px; }
+.jm-tech-details summary { cursor: pointer; }
+.jm-tech-details code { display: inline-block; margin-top: 6px; font-family: var(--font-mono); overflow-wrap: anywhere; }
+
+.jm-field-hint { color: var(--text-secondary); font-size: 12px; }
+.jm-field-hint.is-short { color: var(--color-warning-text); }
+.jm-wizard__footer .jm-field-hint { margin-left: auto; }
+
+.jm-list__row > span.jm-step-index { color: var(--text-on-primary); background: var(--color-primary); }
+.jm-detail-item > span.is-gap { color: var(--color-warning-text); background: var(--color-warning-soft); }
+.jm-detail-item > span.is-plan { color: var(--color-accent-text); background: var(--color-accent-soft); }
+.jm-list__row.is-unmet > span:first-child { color: var(--color-warning-text); background: var(--color-warning-soft); }
+.jm-score-large.is-empty { background: var(--surface-3); }
+.jm-score-large.is-empty strong { color: var(--text-secondary); }
+.jm-source-list { margin: 8px 0 0; padding: 0; display: grid; gap: 6px; list-style: none; }
+.jm-source-list li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; font-size: 13px; }
+.jm-source-list small { color: var(--text-secondary); }
+.jm-source-quote { margin-top: 6px; padding-left: 10px; border-left: 2px solid var(--border-default); color: var(--text-secondary); font-size: 12px; line-height: 1.6; }
+.jm-topic-list { margin: 6px 0 0; padding-left: 18px; color: var(--text-secondary); font-size: 12px; line-height: 1.6; }
+
+.jm-direction__skills { margin-top: 10px; }
+.jm-direction__skills h3 { margin-bottom: 8px; display: flex; align-items: center; gap: 6px; font-size: 13px; }
+.jm-direction small { color: var(--text-secondary); }
+.jm-resume-skills { margin-bottom: 16px; padding: 14px 16px; display: grid; gap: 8px; }
+.jm-resume-skills h2 { font-size: 14px; }
+.jm-resume-skills p { color: var(--text-secondary); font-size: 12px; }
+button.jm-list__row { width: 100%; border: 0; border-bottom: 1px solid var(--border-subtle); color: inherit; background: transparent; font: inherit; text-align: left; cursor: pointer; }
+button.jm-list__row:last-child { border-bottom: 0; }
+button.jm-list__row:hover { background: var(--surface-2); }
+/* --score is a registered <number> that pseudo-elements do not inherit; bars read an unregistered percentage. */
+.jm-dimension i::after { width: calc(var(--bar, 0) * 1%); }
+.jm-wizard__footer > button { flex-shrink: 0; }
+@media (max-width: 900px) {
+  /* The floating "本次匹配" button must not cover the wizard's primary action. */
+  .jm-page:has(.jm-context-trigger) { padding-bottom: 84px; }
+}
+@media (max-width: 640px) {
+  .jm-wizard__footer { flex-wrap: wrap; }
+  .jm-wizard__footer .jm-field-hint { order: -1; flex-basis: 100%; margin-left: 0; text-align: right; }
+}

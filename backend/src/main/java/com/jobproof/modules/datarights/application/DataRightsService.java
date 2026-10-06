@@ -31,7 +31,6 @@ import com.jobproof.shared.security.Tokens;
 import com.jobproof.shared.time.ClockPort;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -356,14 +355,6 @@ public class DataRightsService {
         entity.setDownloadTokenHash(Tokens.sha256(rawDownloadToken));
         entity.setDownloadExpiresAt(now.plus(downloadTtl));
         exports.save(entity);
-    }
-
-    public String exportJsonPlaceholder(String accountId, String email) {
-        try {
-            return new String(exportBytes(accountId, email), StandardCharsets.UTF_8);
-        } catch (RuntimeException e) {
-            return "{\"scope\":\"ACCOUNT\",\"note\":\"export-unavailable\"}";
-        }
     }
 
     public byte[] exportBytes(String accountId, String email) {

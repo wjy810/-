@@ -1,120 +1,76 @@
 import type { JobMatchStatus } from '../types'
 
-export const ANALYSIS_CHECKPOINTS = [
-  ['PARSE_JD', '解析岗位要求'],
-  ['VALIDATE_RESUME', '校验简历结构'],
-  ['LINK_EVIDENCE', '关联资料库证据'],
-  ['RULE_GATE', '校验硬性门槛'],
-  ['AI_SEMANTIC_ANALYSIS', 'AI 语义分析'],
-  ['FACT_VALIDATION', '事实与质量校验'],
-  ['REPORT_READY', '生成行动报告'],
+/**
+ * Stages of one analysis run, in the order the server writes their checkpoints
+ * (JobMatchService.analyze and JobMatchAnalysisService.process). Nothing here advances on a
+ * timer: the page shows the checkpoint and percentage the server last reported.
+ */
+export const ANALYSIS_STAGES = [
+  { code: 'FREEZE_INPUTS', label: '冻结分析输入' },
+  { code: 'RULE_GATE', label: '核对硬性门槛' },
+  { code: 'AI_SEMANTIC_ANALYSIS', label: 'AI 语义分析' },
+  { code: 'FACT_VALIDATION', label: '核对事实与建议' },
+  { code: 'REPORT_READY', label: '生成报告' },
 ] as const
 
-export type AnalysisCheckpointState = 'done' | 'active' | 'paused' | 'pending'
+export type AnalysisStageState = 'done' | 'active' | 'pending'
 
-const CHECKPOINT_DISPLAY_CEILINGS = [24, 39, 51, 67, 84, 94, 98] as const
-
-type DisplayedProgressInput = {
-  current: number
-  authoritative: number
-  checkpoint: string | null | undefined
-  status: JobMatchStatus
-  deltaMs: number
+const STAGE_OF_CHECKPOINT: Record<string, number> = {
+  FREEZE_INPUTS: 0,
+  // Queued again after clarifications or a resume; the run restarts from the rule gate.
+  CLARIFICATION_CONFIRMED: 0,
+  ANALYSIS_PAUSED: 0,
+  RULE_GATE: 1,
+  RULE_REPORT_READY: 2,
+  AI_SEMANTIC_ANALYSIS: 2,
+  FACT_VALIDATION: 3,
+  REPORT_READY: 4,
 }
 
-function finiteProgress(value: number, maximum = 100): number {
-  if (!Number.isFinite(value)) return 0
-  return Math.min(maximum, Math.max(0, value))
+const CHECKPOINT_LABELS: Record<string, string> = {
+  FREEZE_INPUTS: '已冻结输入，等待后台开始',
+  CLARIFICATION_CONFIRMED: '已收到你的确认，等待后台重新分析',
+  ANALYSIS_PAUSED: '已提交恢复，等待后台开始',
+  RULE_GATE: '正在核对硬性门槛',
+  RULE_REPORT_READY: '规则结果已生成，即将进入 AI 分析',
+  AI_SEMANTIC_ANALYSIS: 'AI 正在分析匹配优势与缺口',
+  FACT_VALIDATION: '正在核对事实来源与建议',
+  REPORT_READY: '正在生成报告',
 }
 
-export function analysisCheckpointIndex(
-  checkpoint: string | null | undefined,
-  status: JobMatchStatus,
-  progress: number,
-): number {
-  const exact = ANALYSIS_CHECKPOINTS.findIndex((item) => item[0] === checkpoint)
-  if (exact >= 0) return exact
-  if (status === 'ANALYSIS_PAUSED' || status === 'ANALYZING') {
-    if (progress >= 90) return 6
-    if (progress >= 78) return 5
-    if (progress >= 68) return 4
-    if (progress >= 52) return 3
-    if (progress >= 40) return 2
-    if (progress >= 25) return 1
-  }
-  return 0
+/** Index of the stage the server's checkpoint belongs to, or -1 when it names none. */
+export function analysisStageIndex(checkpoint: string | null | undefined): number {
+  return STAGE_OF_CHECKPOINT[checkpoint ?? ''] ?? -1
 }
 
-export function analysisCheckpointState(
-  index: number,
-  currentIndex: number,
-  status: JobMatchStatus,
-): AnalysisCheckpointState {
-  if (status === 'COMPLETED' || index < currentIndex) return 'done'
-  if (index !== currentIndex) return 'pending'
-  if (status === 'ANALYZING') return 'active'
-  if (status === 'ANALYSIS_PAUSED') return 'paused'
+export function analysisStageState(index: number, current: number, status: JobMatchStatus): AnalysisStageState {
+  if (status === 'COMPLETED') return 'done'
+  if (current < 0) return 'pending'
+  if (index < current) return 'done'
+  if (index === current && status === 'ANALYZING') return 'active'
   return 'pending'
 }
 
-/**
- * Smooths discrete server updates without claiming that an unfinished task is complete.
- * The server remains authoritative; checkpoint ceilings only animate the waiting time
- * between durable updates.
- */
-export function nextDisplayedProgress({
-  current,
-  authoritative,
-  checkpoint,
-  status,
-  deltaMs,
-}: DisplayedProgressInput): number {
-  if (status === 'COMPLETED') return 100
-
-  const displayed = finiteProgress(current, 98)
-  const durable = finiteProgress(authoritative, 98)
-  if (status !== 'ANALYZING') return Math.max(displayed, durable)
-
-  const checkpointIndex = analysisCheckpointIndex(checkpoint, status, durable)
-  const checkpointCeiling = CHECKPOINT_DISPLAY_CEILINGS[checkpointIndex] ?? 98
-  const target = Math.min(98, Math.max(durable, checkpointCeiling))
-  if (displayed >= target) return displayed
-
-  const tickScale = Math.min(4, Math.max(0, deltaMs) / 400)
-  if (tickScale === 0) return displayed
-
-  const isCatchingUp = displayed < durable
-  const distance = (isCatchingUp ? durable : target) - displayed
-  const baseStep = isCatchingUp
-    ? Math.max(0.2, distance * 0.12)
-    : Math.max(0.025, distance * 0.018)
-  const next = displayed + baseStep * tickScale
-  return Math.min(isCatchingUp ? durable : target, next)
+/** The server-reported percentage, or null when there is none to show. */
+export function serverProgressPercent(progress: unknown): number | null {
+  if (typeof progress !== 'number' || !Number.isFinite(progress) || progress <= 0) return null
+  return Math.min(100, Math.round(progress))
 }
 
-export function analysisEtaLabel(
-  checkpoint: string | null | undefined,
-  status: JobMatchStatus,
-  idleMs: number,
-): string {
+export function analysisStatusText(status: JobMatchStatus, checkpoint: string | null | undefined): string {
   if (status === 'COMPLETED') return '分析已完成'
-  if (status === 'ANALYSIS_PAUSED') return '进度已保存，可随时恢复'
+  if (status === 'ANALYSIS_PAUSED') return '分析已暂停'
   if (status === 'CANCELLED') return '分析已取消'
-  if (status !== 'ANALYZING') return '正在准备分析'
+  if (status === 'NEEDS_CLARIFICATION') return '等待你确认事实'
+  if (status !== 'ANALYZING') return '尚未开始分析'
+  return CHECKPOINT_LABELS[checkpoint ?? ''] ?? '分析进行中'
+}
 
-  const checkpointIndex = checkpoint === 'ANALYSIS_PAUSED'
-    ? 4
-    : Math.max(0, ANALYSIS_CHECKPOINTS.findIndex(item => item[0] === checkpoint))
-  if (idleMs >= 60_000) {
-    return checkpointIndex >= 4
-      ? '正在等待 AI 返回，通常还需 1–2 分钟'
-      : '任务仍在后台运行，可能还需约 1 分钟'
-  }
-
-  const estimatedSeconds = [90, 75, 60, 45, 40, 22, 10][checkpointIndex] ?? 60
-  if (estimatedSeconds <= 15) return '预计还需约 10–15 秒'
-  if (estimatedSeconds <= 30) return '预计还需约 20–30 秒'
-  if (estimatedSeconds <= 50) return '预计还需约 30–45 秒'
-  if (estimatedSeconds <= 75) return '预计还需约 1 分钟'
-  return '预计还需 1–2 分钟'
+/** Plain-language reason for a paused run; the raw code stays in the technical details. */
+export function pauseReasonText(errorCode: string | null | undefined): string {
+  const code = errorCode ?? ''
+  if (/SCHEMA|SOURCE_REF|VALIDATION/.test(code)) return 'AI 返回的内容没有通过结构与事实来源校验。'
+  if (/QUOTA/.test(code)) return 'AI 分析额度不足。'
+  if (/TIMEOUT/.test(code)) return 'AI 服务响应超时。'
+  return 'AI 服务这次没有完成分析。'
 }

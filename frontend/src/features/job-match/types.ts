@@ -81,7 +81,10 @@ export type JobMatchSummary = {
 export type JobMatchDashboard = {
   total: number
   completed: number
-  averageScore: number
+  /** Matches still in progress (not completed or cancelled). */
+  pending?: number
+  /** Absent until at least one report has a score. */
+  averageScore?: number | null
   optimized: number
   recent: JobMatchSummary[]
 }
@@ -183,12 +186,16 @@ export type MatchReportDocument = {
   generatedAt?: string
 }
 
+/** An authorized evidence item that claims and `evidenceIds` refer to. */
+export type EvidenceSource = { id: string; sourceType: string; title: string }
+
 export type JobMatchReport = {
   id: string
   matchId: string
   report: MatchReportDocument
   claims: JobMatchClaim[]
   learningPlan: ImprovementTask[]
+  evidenceSources?: EvidenceSource[]
   status: JobMatchStatus
   updatedAt: string
 }
@@ -213,7 +220,9 @@ export type JobMatchReportComparison = {
 }
 
 export type AnalysisStart = { match: JobMatch; task: TaskView; quota: MatchCapabilities['quota'] }
-export type CareerDirection = { taxonomyNodeId: string; title: string; level: string; matchScore: number; reason: string; matchedSignals: string[]; gaps: string[] }
+/** A taxonomy direction that names at least one skill from the frozen resume. */
+export type CareerDirection = { taxonomyNodeId: string; title: string; category: string; sharedSkills: string[] }
+export type SimilarDirections = { resumeSkills: string[]; directions: CareerDirection[] }
 
 export type ResumeImportSession = {
   id: string
