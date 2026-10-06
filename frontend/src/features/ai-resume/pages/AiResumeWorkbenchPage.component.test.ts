@@ -12,7 +12,7 @@ const api = vi.hoisted(() => ({
   saveAiResumeCardDraft: vi.fn(), submitAiResumeCard: vi.fn(), saveAiResumeDesign: vi.fn(), exportAiResumePdf: vi.fn(),
   fetchAiResumeExportPreview: vi.fn(),
 }))
-const resumeApi = vi.hoisted(() => ({ fetchCurrentResumeLayout: vi.fn(), downloadPrivateFile: vi.fn() }))
+const resumeApi = vi.hoisted(() => ({ fetchCurrentResumeLayout: vi.fn(), downloadPrivateFile: vi.fn(), updateResume: vi.fn() }))
 vi.mock('../services/aiResumeApi', async () => ({
   ...(await vi.importActual<typeof import('../services/aiResumeApi')>('../services/aiResumeApi')), ...api,
 }))
@@ -228,5 +228,49 @@ describe('workbench persistence', () => {
     await flushPromises()
     await openTab(restored, '设计')
     expect(fontScale(restored)).toBe('L')
+  })
+})
+
+describe('workbench title rename', () => {
+  beforeEach(() => {
+    window.localStorage.clear()
+    Object.values(api).forEach((mock) => mock.mockReset())
+    Object.values(resumeApi).forEach((mock) => mock.mockReset())
+    vi.stubGlobal('EventSource', class { addEventListener() {} close() {} })
+    api.fetchAiResume.mockResolvedValue(conversation())
+    api.listAiResumeSmartTemplates.mockResolvedValue([template(TEMPLATE_A)])
+    resumeApi.fetchCurrentResumeLayout.mockResolvedValue({ layout: conversation().layout })
+  })
+  afterEach(() => { vi.unstubAllGlobals() })
+
+  it('renames the resume from the header with the current resume version', async () => {
+    resumeApi.updateResume.mockResolvedValue({ id: 'resume-1', status: 'DRAFT', title: '后端开发 · 校招', version: 2 })
+    const wrapper = mountWorkbench()
+    await flushPromises()
+    await wrapper.get('[data-testid="rename-title"]').trigger('click')
+    const input = wrapper.get('input[data-testid="title-input"]')
+    expect((input.element as HTMLInputElement).value).toBe('我的简历')
+    await input.setValue('  后端开发 · 校招 ')
+    await wrapper.get('.wb-header__rename').trigger('submit')
+    await flushPromises()
+    expect(resumeApi.updateResume).toHaveBeenCalledWith('resume-1', { title: '后端开发 · 校招', expectedVersion: 1 })
+    expect(wrapper.find('input[data-testid="title-input"]').exists()).toBe(false)
+    expect(wrapper.get('.wb-header__title h1').text()).toBe('后端开发 · 校招')
+    expect(wrapper.get('.wb-header__version').text()).toBe('v2')
+  })
+
+  it('keeps the field open and saves nothing for a blank name; Esc cancels', async () => {
+    const wrapper = mountWorkbench()
+    await flushPromises()
+    await wrapper.get('[data-testid="rename-title"]').trigger('click')
+    const input = wrapper.get('input[data-testid="title-input"]')
+    await input.setValue('   ')
+    await wrapper.get('.wb-header__rename').trigger('submit')
+    await flushPromises()
+    expect(resumeApi.updateResume).not.toHaveBeenCalled()
+    expect(wrapper.find('input[data-testid="title-input"]').exists()).toBe(true)
+    await input.trigger('keydown', { key: 'Escape' })
+    expect(wrapper.find('input[data-testid="title-input"]').exists()).toBe(false)
+    expect(wrapper.get('.wb-header__title h1').text()).toBe('我的简历')
   })
 })

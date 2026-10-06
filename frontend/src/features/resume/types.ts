@@ -7,10 +7,6 @@ export type ResumeVersionStatus =
   | 'FROZEN'
   | 'ARCHIVED'
 
-export type ResumeCreateMode = 'BLANK' | 'TEMPLATE' | 'IMPORT'
-
-export type ResumeTemplateCode = 'SOFTWARE_DEV' | 'QA' | 'DATA_ANALYSIS' | 'PRODUCT'
-
 export type ResumeFieldKey =
   | 'TITLE'
   | 'EDUCATION'
@@ -117,13 +113,6 @@ export type ResumeCompareView = {
   right: ResumeVersionView
 }
 
-export type ResumeCreateCommand = {
-  mode: ResumeCreateMode
-  title?: string
-  templateCode?: ResumeTemplateCode | string
-  importText?: string
-}
-
 export type ResumeUpdateCommand = {
   title?: string | null
   education?: string | null
@@ -139,17 +128,6 @@ export type ResumeUpdateCommand = {
     waiveNoEvidence?: boolean
   }>
   expectedVersion?: number
-}
-
-export type ResumeDraft = {
-  title: string
-  education: string
-  experience: string
-  projects: string
-  skills: string
-  certificates: string
-  selfIntro: string
-  outcomes: KeyOutcome[]
 }
 
 export type PageResult<T> = {

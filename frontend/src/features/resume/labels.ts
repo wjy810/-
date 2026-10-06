@@ -1,4 +1,4 @@
-import type { KeyOutcome, ResumeDraft, ResumeFieldKey, ResumeMasterView } from './types'
+import type { KeyOutcome, ResumeFieldKey, ResumeVersionView } from './types'
 
 export const MASTER_STATUS_GLOSS: Record<string, string> = {
   DRAFT: '草稿',
@@ -12,13 +12,6 @@ export const VERSION_STATUS_GLOSS: Record<string, string> = {
   PENDING_USER_CONFIRMATION: '待用户确认',
   FROZEN: '已冻结',
   ARCHIVED: '已归档',
-}
-
-export const TEMPLATE_GLOSS: Record<string, string> = {
-  SOFTWARE_DEV: '软件开发',
-  QA: '测试',
-  DATA_ANALYSIS: '数据分析',
-  PRODUCT: '产品',
 }
 
 export const FIELD_GLOSS: Record<ResumeFieldKey | string, string> = {
@@ -59,14 +52,14 @@ export function glossMasterStatus(status?: string | null): string {
   if (!status) {
     return '—'
   }
-  return MASTER_STATUS_GLOSS[status] ?? status
+  return MASTER_STATUS_GLOSS[status] ?? '未知状态'
 }
 
 export function glossVersionStatus(status?: string | null): string {
   if (!status) {
     return '—'
   }
-  return VERSION_STATUS_GLOSS[status] ?? status
+  return VERSION_STATUS_GLOSS[status] ?? '未知状态'
 }
 
 export function fieldLabel(key: string): string {
@@ -90,24 +83,6 @@ export function prettyValue(value: unknown): string {
   }
 }
 
-export function hydrateDraft(master?: ResumeMasterView | null): ResumeDraft {
-  return {
-    title: master?.title ?? '',
-    education: master?.education ?? '',
-    experience: master?.experience ?? '',
-    projects: master?.projects ?? '',
-    skills: master?.skills ?? '',
-    certificates: master?.certificates ?? '',
-    selfIntro: master?.selfIntro ?? '',
-    outcomes: (master?.keyOutcomes ?? []).map((item) => ({
-      id: item.id,
-      text: item.text ?? '',
-      evidenceId: item.evidenceId ?? '',
-      waiveNoEvidence: Boolean(item.waiveNoEvidence),
-    })),
-  }
-}
-
 export function outcomeResolved(item: KeyOutcome): boolean {
   return Boolean(item.evidenceId && item.evidenceId.trim()) || Boolean(item.waiveNoEvidence)
 }
@@ -124,6 +99,13 @@ export function isPdfExportable(status?: string | null): boolean {
   return status === 'FROZEN'
 }
 
+const TASK_STATE: Record<string, string> = {
+  PENDING: '排队中',
+  RUNNING: '正在生成',
+  FAILED: '没有成功',
+  CANCELLED: '已取消',
+}
+
 export function pdfDownloadDisabledReason(task: {
   status?: string | null
   fileId?: string | null
@@ -132,16 +114,16 @@ export function pdfDownloadDisabledReason(task: {
   downloadExpired?: boolean | null
 } | null): string | null {
   if (!task) {
-    return '还没有导出任务。仅已冻结版本可导出；成功后才会出现限时下载。'
+    return '还没有导出。只有已冻结的版本可以导出 PDF。'
   }
   if (task.status !== 'SUCCEEDED') {
-    return `导出任务当前为「${task.status}」，不能下载。`
+    return `PDF ${TASK_STATE[task.status ?? ''] ?? '还没有生成'}，暂时不能下载。`
   }
   if (task.downloadExpired) {
-    return '下载已过期。请对同一已冻结版本重新导出。本页不会用过期链假装还能下载。'
+    return '下载已过期，请重新导出这个版本。'
   }
   if (!task.fileId?.trim()) {
-    return '任务已成功，但未返回 fileId。下载按钮已禁用，本页不会伪造下载文件。'
+    return '导出完成了，但没有拿到文件，请重新导出。'
   }
   return null
 }
@@ -152,18 +134,51 @@ export function docxDownloadDisabledReason(task: {
   downloadExpired?: boolean | null
 } | null): string | null {
   if (!task) {
-    return '还没有 DOCX 导出任务。仅已冻结版本可导出。'
+    return '还没有导出。只有已冻结的版本可以导出 Word。'
   }
   if (task.status !== 'SUCCEEDED') {
-    return `DOCX 导出任务当前为「${task.status}」，不能下载。`
+    return `Word 文件${TASK_STATE[task.status ?? ''] ?? '还没有生成'}，暂时不能下载。`
   }
   if (task.downloadExpired) {
-    return 'DOCX 下载已过期，请对同一冻结版本重新导出。'
+    return '下载已过期，请重新导出这个版本。'
   }
   if (!task.fileId?.trim()) {
-    return '任务已成功，但未返回 fileId。下载按钮已禁用。'
+    return '导出完成了，但没有拿到文件，请重新导出。'
   }
   return null
+}
+
+const VERSION_SOURCE_GLOSS: Record<string, string> = {
+  USER_FREEZE: '手动冻结',
+  AI_WORKBENCH_PDF: '工作台导出 PDF',
+  AI_WORKBENCH_PDF_ANONYMOUS: '工作台导出匿名 PDF',
+}
+
+export function versionSourceLabel(source?: string | null): string {
+  return (source && VERSION_SOURCE_GLOSS[source]) || '冻结版本'
+}
+
+const MASTER_SOURCE_GLOSS: Record<string, string> = {
+  BLANK: '新建',
+  TEMPLATE: '模板创建',
+  IMPORT: '导入',
+  COPY: '复制',
+}
+
+export function masterSourceLabel(source?: string | null): string {
+  return (source && MASTER_SOURCE_GLOSS[source]) || '—'
+}
+
+/**
+ * Versions numbered 1, 2, 3… in the order they were created. `version` on a version is its
+ * optimistic-lock counter (0 or 1 for almost every snapshot), so it cannot name a version.
+ */
+export function versionOrdinals(versions: readonly Pick<ResumeVersionView, 'id' | 'createdAt' | 'frozenAt'>[]): Map<string, number> {
+  const sorted = [...versions].sort((left, right) => {
+    const byTime = (left.createdAt || left.frozenAt || '').localeCompare(right.createdAt || right.frozenAt || '')
+    return byTime || left.id.localeCompare(right.id)
+  })
+  return new Map(sorted.map((item, index) => [item.id, index + 1]))
 }
 
 export const COMPARE_KEYS = [

@@ -24,10 +24,11 @@ import type {
   AiResumeRevision,
   AiResumeDesignPreference,
   AiSmartTemplate,
-  AiTextImport,
   AiWritingPreference,
   AiWritingStyleCode,
   JobTaxonomyNode,
+  ResumeImportSession,
+  ResumeImportStart,
 } from '../types'
 
 const ROOT = '/api/v1/ai-resume'
@@ -377,9 +378,21 @@ export function deleteAiResumeHistory(conversationId: string): Promise<AiHistory
   })
 }
 
-export function importAiResumeText(conversationId: string, text: string): Promise<AiTextImport> {
-  return api<AiTextImport>(`${ROOT}/conversations/${encodeURIComponent(conversationId)}/text-import`, {
-    method: 'POST', body: JSON.stringify({ text }),
+/** Starts parsing pasted resume text; poll `task`, then read the session for the structured draft. */
+export function startResumeTextImport(pastedText: string): Promise<ResumeImportStart> {
+  return api<ResumeImportStart>('/api/v1/resume-imports', {
+    method: 'POST', body: JSON.stringify({ pastedText }),
+  })
+}
+
+export function fetchResumeImport(importId: string): Promise<ResumeImportSession> {
+  return api<ResumeImportSession>(`/api/v1/resume-imports/${encodeURIComponent(importId)}`)
+}
+
+/** Creates the resume (and its workbench conversation) from the parsed draft. */
+export function confirmResumeImport(importId: string, title: string | undefined, expectedVersion: number): Promise<ResumeImportSession> {
+  return api<ResumeImportSession>(`/api/v1/resume-imports/${encodeURIComponent(importId)}/confirm`, {
+    method: 'POST', body: JSON.stringify({ title, expectedVersion }),
   })
 }
 

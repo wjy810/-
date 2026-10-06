@@ -44,6 +44,54 @@ export function structuredTitle(type: string): string {
   return '语言能力'
 }
 
+const CONTENT_LIST_KEYS: Record<string, string> = {
+  EDUCATION: 'education', EXPERIENCE: 'experiences', PROJECTS: 'projects', ORGANIZATIONS: 'organizations',
+  SKILLS: 'skills', CERTIFICATES: 'certificates', HONORS: 'honors', LANGUAGES: 'languages',
+}
+const CONTACT_FIELDS = ['name', 'email', 'phone', 'location'] as const
+
+function blankText(value: unknown): boolean {
+  return !String(value ?? '').trim()
+}
+
+/** An imported record keeps its lines in both `description` and `highlights`; the editor only edits the description. */
+function editableRecord(item: StructuredItem): StructuredItem {
+  const highlights = Array.isArray(item.highlights) ? item.highlights.map(String) : null
+  const record = { ...item }
+  if (highlights && String(item.description ?? '') === highlights.join('\n')) delete record.highlights
+  return record
+}
+
+/**
+ * A card that holds nothing yet starts from the confirmed resume content, so the editor shows what the
+ * preview shows (e.g. right after an import) and confirming it cannot silently drop those records.
+ */
+export function seedPayloadFromContent(cardType: string, payload: Record<string, unknown>, content: Record<string, unknown> | null | undefined): Record<string, unknown> {
+  if (!content) return payload
+  const listKey = CONTENT_LIST_KEYS[cardType]
+  if (listKey) {
+    const confirmed = cleanItems(content[listKey])
+    if (cleanItems(payload.items).length || !confirmed.length) return payload
+    return { ...payload, items: confirmed.map(item => editableRecord(clonePayload(item))) }
+  }
+  if (cardType === 'SUMMARY') {
+    const summary = typeof content.summary === 'string' ? content.summary : ''
+    return blankText(payload.text) && summary.trim() ? { ...payload, text: summary } : payload
+  }
+  if (cardType === 'CONTACT') {
+    const basics = objectRecord(content.basics)
+    const links = Array.isArray(payload.links) ? payload.links.filter(link => !blankText(link)) : []
+    const empty = CONTACT_FIELDS.every(key => blankText(payload[key])) && !links.length
+    const known = CONTACT_FIELDS.some(key => !blankText(basics[key])) || (Array.isArray(basics.links) && basics.links.length > 0)
+    if (!empty || !known) return payload
+    const seeded: Record<string, unknown> = { ...payload }
+    for (const key of CONTACT_FIELDS) if (!blankText(basics[key])) seeded[key] = String(basics[key])
+    if (Array.isArray(basics.links)) seeded.links = basics.links.map(link => String(link ?? ''))
+    return seeded
+  }
+  return payload
+}
+
 /** Short headline of a record for collapsed rows: "浙江大学 · 计算机科学与技术". */
 export function recordHeadline(type: string, item: StructuredItem): string {
   const parts = type === 'EDUCATION'

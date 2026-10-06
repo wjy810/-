@@ -46,6 +46,12 @@ export function branchTypeLabel(branch: AiResumeBranch): string {
   return branch.branchType === 'BASE' ? '基础' : branch.branchType === 'JOB' ? '岗位' : '语言'
 }
 
+export function languageLabel(code: string): string {
+  if (code.startsWith('zh')) return '中文'
+  if (code.startsWith('en')) return '英文'
+  return '其他语言'
+}
+
 export function translationStatus(branch: AiResumeBranch): string {
   const value = branch.reviewMetadata?.translationStatus
   return branch.branchType === 'LANGUAGE' && typeof value === 'string' ? value : ''

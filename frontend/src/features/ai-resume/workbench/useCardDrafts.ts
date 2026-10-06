@@ -11,7 +11,7 @@ import { credentialDescriptionIssue, mergeCredentialSuggestions } from '../utils
 import { contactSubmitIssue } from '../utils/contactDetails'
 import { mergeSkillGroups } from '../utils/skillSuggestions'
 import { cardMeta } from './cardConfig'
-import { blankStructuredItem, clonePayload, itemsOf, parseSkillItems, reorder } from './structured'
+import { blankStructuredItem, clonePayload, itemsOf, parseSkillItems, reorder, seedPayloadFromContent } from './structured'
 import type { DraftState, StructuredItem } from './types'
 import type { WorkbenchSession } from './useWorkbenchSession'
 
@@ -36,7 +36,7 @@ export function useCardDrafts(session: WorkbenchSession, hooks: CardDraftHooks) 
   session.onApply((next) => {
     for (const card of next.cards) {
       // Whole-conversation responses may carry stale payloads for editors the user is typing in.
-      if (!dirty.has(card.id) || !payloads[card.id]) payloads[card.id] = clonePayload(card.payload)
+      if (!dirty.has(card.id) || !payloads[card.id]) payloads[card.id] = seedPayloadFromContent(card.cardType, clonePayload(card.payload), next.content)
       draftStates[card.id] ||= 'idle'
       localRevisions[card.id] ||= 0
     }

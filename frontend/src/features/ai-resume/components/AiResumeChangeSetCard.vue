@@ -18,6 +18,18 @@ const labels: Record<string, string> = {
   LANGUAGES: '语言能力',
 }
 
+const SOURCE_LABELS: Record<string, string> = {
+  summary: '个人简介', education: '教育经历', experiences: '工作经历', projects: '项目经历',
+  organizations: '组织经历', skills: '专业技能', certificates: '证书', honors: '荣誉', languages: '语言能力',
+  intentions: '求职意向', basics: '基本信息', evidence: '资料库',
+}
+
+/** Fact sources are keys such as `experiences/0/description`; show the module they came from. */
+function sourceLabel(source: string): string {
+  const head = source.replace(/^[/.]+/, '').split(/[/.[]/)[0] ?? ''
+  return SOURCE_LABELS[head] ?? '简历内容'
+}
+
 function text(value: unknown): string {
   return typeof value === 'string' ? value : value == null ? '' : String(value)
 }
@@ -91,7 +103,7 @@ function statusLabel(status: string): string {
           <div><span>{{ item.status === 'APPLIED' ? '已写入' : '建议值' }}</span><p>{{ text(item.correctedValue ?? item.proposedValue) }}</p></div>
         </div>
         <p class="change-reason">{{ item.reason }}</p>
-        <details v-if="item.sourceFacts?.length"><summary>查看事实来源</summary><p v-for="source in item.sourceFacts" :key="`${source.source}-${source.quote}`"><span>{{ source.source }}</span>{{ source.quote }}</p></details>
+        <details v-if="item.sourceFacts?.length"><summary>查看事实来源</summary><p v-for="source in item.sourceFacts" :key="`${source.source}-${source.quote}`"><span>{{ sourceLabel(source.source) }}</span>{{ source.quote }}</p></details>
       </article>
     </div>
   </section>

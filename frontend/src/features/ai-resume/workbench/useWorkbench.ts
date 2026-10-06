@@ -158,8 +158,8 @@ export function createWorkbench(conversationId: () => string, options: { source?
     if (session.isDisposed() || !session.conversation.value) return
     await session.loadTemplates()
     if (session.isDisposed()) return
-    if (options.source?.() === 'existing') {
-      session.notify('请直接在对话框粘贴需要整理的简历内容，并说明希望修改的模块；AI 会生成逐条待确认修改。')
+    if (options.source?.() === 'import') {
+      session.notify('简历已导入。请在“编辑”中逐个模块核对，时间、职位等细节可能需要补全。')
     }
     session.connectEvents()
     await nextTick()

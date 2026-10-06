@@ -68,7 +68,7 @@ function strengthOf(strength?: string | null): { label: string; tone: 'green' | 
 
 function typeLabel(type: string): string {
   return ({ EDUCATION: '教育经历', EXPERIENCE: '工作经历', PROJECT: '项目经历', ORGANIZATION: '组织经历',
-    SKILL: '技能', CERTIFICATE: '证书', HONOR: '荣誉', LANGUAGE: '语言', ACHIEVEMENT: '成果记录' } as Record<string, string>)[type] || type
+    SKILL: '技能', CERTIFICATE: '证书', HONOR: '荣誉', LANGUAGE: '语言', ACHIEVEMENT: '成果记录' } as Record<string, string>)[type] || '求职资料'
 }
 
 function onPick(id: string): void {
@@ -101,7 +101,7 @@ watch(
     <div class="linker">
       <section class="current">
         <p class="current__label">当前语句</p>
-        <p class="current__text">{{ outcome?.text?.trim() || '（未填写成果描述，先保存后再关联）' }}</p>
+        <p class="current__text">{{ outcome?.text?.trim() || '（这条成果没有描述）' }}</p>
       </section>
 
       <AppBanner v-if="evidenceError" tone="bad">

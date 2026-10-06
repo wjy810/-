@@ -11,14 +11,13 @@ const props = withDefaults(
   defineProps<{
     open: boolean
     title: string
-    versionNo: number
     outcomes: KeyOutcome[]
     readyToApply: boolean
-    pendingAi: boolean
+    /** AI suggestions still waiting for the user's decision; null when this page cannot tell. */
+    pendingAi: number | null
     templateName?: string
-    variantCode?: string
     layoutStatus?: string
-    consumedUnits?: number
+    docxAvailable?: boolean
     canFreeze: boolean
     freezeBlockReason?: string
     freezePending?: boolean
@@ -27,9 +26,8 @@ const props = withDefaults(
   }>(),
   {
     templateName: '',
-    variantCode: '',
     layoutStatus: '',
-    consumedUnits: 0,
+    docxAvailable: false,
     freezeBlockReason: '',
     freezePending: false,
     waivePending: '',
@@ -49,6 +47,10 @@ const waiveAck = reactive<Record<string, boolean>>({})
 const listed = computed(() => props.outcomes.filter((item) => (item.text ?? '').trim()))
 const resolvedCount = computed(() => listed.value.filter((item) => outcomeResolved(item)).length)
 const unresolved = computed(() => listed.value.filter((item) => !outcomeResolved(item)))
+const pendingAiState = computed<'unknown' | 'none' | 'some'>(() => {
+  if (props.pendingAi === null) return 'unknown'
+  return props.pendingAi > 0 ? 'some' : 'none'
+})
 
 function outcomeKey(item: KeyOutcome, index: number): string {
   return item.id || `new-${index}`
@@ -66,27 +68,22 @@ function onWaive(item: KeyOutcome): void {
 <template>
   <AppModal :open="open" title="冻结当前版本" :width="660" @close="emit('close')">
     <div class="freeze">
-      <p class="muted">将当前简历内容冻结为不可变版本，供 PDF/DOCX 导出与版本对比使用。</p>
+      <p class="muted">把当前已确认的简历内容保存为一份不可修改的版本，之后可以导出 PDF 或用来对比。</p>
 
       <section class="freeze__content">
         <span class="freeze__icon"><AppIcon name="file-text" :size="18" /></span>
         <div class="freeze__who">
           <p class="freeze__name">{{ title || '未命名简历' }}</p>
-          <p class="fine">当前编辑版本 · v{{ versionNo }}</p>
+          <p class="fine">冻结的是当前已确认的内容</p>
         </div>
       </section>
 
       <section v-if="templateName" class="freeze__panel">
-        <p class="freeze__panel-title">版式快照</p>
+        <p class="freeze__panel-title">版式</p>
         <div class="check">
-          <span class="check__icon check__icon--ok"><AppIcon name="book" :size="15" /></span>
+          <span class="check__icon check__icon--neutral"><AppIcon name="book" :size="15" /></span>
           <span class="check__label">模板</span>
           <span class="check__value">{{ templateName }}</span>
-        </div>
-        <div class="check">
-          <span class="check__icon check__icon--ok"><AppIcon name="star" :size="15" /></span>
-          <span class="check__label">颜色变体</span>
-          <span class="check__value">{{ variantCode || 'DEFAULT' }}</span>
         </div>
         <div class="check">
           <span
@@ -96,55 +93,60 @@ function onWaive(item: KeyOutcome): void {
             <AppIcon :name="layoutStatus === 'OVERFLOW' ? 'x-circle' : 'check-circle'" :size="15" />
           </span>
           <span class="check__label">页面容量</span>
-          <span class="check__value">
-            {{ layoutStatus === 'OVERFLOW' ? '存在溢出' : `有效 · ${consumedUnits} 单位` }}
-          </span>
+          <span class="check__value">{{ layoutStatus === 'OVERFLOW' ? '内容超出页面' : '未超出页面' }}</span>
         </div>
         <div class="check">
-          <span class="check__icon check__icon--ok"><AppIcon name="file-text" :size="15" /></span>
-          <span class="check__label">导出格式</span>
-          <span class="check__value">PDF · DOCX 未开放</span>
+          <span class="check__icon check__icon--neutral"><AppIcon name="download" :size="15" /></span>
+          <span class="check__label">可导出格式</span>
+          <span class="check__value">{{ docxAvailable ? 'PDF、Word' : 'PDF（此模板暂不支持 Word）' }}</span>
         </div>
       </section>
 
       <section class="freeze__panel">
-        <p class="freeze__panel-title">证据检查</p>
+        <p class="freeze__panel-title">冻结前检查</p>
         <div class="check">
-          <span class="check__icon check__icon--ok"><AppIcon name="check-circle" :size="15" /></span>
+          <span class="check__icon check__icon--neutral"><AppIcon name="file-text" :size="15" /></span>
           <span class="check__label">关键成果</span>
           <span class="check__value">{{ listed.length }} 条</span>
         </div>
-        <div class="check">
-          <span class="check__icon check__icon--ok"><AppIcon name="check-circle" :size="15" /></span>
-          <span class="check__label">已关联证据或已确认暂无证据</span>
-          <span class="check__value">{{ resolvedCount }} 条</span>
-        </div>
-        <div class="check">
+        <div v-if="listed.length" class="check">
           <span class="check__icon" :class="unresolved.length ? 'check__icon--warn' : 'check__icon--ok'">
             <AppIcon :name="unresolved.length ? 'alert-circle' : 'check-circle'" :size="15" />
           </span>
-          <span class="check__label">待补证</span>
-          <span class="check__value" :class="{ 'is-warn': unresolved.length }">{{ unresolved.length }} 条</span>
+          <span class="check__label">已关联证据或已确认暂无证据</span>
+          <span class="check__value" :class="{ 'is-warn': unresolved.length }">{{ resolvedCount }} / {{ listed.length }} 条</span>
         </div>
         <div class="check">
           <span class="check__icon" :class="readyToApply ? 'check__icon--ok' : 'check__icon--bad'">
             <AppIcon :name="readyToApply ? 'check-circle' : 'x-circle'" :size="15" />
           </span>
-          <span class="check__label">主档已标为可导出</span>
-          <span class="check__value">{{ readyToApply ? '已就绪' : '未就绪' }}</span>
+          <span class="check__label">已标为可导出</span>
+          <span class="check__value">{{ readyToApply ? '是' : '否' }}</span>
         </div>
-        <div class="check">
-          <span class="check__icon" :class="pendingAi ? 'check__icon--bad' : 'check__icon--ok'">
-            <AppIcon :name="pendingAi ? 'x-circle' : 'check-circle'" :size="15" />
+        <div class="check" data-testid="freeze-pending-ai">
+          <span
+            class="check__icon"
+            :class="{
+              'check__icon--ok': pendingAiState === 'none',
+              'check__icon--warn': pendingAiState === 'some',
+              'check__icon--neutral': pendingAiState === 'unknown',
+            }"
+          >
+            <AppIcon :name="pendingAiState === 'none' ? 'check-circle' : pendingAiState === 'some' ? 'alert-circle' : 'help'" :size="15" />
           </span>
-          <span class="check__label">AI 待确认内容已全部处理</span>
-          <span class="check__value">{{ pendingAi ? '有未确认' : '已确认' }}</span>
+          <span class="check__label">AI 待确认内容</span>
+          <span class="check__value" :class="{ 'is-warn': pendingAiState === 'some' }">
+            {{ pendingAiState === 'unknown' ? '无法确认' : pendingAiState === 'some' ? `${pendingAi} 条未处理` : '没有' }}
+          </span>
         </div>
+        <p v-if="pendingAiState !== 'none'" class="fine">
+          {{ pendingAiState === 'some' ? '未确认的 AI 内容不会写进冻结版本；想保留请先在工作台中确认。' : '暂时读不到 AI 待确认内容，冻结只包含已确认的内容。' }}
+        </p>
       </section>
 
       <AppBanner v-if="!canFreeze && freezeBlockReason" tone="bad">{{ freezeBlockReason }}</AppBanner>
       <AppBanner v-if="evidenceError" tone="bad">
-        {{ evidenceError }}证据列表不可用期间，不能关联或确认「暂无证据」。
+        {{ evidenceError }}资料列表读取成功前，不能关联证据或确认「暂无证据」。
       </AppBanner>
 
       <div v-if="unresolved.length" class="waive-list">
@@ -168,7 +170,7 @@ function onWaive(item: KeyOutcome): void {
               确认暂无证据仍要冻结
             </AppButton>
           </template>
-          <p v-else class="fine">此条尚未保存，先返回保存正式字段后才能处理。</p>
+          <p v-else class="fine">这条成果还没有保存完成，请刷新页面后再处理。</p>
         </div>
       </div>
 
@@ -178,31 +180,31 @@ function onWaive(item: KeyOutcome): void {
           <div class="impact">
             <span class="impact__icon impact__icon--blue"><AppIcon name="lock" :size="16" /></span>
             <p class="impact__name">内容将被冻结</p>
-            <p class="impact__desc">生成不可编辑的快照；快照可查看，不可修改。</p>
+            <p class="impact__desc">生成一份不可修改的版本，可以随时查看。</p>
           </div>
           <div class="impact">
             <span class="impact__icon impact__icon--green"><AppIcon name="send" :size="16" /></span>
             <p class="impact__name">可用于文件导出</p>
-            <p class="impact__desc">PDF 与 DOCX 始终基于同一冻结内容生成。</p>
+            <p class="impact__desc">同一版本导出的文件内容始终一致。</p>
           </div>
           <div class="impact">
             <span class="impact__icon impact__icon--orange"><AppIcon name="edit" :size="16" /></span>
-            <p class="impact__name">后续编辑新建版本</p>
-            <p class="impact__desc">继续编辑基于当前主档，不影响已冻结快照。</p>
+            <p class="impact__name">继续编辑不受影响</p>
+            <p class="impact__desc">之后在工作台的修改不会改动这份版本。</p>
           </div>
         </div>
       </section>
 
       <p v-if="unresolved.length" class="fine">
-        存在未关联证据的描述，建议先补充证据以提升可信度；确无证据可逐条确认后冻结。
+        有成果还没有关联证据。建议先补充证据；确实没有的，可以逐条确认后再冻结。
       </p>
     </div>
 
     <template #footer>
-      <AppButton variant="ghost" :disabled="freezePending" @click="emit('close')">返回补证</AppButton>
+      <AppButton variant="ghost" :disabled="freezePending" @click="emit('close')">取消</AppButton>
       <AppButton :disabled="!canFreeze" :pending="freezePending" @click="emit('freeze')">
         <AppIcon name="lock" :size="15" />
-        冻结并创建快照
+        冻结并创建版本
       </AppButton>
     </template>
   </AppModal>
@@ -279,6 +281,10 @@ function onWaive(item: KeyOutcome): void {
 
 .check__icon--bad {
   color: var(--color-danger);
+}
+
+.check__icon--neutral {
+  color: var(--text-tertiary);
 }
 
 .check__label {

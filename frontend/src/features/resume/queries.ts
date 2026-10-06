@@ -13,7 +13,7 @@ export function useResumeList(enabled: MaybeRefOrGetter<boolean> = true) {
   const session = useSessionStore()
   return useQuery({
     queryKey: resumeKeys.list(),
-    queryFn: listResumes,
+    queryFn: ({ signal }) => listResumes(signal),
     enabled: computed(() => session.signedIn && !session.isAdmin && toValue(enabled)),
   })
 }

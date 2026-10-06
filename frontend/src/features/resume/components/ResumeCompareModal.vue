@@ -8,7 +8,8 @@ import AppModal from '@/shared/ui/AppModal.vue'
 import AppSelect from '@/shared/ui/AppSelect.vue'
 import AppTag from '@/shared/ui/AppTag.vue'
 import { errorMessage, isForbidden } from '@/shared/api/types'
-import { COMPARE_KEYS, glossVersionStatus, prettyValue } from '../labels'
+import { formatWhen } from '@/shared/lib/datetime'
+import { COMPARE_KEYS, glossVersionStatus, prettyValue, versionOrdinals } from '../labels'
 import { compareResumeVersions } from '../services/resumeApi'
 import type { ResumeCompareView, ResumeVersionView } from '../types'
 
@@ -31,15 +32,26 @@ const compareError = ref('')
 type DiffLine = { type: 'same' | 'add' | 'del'; text: string }
 type FieldDiff = { key: string; label: string; differs: boolean; lines: DiffLine[] }
 
-const sorted = computed(() => [...props.versions].sort((a, b) => b.version - a.version))
+const ordinals = computed(() => versionOrdinals(props.versions))
+const sorted = computed(() => [...props.versions].sort((a, b) => (ordinals.value.get(b.id) ?? 0) - (ordinals.value.get(a.id) ?? 0)))
 const sides = computed(() => (compared.value ? [compared.value.left, compared.value.right] : []))
 
 function optionLabel(item: ResumeVersionView): string {
-  return `v${item.version} · ${glossVersionStatus(item.status)} · ${item.id.slice(0, 8)}`
+  return `版本 ${ordinals.value.get(item.id) ?? '—'} · ${glossVersionStatus(item.status)} · ${formatWhen(item.frozenAt || item.createdAt)}`
 }
 
 function snapshotText(version: ResumeVersionView | undefined, key: string): string {
-  return prettyValue(version?.snapshot?.[key])
+  const value = version?.snapshot?.[key]
+  if (key === 'keyOutcomes' && Array.isArray(value)) {
+    // One line per outcome with its evidence state; never the raw ids.
+    const lines = value.map((item) => {
+      const outcome = (item ?? {}) as { text?: unknown; evidenceId?: unknown; waiveNoEvidence?: unknown }
+      const state = outcome.evidenceId ? '已关联证据' : outcome.waiveNoEvidence ? '确认暂无证据' : '未处理'
+      return `${String(outcome.text ?? '').trim()}（${state}）`
+    })
+    return lines.length ? lines.join('\n') : '—'
+  }
+  return prettyValue(value)
 }
 
 function diffLines(before: string, after: string): DiffLine[] {
@@ -169,7 +181,7 @@ watch(
 <template>
   <AppModal :open="open" title="简历版本对比" :width="1080" @close="emit('close')">
     <div v-if="sorted.length < 2" class="compare">
-      <AppEmpty text="至少需要两个版本才能对比" hint="冻结第二份快照后再来对比差异。" icon="copy" />
+      <AppEmpty text="至少需要两个版本才能对比" hint="再冻结一个版本后就可以对比差异。" icon="copy" />
     </div>
     <div v-else class="compare">
       <p class="muted">对比两个版本的简历差异：绿色为新增，红色为删除，橙色为证据链接变化。</p>
@@ -225,7 +237,7 @@ watch(
             <header class="pane__head">
               <strong>{{ optionLabel(side) }}</strong>
               <AppTag :tone="side.immutable ? 'orange' : 'gray'">
-                {{ side.immutable ? '不可变快照' : '可确认' }}
+                {{ side.immutable ? '已冻结' : '待确认' }}
               </AppTag>
             </header>
             <section
@@ -255,13 +267,13 @@ watch(
         </div>
 
         <p class="fine">
-          版本回滚接口暂未提供：不能直接「恢复到旧版本」。可打开旧版本快照查看后手动誊抄，此缺口已记录待后端补齐。
+          暂不支持直接恢复到旧版本；如需沿用旧内容，请在工作台中手动修改。
         </p>
       </template>
     </div>
 
     <template #footer>
-      <AppButton variant="ghost" @click="emit('close')">返回编辑</AppButton>
+      <AppButton variant="ghost" @click="emit('close')">关闭</AppButton>
     </template>
   </AppModal>
 </template>

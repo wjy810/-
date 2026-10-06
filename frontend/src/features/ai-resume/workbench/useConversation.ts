@@ -29,7 +29,8 @@ export function useConversation(session: WorkbenchSession, assist: DescriptionAs
     const ids = new Set(persisted.map(message => message.id))
     return [...persisted, ...transient.value.filter(message => !ids.has(message.id))]
   })
-  const showIdentityIntro = computed(() => Boolean(conversation.value) && conversation.value?.messages.length === 0)
+  // Imported or legacy resumes have no chosen identity: never put an answer in the user's mouth.
+  const showIdentityIntro = computed(() => Boolean(conversation.value?.identityType) && conversation.value?.messages.length === 0)
   const intro = computed(() => identityIntro(conversation.value?.identityType))
   const canSend = computed(() => Boolean(draft.value.trim()) && !pending.value && !assist.fieldGenerationPending.value)
 

@@ -27,7 +27,7 @@ const animated = computed(() => props.active || Boolean(props.message?.transient
           <template v-if="message">
             <p v-if="thinking && message.content" class="chat-msg__progress" role="status">{{ message.content }}<span class="chat-msg__dots"><i /><i /><i /></span></p>
             <p v-else-if="thinking" class="chat-msg__typing" role="status" aria-label="AI 正在思考"><span class="chat-msg__dots"><i /><i /><i /></span></p>
-            <p v-else-if="message.status === 'FAILED'" class="chat-msg__failed">本次调用失败：{{ message.errorCode }}</p>
+            <p v-else-if="message.status === 'FAILED'" class="chat-msg__failed">这次回复没有生成成功，额度已返还，可以重新发送。</p>
             <p v-else-if="message.status === 'CANCELLED'" class="chat-msg__muted">本次生成已取消，未采用模型返回内容。</p>
             <p v-else-if="message.content">{{ message.content }}<span v-if="streaming" class="chat-msg__caret" aria-hidden="true" /></p>
             <p v-else class="chat-msg__muted">正文已删除</p>

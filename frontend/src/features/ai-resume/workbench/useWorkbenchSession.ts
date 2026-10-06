@@ -4,8 +4,10 @@
  */
 import { computed, ref } from 'vue'
 import { createEventHook } from '@vueuse/core'
-import { errorMessage } from '@/shared/api/types'
+import { errorMessage, isVersionConflict } from '@/shared/api/types'
 import { toast } from '@/shared/ui/toast'
+import { updateResume } from '@/features/resume/services/resumeApi'
+import { normalizeResumeTitle, resumeTitleIssue } from '@/features/resume/utils/resumeTitle'
 import {
   fetchAiResume,
   grantAiResumeConsent,
@@ -38,6 +40,7 @@ export function useWorkbenchSession(conversationId: () => string) {
   const consentPending = ref(false)
   const careerEvidencePending = ref(false)
   const photoPending = ref(false)
+  const renamePending = ref(false)
 
   let disposed = false
   let eventSource: EventSource | null = null
@@ -128,7 +131,7 @@ export function useWorkbenchSession(conversationId: () => string) {
       const next = await listAiResumeSmartTemplates(id)
       if (!disposed && conversation.value?.id === id) templates.value = next
     } catch (reason) {
-      fail(errorMessage(reason, '12 款智能模板读取失败'))
+      fail(errorMessage(reason, '智能模板读取失败'))
     } finally {
       templatesPending.value = false
     }
@@ -217,6 +220,37 @@ export function useWorkbenchSession(conversationId: () => string) {
     }
   }
 
+  /** Renames the resume; resolves false (with a visible reason) when nothing was saved. */
+  async function renameResume(value: string): Promise<boolean> {
+    const current = conversation.value
+    if (!current || renamePending.value) return false
+    const issue = resumeTitleIssue(value)
+    if (issue) {
+      fail(issue)
+      return false
+    }
+    const title = normalizeResumeTitle(value)
+    if (title === (current.resume.title ?? '').trim()) return true
+    renamePending.value = true
+    clearError()
+    try {
+      const resume = await updateResume(current.masterId, { title, expectedVersion: current.resume.version })
+      if (conversation.value?.id === current.id) applyConversation({ ...conversation.value, resume: { ...conversation.value.resume, ...resume } })
+      notify(`已重命名为「${title}」。`)
+      return true
+    } catch (reason) {
+      if (isVersionConflict(reason)) {
+        await load()
+        fail('简历刚在其他页面更新过，已重新读取，请再改一次名称。')
+      } else {
+        fail(errorMessage(reason, '重命名失败，请稍后重试'))
+      }
+      return false
+    } finally {
+      renamePending.value = false
+    }
+  }
+
   function dispose(): void {
     disposed = true
     eventSource?.close()
@@ -234,6 +268,7 @@ export function useWorkbenchSession(conversationId: () => string) {
     consentPending,
     careerEvidencePending,
     photoPending,
+    renamePending,
     ready,
     aiReason,
     aiUsable,
@@ -256,6 +291,7 @@ export function useWorkbenchSession(conversationId: () => string) {
     toggleCareerEvidence,
     uploadPhoto,
     removePhoto,
+    renameResume,
     dispose,
   }
 }

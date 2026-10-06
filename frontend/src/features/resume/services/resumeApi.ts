@@ -6,7 +6,6 @@ import type {
   CurrentResumeLayout,
   ResumeCandidateView,
   ResumeCompareView,
-  ResumeCreateCommand,
   ResumeMasterSummary,
   ResumeMasterView,
   ResumeLayoutView,
@@ -53,7 +52,7 @@ export async function downloadTemplateCatalogDocx(
   )
   const magic = new Uint8Array(await file.blob.slice(0, 4).arrayBuffer())
   if (magic[0] !== 0x50 || magic[1] !== 0x4b) {
-    throw new Error('下载结果不是有效的 DOCX 文件，未保存。')
+    throw new Error('下载到的不是有效的 Word 文件，没有保存。请稍后重试。')
   }
   return file
 }
@@ -106,23 +105,16 @@ function versioned(expectedVersion?: number): string {
   return JSON.stringify({ expectedVersion })
 }
 
-export function createResume(command: ResumeCreateCommand): Promise<ResumeMasterView> {
-  return api<ResumeMasterView>('/api/v1/resumes', {
-    method: 'POST',
-    body: JSON.stringify(command),
-  })
+export function listResumes(signal?: AbortSignal): Promise<ResumeMasterSummary[]> {
+  return api<ResumeMasterSummary[]>('/api/v1/resumes', { signal })
 }
 
-export function listResumes(): Promise<ResumeMasterSummary[]> {
-  return api<ResumeMasterSummary[]>('/api/v1/resumes')
-}
-
-export function fetchResume(id: string): Promise<ResumeMasterView> {
-  return api<ResumeMasterView>(`/api/v1/resumes/${id}`)
+export function fetchResume(id: string, signal?: AbortSignal): Promise<ResumeMasterView> {
+  return api<ResumeMasterView>(`/api/v1/resumes/${encodeURIComponent(id)}`, { signal })
 }
 
 export function updateResume(id: string, command: ResumeUpdateCommand): Promise<ResumeMasterView> {
-  return api<ResumeMasterView>(`/api/v1/resumes/${id}`, {
+  return api<ResumeMasterView>(`/api/v1/resumes/${encodeURIComponent(id)}`, {
     method: 'PUT',
     body: JSON.stringify(command),
   })
@@ -301,7 +293,7 @@ export async function downloadPrivateDocxFile(fileId: string): Promise<{ blob: B
 export async function downloadByPath(path: string): Promise<{ blob: Blob; filename: string | null }> {
   const trimmed = path.trim()
   if (!isSessionFileDownloadPath(trimmed)) {
-    throw new Error('下载地址不是会话私有文件接口 GET /api/v1/files/{id}/download，未发起请求。')
+    throw new Error('下载地址无效，请重新导出后再下载。')
   }
   return downloadResumePdfBytes(trimmed)
 }
@@ -309,7 +301,7 @@ export async function downloadByPath(path: string): Promise<{ blob: Blob; filena
 export async function downloadDocxByPath(path: string): Promise<{ blob: Blob; filename: string | null }> {
   const trimmed = path.trim()
   if (!isSessionFileDownloadPath(trimmed)) {
-    throw new Error('下载地址不是会话私有文件接口 GET /api/v1/files/{id}/download，未发起请求。')
+    throw new Error('下载地址无效，请重新导出后再下载。')
   }
   return downloadResumeDocxBytes(trimmed)
 }
@@ -326,14 +318,7 @@ async function assertResumePdfBlob(blob: Blob): Promise<void> {
   if (magic.startsWith('%PDF-')) {
     return
   }
-  const type = (blob.type || '').toLowerCase()
-  if (type.includes('html') || /^\s*</.test(magic)) {
-    throw new Error('下载结果是 HTML 页面，不是 PDF 字节。未保存伪造文件。')
-  }
-  if (type.includes('json') || /^\s*\{/.test(magic)) {
-    throw new Error('下载结果是 JSON，不是 PDF 字节。未保存伪造文件。')
-  }
-  throw new Error('下载结果不是 PDF 字节。未保存伪造文件。')
+  throw new Error('下载到的不是有效的 PDF 文件，没有保存。请重新导出后再试。')
 }
 
 
@@ -343,18 +328,11 @@ async function downloadResumeDocxBytes(path: string): Promise<{ blob: Blob; file
   return file
 }
 
+/** A DOCX file is a ZIP archive: it starts with "PK". */
 async function assertResumeDocxBlob(blob: Blob): Promise<void> {
-  const head = new Uint8Array(await blob.slice(0, 16).arrayBuffer())
+  const head = new Uint8Array(await blob.slice(0, 2).arrayBuffer())
   if (head[0] === 0x50 && head[1] === 0x4b) {
     return
   }
-  const magic = Array.from(head, (byte) => String.fromCharCode(byte)).join('')
-  const type = (blob.type || '').toLowerCase()
-  if (type.includes('html') || /^\s*</.test(magic)) {
-    throw new Error('下载结果是 HTML 页面，不是 DOCX 字节。未保存伪造文件。')
-  }
-  if (type.includes('json') || /^\s*\{/.test(magic)) {
-    throw new Error('下载结果是 JSON，不是 DOCX 字节。未保存伪造文件。')
-  }
-  throw new Error('下载结果不是 ZIP/OOXML DOCX 字节。未保存伪造文件。')
+  throw new Error('下载到的不是有效的 Word 文件，没有保存。请重新导出后再试。')
 }

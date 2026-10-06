@@ -8,7 +8,7 @@ import UiEmptyState from '@/shared/ui/UiEmptyState.vue'
 import UiSelect from '@/shared/ui/UiSelect.vue'
 import { formatRelative } from '@/shared/lib/datetime'
 import type { AiWritingStyleCode } from '../../types'
-import { branchStatusLabel, branchTypeLabel, revisionSourceLabel, revisionSummary, translationStatus, unconfirmedProperNames } from '../copy'
+import { branchStatusLabel, branchTypeLabel, languageLabel, revisionSourceLabel, revisionSummary, translationStatus, unconfirmedProperNames } from '../copy'
 import { useWorkbench } from '../useWorkbench'
 import { WRITING_STYLE_OPTIONS } from '../useWorkbenchTools'
 
@@ -43,7 +43,7 @@ const loading = computed(() => tools.pending.value === 'load')
         <ul class="branch-list">
           <li v-for="branch in tools.branches.value" :key="branch.id" class="branch" :class="{ 'is-active': branch.active }">
             <div class="branch__main">
-              <span class="branch__type"><GitBranch :size="12" aria-hidden="true" />{{ branchTypeLabel(branch) }} · {{ branch.languageCode }}</span>
+              <span class="branch__type"><GitBranch :size="12" aria-hidden="true" />{{ branchTypeLabel(branch) }} · {{ languageLabel(branch.languageCode) }}</span>
               <strong>{{ branch.title }}</strong>
               <small>{{ branchStatusLabel(branch, Boolean(conversation?.aiAvailable)) }}</small>
               <small v-if="unconfirmedProperNames(branch).length" class="branch__names">待确认专有名称：{{ unconfirmedProperNames(branch).join('、') }}</small>

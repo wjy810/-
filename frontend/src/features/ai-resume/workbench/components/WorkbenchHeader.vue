@@ -1,12 +1,14 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, nextTick, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { ArrowLeft, Download, GitBranch, History, MoreHorizontal, PenLine, ShieldCheck, Sparkles } from 'lucide-vue-next'
+import { ArrowLeft, Download, GitBranch, History, Layers, MoreHorizontal, PenLine, ShieldCheck, Sparkles } from 'lucide-vue-next'
 import UiBadge from '@/shared/ui/UiBadge.vue'
 import UiButton from '@/shared/ui/UiButton.vue'
 import UiDropdownMenu, { type MenuItem } from '@/shared/ui/UiDropdownMenu.vue'
 import UiIconButton from '@/shared/ui/UiIconButton.vue'
+import UiInput from '@/shared/ui/UiInput.vue'
 import UiTooltip from '@/shared/ui/UiTooltip.vue'
+import { RESUME_TITLE_MAX } from '@/features/resume/utils/resumeTitle'
 import { useWorkbench } from '../useWorkbench'
 import SaveIndicator from './SaveIndicator.vue'
 
@@ -15,16 +17,42 @@ const router = useRouter()
 const conversation = wb.session.conversation
 
 const title = computed(() => conversation.value?.resume.title || 'AI 简历工作台')
-const manualPath = computed(() => conversation.value ? `/resumes/${conversation.value.masterId}/manual` : '/resumes')
+const versionsPath = computed(() => conversation.value ? `/resumes/${conversation.value.masterId}/manual` : '/resumes')
 const quota = wb.session.quota
 const quotaLow = computed(() => Boolean(quota.value && quota.value.grantedUnits > 0 && quota.value.remainingUnits / quota.value.grantedUnits < 0.15))
+const canRename = computed(() => Boolean(conversation.value) && conversation.value?.resume.status !== 'ARCHIVED')
+
+const editing = ref(false)
+const draftTitle = ref('')
+const titleInput = ref<InstanceType<typeof UiInput> | null>(null)
+
+async function startRename(): Promise<void> {
+  if (!canRename.value) return
+  draftTitle.value = conversation.value?.resume.title ?? ''
+  editing.value = true
+  await nextTick()
+  titleInput.value?.focus()
+  titleInput.value?.el?.select()
+}
+
+function cancelRename(): void {
+  editing.value = false
+}
+
+/** Enter or leaving the field saves; a failed save keeps the field open with the typed name. */
+async function commitRename(): Promise<void> {
+  if (!editing.value || wb.session.renamePending.value) return
+  if (await wb.session.renameResume(draftTitle.value)) editing.value = false
+  else titleInput.value?.focus()
+}
 
 const moreItems = computed<MenuItem[]>(() => [
+  { label: '重命名', icon: PenLine, disabled: !canRename.value, onSelect: () => void startRename() },
   { label: '简历分支', icon: GitBranch, onSelect: () => void wb.tools.open('branches') },
   { label: '版本历史', icon: History, onSelect: () => void wb.tools.open('history') },
   { label: 'AI 隐私与偏好', icon: ShieldCheck, onSelect: () => void wb.tools.open('privacy') },
   { type: 'separator' },
-  { label: '手动编辑', icon: PenLine, onSelect: () => void router.push(manualPath.value) },
+  { label: '版本与导出', icon: Layers, onSelect: () => void router.push(versionsPath.value) },
 ])
 </script>
 
@@ -32,7 +60,27 @@ const moreItems = computed<MenuItem[]>(() => [
   <header class="wb-header">
     <UiIconButton :icon="ArrowLeft" label="返回简历列表" to="/resumes" tooltip-side="right" />
     <div class="wb-header__title">
-      <h1 :title="title">{{ title }}</h1>
+      <form v-if="editing" class="wb-header__rename" @submit.prevent="commitRename">
+        <UiInput
+          ref="titleInput"
+          v-model="draftTitle"
+          size="sm"
+          aria-label="简历名称"
+          :maxlength="RESUME_TITLE_MAX + 20"
+          :disabled="wb.session.renamePending.value"
+          autocomplete="off"
+          data-testid="title-input"
+          @keydown.esc.prevent="cancelRename"
+          @blur="commitRename"
+        />
+      </form>
+      <h1 v-else-if="canRename">
+        <button class="wb-header__name" type="button" :title="`${title}（点击重命名）`" data-testid="rename-title" @click="startRename">
+          <span>{{ title }}</span>
+          <PenLine class="wb-header__name-icon" :size="13" aria-hidden="true" />
+        </button>
+      </h1>
+      <h1 v-else :title="title">{{ title }}</h1>
       <div v-if="conversation" class="wb-header__meta">
         <UiBadge :tone="wb.session.ready.value ? 'success' : 'neutral'" size="sm" dot>
           {{ wb.session.ready.value ? '第一版已就绪' : '正在收集事实' }}
@@ -54,7 +102,7 @@ const moreItems = computed<MenuItem[]>(() => [
         <UiIconButton :icon="History" label="版本历史" @click="wb.tools.open('history')" />
         <UiIconButton :icon="ShieldCheck" label="AI 隐私与偏好" @click="wb.tools.open('privacy')" />
       </div>
-      <UiButton class="wb-header__manual" variant="secondary" size="sm" :icon="PenLine" :to="manualPath">手动编辑</UiButton>
+      <UiButton class="wb-header__manual" variant="secondary" size="sm" :icon="Layers" :to="versionsPath">版本与导出</UiButton>
       <UiDropdownMenu :items="moreItems" align="end">
         <button class="wb-header__more" type="button" aria-label="更多工具"><MoreHorizontal :size="18" aria-hidden="true" /></button>
       </UiDropdownMenu>
@@ -92,6 +140,51 @@ const moreItems = computed<MenuItem[]>(() => [
   line-height: 1.3;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.wb-header__name {
+  max-width: 100%;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 1px 4px;
+  margin-left: -4px;
+  border-radius: var(--radius-sm);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+.wb-header__name span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wb-header__name-icon {
+  flex: 0 0 auto;
+  color: var(--text-tertiary);
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease-out);
+}
+
+.wb-header__name:hover {
+  background: var(--surface-2);
+}
+
+.wb-header__name:hover .wb-header__name-icon,
+.wb-header__name:focus-visible .wb-header__name-icon {
+  opacity: 1;
+}
+
+.wb-header__name:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.wb-header__rename {
+  max-width: 420px;
 }
 
 .wb-header__meta {

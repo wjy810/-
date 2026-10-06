@@ -1,4 +1,5 @@
-import type { ResumeCandidateView, ResumeLayoutView, ResumeMasterView } from '@/features/resume/types'
+import type { TaskView } from '@/shared/api/task'
+import type { ResumeLayoutView, ResumeMasterView } from '@/features/resume/types'
 import type { ResumeDesignV2 } from '@/resume-render/theme/design'
 
 export type AiIdentity = 'STUDENT' | 'GRADUATE' | 'PROFESSIONAL'
@@ -113,12 +114,21 @@ export type AiResumePhoto = {
   contentUrl: string
 }
 
-export type AiTextImport = {
-  parserVersion: string
-  aiCalled: boolean
-  ignoredSensitiveLines: number
-  ambiguousLines: number
-  candidates: ResumeCandidateView[]
+/** POST /api/v1/resume-imports: the pasted text is parsed by a background task into a structured draft. */
+export type ResumeImportSession = {
+  id: string
+  sourceType: 'PASTED_TEXT' | 'CAREER_FILE' | string
+  status: 'PENDING' | 'PARSING' | 'READY_FOR_CONFIRMATION' | 'CONFIRMED' | 'FAILED' | string
+  structuredDraft?: Record<string, unknown> | null
+  task?: TaskView | null
+  errorCode?: string | null
+  resultMasterId?: string | null
+  version: number
+}
+
+export type ResumeImportStart = {
+  importSession: ResumeImportSession
+  task: TaskView
 }
 
 export type AiCancellation = {
