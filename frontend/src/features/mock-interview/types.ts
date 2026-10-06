@@ -17,6 +17,9 @@ export type MockInterviewSessionSummary = {
   score?: number | null
   updatedAt: string
   completedAt?: string | null
+  /** Active interview time measured by the server, pauses excluded. */
+  elapsedSeconds?: number | null
+  durationMinutes?: number | null
 }
 
 export type MockInterviewDashboard = {
@@ -24,7 +27,8 @@ export type MockInterviewDashboard = {
   completed: number
   textCount: number
   voiceCount: number
-  averageScore: number
+  /** Null until at least one answer has been evaluated by the model. */
+  averageScore: number | null
   resumable?: MockInterviewSessionSummary | null
   recent: MockInterviewSessionSummary[]
 }
@@ -106,10 +110,19 @@ export type MockInterviewReview = {
 export type MockInterviewReport = {
   id: string
   session: MockInterviewSessionSummary
-  overallScore: number
+  /** Null when no answer has been evaluated by the model yet. */
+  overallScore: number | null
   dimensions: Record<string, number>
   summary: { strengths?: string[]; risks?: string[] } & Record<string, unknown>
   recommendations: string[]
   questions: MockInterviewReview[]
   generatedAt: string
+  evaluatedCount: number
+  pendingCount: number
+}
+
+export type MockInterviewEvaluation = {
+  evaluated: number
+  pending: number
+  aiAvailable: boolean
 }

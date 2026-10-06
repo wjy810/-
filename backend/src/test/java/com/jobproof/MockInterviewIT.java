@@ -1,7 +1,6 @@
 package com.jobproof;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -18,7 +17,6 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockCookie;
-import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
@@ -100,7 +98,9 @@ class MockInterviewIT {
                             .content(mapper.writeValueAsString(Map.of("answer", answer))))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.data.answers[" + index + "].status").value("SUBMITTED"))
-                    .andExpect(jsonPath("$.data.answers[" + index + "].feedback.generationMode").value("BASIC_RULES"))
+                    // Without the model there is no score, only a pending evaluation (BE-1).
+                    .andExpect(jsonPath("$.data.answers[" + index + "].feedback.generationMode").value("PENDING"))
+                    .andExpect(jsonPath("$.data.answers[" + index + "].scores").isEmpty())
                     .andReturn();
             session = data(submitted);
             if (index == 0) {
@@ -113,7 +113,9 @@ class MockInterviewIT {
                         .andReturn());
                 mockMvc.perform(post("/api/v1/mock-interviews/sessions/{id}/pause", sessionId).cookie(owner))
                         .andExpect(status().isOk())
-                        .andExpect(jsonPath("$.data.session.status").value("PAUSED"));
+                        .andExpect(jsonPath("$.data.session.status").value("PAUSED"))
+                        .andExpect(jsonPath("$.data.session.elapsedSeconds").isNumber())
+                        .andExpect(jsonPath("$.data.session.durationMinutes").value(30));
                 mockMvc.perform(post("/api/v1/mock-interviews/sessions/{id}/resume", sessionId).cookie(owner))
                         .andExpect(status().isOk())
                         .andExpect(jsonPath("$.data.session.status").value("IN_PROGRESS"));
@@ -123,17 +125,29 @@ class MockInterviewIT {
         mockMvc.perform(get("/api/v1/mock-interviews/reports/{id}", sessionId).cookie(owner))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.session.status").value("COMPLETED"))
-                .andExpect(jsonPath("$.data.overallScore").isNumber())
+                // Nothing evaluated: no score, no dimensions and no written-in strengths (H-5).
+                .andExpect(jsonPath("$.data.overallScore").doesNotExist())
+                .andExpect(jsonPath("$.data.dimensions").isEmpty())
+                .andExpect(jsonPath("$.data.evaluatedCount").value(0))
+                .andExpect(jsonPath("$.data.pendingCount").value(5))
                 .andExpect(jsonPath("$.data.questions.length()").value(5))
-                .andExpect(jsonPath("$.data.summary.strengths.length()").value(3));
+                .andExpect(jsonPath("$.data.summary.strengths").isEmpty())
+                .andExpect(jsonPath("$.data.recommendations").isEmpty());
         mockMvc.perform(get("/api/v1/mock-interviews/dashboard").cookie(owner))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.total").value(1))
-                .andExpect(jsonPath("$.data.completed").value(1));
+                .andExpect(jsonPath("$.data.completed").value(1))
+                .andExpect(jsonPath("$.data.averageScore").doesNotExist());
+        // The model is still unavailable, so nothing changes.
+        mockMvc.perform(post("/api/v1/mock-interviews/sessions/{id}/evaluate", sessionId).cookie(owner))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.evaluated").value(0))
+                .andExpect(jsonPath("$.data.pending").value(5))
+                .andExpect(jsonPath("$.data.aiAvailable").value(false));
     }
 
     @Test
-    void voiceInterviewPersistsAudioTranscriptAndFallsBackToTextWithoutLosingProgress() throws Exception {
+    void voiceInterviewPersistsTranscriptAndFallsBackToTextWithoutLosingProgress() throws Exception {
         MockCookie owner = registerAndLogin("mock-voice+" + System.nanoTime() + "@example.com");
         String resumeId = data(mockMvc.perform(post("/api/v1/resumes").cookie(owner)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -169,15 +183,6 @@ class MockInterviewIT {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.mode").value("VOICE"))
                 .andExpect(jsonPath("$.data.status").value("DRAFT"));
-
-        MockMultipartFile audio = new MockMultipartFile("file", "answer.webm", "audio/webm",
-                "synthetic-audio-chunk".getBytes());
-        mockMvc.perform(multipart("/api/v1/mock-interviews/sessions/{id}/audio/chunks", sessionId)
-                        .file(audio).cookie(owner)
-                        .param("questionId", questionId).param("sequence", "0").param("durationMs", "1200"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.sequence").value(0))
-                .andExpect(jsonPath("$.data.durationMs").value(1200));
 
         mockMvc.perform(post("/api/v1/mock-interviews/sessions/{id}/pause", sessionId).cookie(owner))
                 .andExpect(status().isOk())

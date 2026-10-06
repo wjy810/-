@@ -1,12 +1,11 @@
 package com.jobproof.modules.mockinterview.application;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.jobproof.modules.storage.ObjectStoragePort;
-import com.jobproof.modules.storage.PrivateFileJpaRepository;
 import com.jobproof.shared.auth.CurrentAccount;
 import com.jobproof.shared.error.AppException;
 import java.time.Instant;
@@ -37,13 +36,16 @@ class MockInterviewConsistencyTest {
         var source = new DriverManagerDataSource(url, "sa", "");
         jdbc = new JdbcTemplate(source);
         otherConnection = new JdbcTemplate(new DriverManagerDataSource(url, "sa", ""));
-        new ResourceDatabasePopulator(new ClassPathResource("db/migration/V30__mock_interview_training.sql")).execute(source);
-        tx = new TransactionTemplate(new DataSourceTransactionManager(source));
+        new ResourceDatabasePopulator(new ClassPathResource("db/migration/V30__mock_interview_training.sql"),
+                new ClassPathResource("db/migration/V69__mock_interview_honest_scoring.sql")).execute(source);
+        DataSourceTransactionManager transactionManager = new DataSourceTransactionManager(source);
+        tx = new TransactionTemplate(transactionManager);
         service = new MockInterviewService(jdbc, new ObjectMapper(), () -> {
             Runnable competitor = competingWrite.getAndSet(null);
             if (competitor != null) competitor.run();
             return NOW;
-        }, mock(ObjectStoragePort.class), mock(PrivateFileJpaRepository.class), mock(MockInterviewAiService.class));
+        }, mock(MockInterviewAiService.class),
+                transactionManager);
         jdbc.update("INSERT INTO mock_interview_sessions(id,account_id,title,position_name,mode,interview_type,difficulty,duration_minutes,question_count,language_code,feedback_mode,follow_up_enabled,status,current_question_index,elapsed_seconds,resume_snapshot_json,jd_snapshot_json,materials_snapshot_json,settings_snapshot_json,version_no,created_at,updated_at) VALUES('interview','owner','Interview','Engineer','TEXT','COMPREHENSIVE','STANDARD',30,2,'zh-CN','AFTER_EACH',0,'IN_PROGRESS',0,0,'{}','{}','{}','{}',0,?,?)", NOW, NOW);
         for (int i = 1; i <= 2; i++) {
             jdbc.update("INSERT INTO mock_interview_questions VALUES(?, 'interview',?,'PROFESSIONAL','Question','source','[]','PENDING',?)", "question-" + i, i, NOW);
@@ -97,9 +99,11 @@ class MockInterviewConsistencyTest {
     }
 
     @Test
-    void reportWithoutScoresKeepsTheExistingMissingScoreFallback() {
+    void reportWithoutEvaluatedAnswersHasNoScore() {
         var report = tx.execute(status -> service.complete(current, "interview"));
-        assertEquals(60, report.overallScore());
+        assertNull(report.overallScore());
+        assertEquals(Map.of(), report.dimensions());
+        assertEquals(0, report.evaluatedCount());
     }
 
     private static void insertAnswer(JdbcTemplate database, String id, String questionId, String text, String scores) {

@@ -4,6 +4,7 @@ import { VueQueryPlugin } from '@tanstack/vue-query'
 import App from './app/App.vue'
 import router from './app/router'
 import { queryClient } from './app/queryClient'
+import { installErrorReporting } from './app/errorReporting'
 import { safeNextPath } from './features/identity/safeNext'
 import { setUnauthenticatedHandler } from './shared/api/client'
 import { useSessionStore } from './stores/session'
@@ -15,6 +16,7 @@ const pinia = createPinia()
 app.use(pinia)
 app.use(VueQueryPlugin, { queryClient })
 app.use(router)
+installErrorReporting(app, router)
 
 // Apply theme/motion preferences immediately (index.html already set the first-paint theme).
 usePreferencesStore(pinia)

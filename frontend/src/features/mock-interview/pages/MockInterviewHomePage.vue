@@ -78,7 +78,7 @@ onMounted(load)
         <template v-else>
           <section class="mi-home-stats" aria-label="训练统计">
             <article class="mi-card"><span class="mi-stat-icon is-blue"><JobProofIcon name="interview-training-count" :size="23" /></span><div><small>累计训练</small><strong>{{ dashboard?.total ?? 0 }}</strong><p>{{ dashboard?.completed ?? 0 }} 次已完成</p></div></article>
-            <article class="mi-card"><span class="mi-stat-icon is-green"><JobProofIcon name="interview-average-score" :size="23" /></span><div><small>平均得分</small><strong>{{ dashboard?.averageScore ?? '—' }}</strong><p>基于已完成训练</p></div></article>
+            <article class="mi-card"><span class="mi-stat-icon is-green"><JobProofIcon name="interview-average-score" :size="23" /></span><div><small>平均得分</small><strong>{{ dashboard ? dashboard.averageScore ?? '待评估' : '—' }}</strong><p>{{ dashboard?.averageScore == null ? '还没有被 AI 评估的回答' : '基于 AI 已评估的回答' }}</p></div></article>
             <article class="mi-card"><span class="mi-stat-icon is-purple"><JobProofIcon name="interview-training-mode" :size="23" /></span><div><small>训练方式</small><strong>{{ dashboard?.textCount ?? 0 }} / {{ dashboard?.voiceCount ?? 0 }}</strong><p>文字 / 语音</p></div></article>
           </section>
 
@@ -116,7 +116,7 @@ onMounted(load)
               <div class="mi-table-wrap">
                 <table v-if="displayed.length" class="mi-history-table">
                   <thead><tr><th>岗位与公司</th><th>方式</th><th>类型</th><th>进度</th><th>得分</th><th>更新时间</th><th>操作</th></tr></thead>
-                  <tbody><tr v-for="item in displayed" :key="item.id"><td data-label="岗位与公司"><strong>{{ item.positionName }}</strong><small>{{ item.companyName || '未指定公司' }}</small></td><td data-label="方式"><span class="mi-tag" :class="item.mode === 'VOICE' ? 'mi-tag--green' : 'mi-tag--blue'">{{ modeLabel(item.mode) }}</span></td><td data-label="类型">{{ typeLabel(item.interviewType) }}</td><td data-label="进度">{{ item.answeredCount }}/{{ item.questionCount }} <span class="mi-tag mi-tag--gray">{{ statusLabel(item.status) }}</span></td><td data-label="得分" :class="{ 'is-score': item.score }">{{ item.score ?? '—' }}</td><td data-label="更新时间">{{ formatWhen(item.updatedAt) }}</td><td data-label="操作"><span v-if="item.status === 'ABANDONED'" class="mi-terminal-action">已结束</span><button v-else type="button" @click="open(item)">{{ item.status === 'COMPLETED' ? '查看报告' : '继续面试' }}</button></td></tr></tbody>
+                  <tbody><tr v-for="item in displayed" :key="item.id"><td data-label="岗位与公司"><strong>{{ item.positionName }}</strong><small>{{ item.companyName || '未指定公司' }}</small></td><td data-label="方式"><span class="mi-tag" :class="item.mode === 'VOICE' ? 'mi-tag--green' : 'mi-tag--blue'">{{ modeLabel(item.mode) }}</span></td><td data-label="类型">{{ typeLabel(item.interviewType) }}</td><td data-label="进度">{{ item.answeredCount }}/{{ item.questionCount }} <span class="mi-tag mi-tag--gray">{{ statusLabel(item.status) }}</span></td><td data-label="得分" :class="{ 'is-score': item.score != null }">{{ item.score ?? (item.status === 'COMPLETED' ? '待评估' : '—') }}</td><td data-label="更新时间">{{ formatWhen(item.updatedAt) }}</td><td data-label="操作"><span v-if="item.status === 'ABANDONED'" class="mi-terminal-action">已结束</span><button v-else type="button" @click="open(item)">{{ item.status === 'COMPLETED' ? '查看报告' : '继续面试' }}</button></td></tr></tbody>
                 </table>
                 <div v-else class="mi-empty">还没有符合条件的训练记录</div>
               </div>

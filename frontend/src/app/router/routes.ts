@@ -78,6 +78,13 @@ export const routes: RouteRecordRaw[] = [
         meta: { ...authed, title: 'AI 简历工作台' },
         component: () => import('@/features/ai-resume/pages/AiResumeWorkbenchPage.vue'),
       },
+      {
+        // The interview room is immersive: no app chrome while answering.
+        path: 'mock-interviews/:sessionId/session',
+        name: 'mock-interview-session',
+        meta: { ...authed, title: '面试中' },
+        component: () => import('@/features/mock-interview/pages/MockInterviewSessionPage.vue'),
+      },
     ],
   },
 
@@ -238,12 +245,6 @@ export const routes: RouteRecordRaw[] = [
         name: 'mock-interview-create',
         meta: { ...authed, title: '新建面试' },
         component: () => import('@/features/mock-interview/pages/MockInterviewCreatePage.vue'),
-      },
-      {
-        path: 'mock-interviews/:sessionId/session',
-        name: 'mock-interview-session',
-        meta: { ...authed, title: '面试中' },
-        component: () => import('@/features/mock-interview/pages/MockInterviewSessionPage.vue'),
       },
       {
         path: 'mock-interviews/:sessionId/report',

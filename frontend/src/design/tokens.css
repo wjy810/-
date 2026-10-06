@@ -52,6 +52,33 @@
   --cinnabar-600: #ae2730;
   --violet-400: #9b6bf2;
 
+  /* ---------- Stage: the interview room stays dark in every theme ---------- */
+  --stage-bg: #0e0d16;
+  --stage-glow: radial-gradient(70% 55% at 50% 0%, rgba(94, 89, 232, 0.24), transparent 70%),
+    radial-gradient(45% 40% at 85% 100%, rgba(250, 140, 85, 0.08), transparent 70%);
+  --stage-surface: rgba(255, 255, 255, 0.045);
+  --stage-surface-raised: rgba(255, 255, 255, 0.08);
+  --stage-surface-solid: #1a1924;
+  --stage-input: rgba(0, 0, 0, 0.3);
+  --stage-border: rgba(255, 255, 255, 0.1);
+  --stage-border-strong: rgba(255, 255, 255, 0.2);
+  --stage-text: #f1f0f8;
+  --stage-text-secondary: #b6b3c9;
+  --stage-text-tertiary: #8d8aa3;
+  --stage-accent: #8f8bf5;
+  --stage-accent-strong: #6a65ee;
+  --stage-accent-soft: rgba(143, 139, 245, 0.16);
+  --stage-accent-text: #cac8ff;
+  --stage-on-accent: #ffffff;
+  --stage-success: #3fcf98;
+  --stage-success-soft: rgba(63, 207, 152, 0.14);
+  --stage-warning: #f2b544;
+  --stage-warning-soft: rgba(242, 181, 68, 0.14);
+  --stage-danger: #f0646b;
+  --stage-danger-soft: rgba(240, 100, 107, 0.15);
+  --stage-shadow: 0 24px 60px -24px rgba(0, 0, 0, 0.75);
+  --stage-scrim: rgba(5, 4, 10, 0.66);
+
   /* ---------- Typography ---------- */
   --font-sans: "Inter Variable", "Inter", -apple-system, BlinkMacSystemFont, "PingFang SC", "HarmonyOS Sans SC",
     "MiSans", "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans SC", "Source Han Sans SC", sans-serif;

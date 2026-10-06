@@ -23,7 +23,7 @@ describe('dashboard score presentation', () => {
     vi.mocked(listMockInterviews).mockResolvedValue([])
     const wrapper = mount(MockInterviewHomePage, { global: { stubs } })
     await flushPromises()
-    expect(wrapper.findAll('.mi-home-stats strong')[1]?.text()).toBe(score == null ? '—' : String(score))
+    expect(wrapper.findAll('.mi-home-stats strong')[1]?.text()).toBe(score == null ? '待评估' : String(score))
     wrapper.unmount()
   })
 

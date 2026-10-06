@@ -15,7 +15,7 @@ class FlywayMigrationIT {
     void freshDatabaseMigratesThroughLatestVersion() {
         Flyway flyway = flyway("fresh-" + UUID.randomUUID(), null);
 
-        assertThat(flyway.migrate().targetSchemaVersion).isEqualTo("68");
+        assertThat(flyway.migrate().targetSchemaVersion).isEqualTo("69");
     }
 
     @Test
@@ -25,7 +25,7 @@ class FlywayMigrationIT {
         assertThat(version39.migrate().targetSchemaVersion).isEqualTo("39");
 
         Flyway latest = flyway(database, null);
-        assertThat(latest.migrate().targetSchemaVersion).isEqualTo("68");
+        assertThat(latest.migrate().targetSchemaVersion).isEqualTo("69");
     }
 
     @Test
@@ -50,7 +50,7 @@ class FlywayMigrationIT {
         JdbcTemplate jdbc = new JdbcTemplate(dataSource(database));
         jdbc.update("UPDATE resume_layout_template_versions SET status='PUBLISHED' WHERE template_id='rlt-b-campus-v1'");
 
-        assertThat(flyway(database, null).migrate().targetSchemaVersion).isEqualTo("68");
+        assertThat(flyway(database, MigrationVersion.fromVersion("68")).migrate().targetSchemaVersion).isEqualTo("68");
 
         assertThat(jdbc.queryForObject("SELECT verification_source FROM resume_layout_template_versions "
                 + "WHERE template_id='rlt-b-campus-v1'", String.class)).isEqualTo("ADMIN_EVIDENCE");

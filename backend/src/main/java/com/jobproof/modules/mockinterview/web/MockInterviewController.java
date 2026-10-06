@@ -4,7 +4,6 @@ import com.jobproof.infrastructure.security.SecurityConfig;
 import com.jobproof.infrastructure.web.ApiResponse;
 import com.jobproof.modules.mockinterview.application.MockInterviewService;
 import com.jobproof.modules.mockinterview.application.MockInterviewService.AnswerCommand;
-import com.jobproof.modules.mockinterview.application.MockInterviewService.AudioChunkView;
 import com.jobproof.modules.mockinterview.application.MockInterviewService.CreateSessionCommand;
 import com.jobproof.modules.mockinterview.application.MockInterviewService.DashboardView;
 import com.jobproof.modules.mockinterview.application.MockInterviewService.DraftCommand;
@@ -24,7 +23,6 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.multipart.MultipartFile;
 
 @RestController
 @RequestMapping("/api/v1/mock-interviews")
@@ -103,17 +101,6 @@ public class MockInterviewController {
                 new AnswerCommand(request.answer(), request.expectedVersion())));
     }
 
-    @PostMapping("/sessions/{sessionId}/audio/chunks")
-    public ApiResponse<AudioChunkView> audioChunk(
-            @PathVariable String sessionId,
-            @RequestParam String questionId,
-            @RequestParam int sequence,
-            @RequestParam(defaultValue = "0") int durationMs,
-            @RequestParam("file") MultipartFile file) {
-        return ApiResponse.ok(service.uploadAudio(SecurityConfig.currentAccount(), sessionId, questionId,
-                sequence, durationMs, file));
-    }
-
     @PostMapping("/sessions/{sessionId}/switch-mode")
     public ApiResponse<SessionView> switchMode(@PathVariable String sessionId, @RequestBody ModeRequest request) {
         return ApiResponse.ok(service.switchMode(SecurityConfig.currentAccount(), sessionId, new ModeCommand(request.mode())));
@@ -127,6 +114,12 @@ public class MockInterviewController {
     @PostMapping("/sessions/{sessionId}/resume")
     public ApiResponse<SessionView> resume(@PathVariable String sessionId) {
         return ApiResponse.ok(service.resume(SecurityConfig.currentAccount(), sessionId));
+    }
+
+    /** Evaluates answers that were submitted while the AI model was unavailable. */
+    @PostMapping("/sessions/{sessionId}/evaluate")
+    public ApiResponse<MockInterviewService.EvaluationResult> evaluate(@PathVariable String sessionId) {
+        return ApiResponse.ok(service.evaluatePending(SecurityConfig.currentAccount(), sessionId));
     }
 
     @PostMapping("/sessions/{sessionId}/complete")

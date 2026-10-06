@@ -8,7 +8,6 @@ const api = vi.hoisted(() => ({
   saveMockInterviewTextDraft: vi.fn(),
   saveMockInterviewTranscript: vi.fn(),
   submitMockInterviewAnswer: vi.fn(),
-  uploadMockInterviewAudio: vi.fn(),
 }))
 vi.mock('../services/mockInterviewApi', async () => ({
   ...(await vi.importActual<typeof import('../services/mockInterviewApi')>('../services/mockInterviewApi')),
@@ -81,7 +80,7 @@ describe('interview draft persistence', () => {
     if (mode === 'TEXT') expect(wrapper.get('.mi-answer-status').text()).toContain('已自动保存')
   })
 
-  it('stops a microphone permission result that arrives after leaving the session, without starting or uploading', async () => {
+  it('stops a microphone permission result that arrives after leaving the session, without starting', async () => {
     api.fetchMockInterview.mockResolvedValue(session('VOICE'))
     const permission = deferred<MediaStream>()
     const stop = vi.fn()
@@ -103,7 +102,6 @@ describe('interview draft persistence', () => {
     expect(stop).toHaveBeenCalledTimes(1)
     expect(construct).not.toHaveBeenCalled()
     expect(start).not.toHaveBeenCalled()
-    expect(api.uploadMockInterviewAudio).not.toHaveBeenCalled()
   })
 
   it('retains the latest answer after a conflict and restores it on re-entry', async () => {
@@ -162,25 +160,14 @@ describe('interview draft persistence', () => {
     expect(window.localStorage.getItem('jobproof:mock-interview:session-1:question-1')).toBe('新页面继续输入的回答')
   })
 
-  it('still stops and uploads the final audio chunk for a normal recording', async () => {
+  it('uses the microphone only for the level meter and browser transcription, never recording audio', async () => {
     api.fetchMockInterview.mockResolvedValue(session('VOICE'))
-    api.uploadMockInterviewAudio.mockResolvedValue({ id: 'chunk-1', sequence: 0 })
     const stopTrack = vi.fn()
-    const start = vi.fn()
+    const recorder = vi.fn()
     Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: {
       getUserMedia: vi.fn().mockResolvedValue({ getTracks: () => [{ stop: stopTrack }] }),
     } })
-    vi.stubGlobal('MediaRecorder', class extends EventTarget {
-      static isTypeSupported() { return true }
-      state = 'inactive'
-      ondataavailable: ((event: { data: Blob }) => void) | null = null
-      start() { this.state = 'recording'; start() }
-      stop() {
-        this.state = 'inactive'
-        this.ondataavailable?.({ data: new Blob(['audio'], { type: 'audio/webm' }) })
-        this.dispatchEvent(new Event('stop'))
-      }
-    })
+    vi.stubGlobal('MediaRecorder', class { constructor() { recorder() } })
     vi.stubGlobal('AudioContext', class {
       createAnalyser() { return { fftSize: 128, frequencyBinCount: 64, getByteFrequencyData() {} } }
       createMediaStreamSource() { return { connect() {} } }
@@ -190,10 +177,40 @@ describe('interview draft persistence', () => {
     await flushPromises()
     await wrapper.get('.mi-record-button').trigger('click')
     await flushPromises()
-    expect(start).toHaveBeenCalledOnce()
+    expect(wrapper.get('.mi-voice__states').text()).toContain('录音中')
     await wrapper.get('.mi-record-button').trigger('click')
     await flushPromises()
     expect(stopTrack).toHaveBeenCalledOnce()
-    expect(api.uploadMockInterviewAudio).toHaveBeenCalledWith('session-1', 'question-1', 0, expect.any(Blob), expect.any(Number))
+    expect(recorder).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('录音不会上传或保存')
+  })
+
+  it('shows the server clock and no score for an answer the model has not evaluated', async () => {
+    const loaded = session()
+    loaded.session.elapsedSeconds = 125
+    loaded.session.durationMinutes = 20
+    loaded.settingsSnapshot = { feedbackMode: 'AFTER_EACH' }
+    api.fetchMockInterview.mockResolvedValue(loaded)
+    const next = session()
+    next.session.elapsedSeconds = 190
+    next.settingsSnapshot = { feedbackMode: 'AFTER_EACH' }
+    next.currentQuestion = { ...next.currentQuestion!, id: 'question-2', orderNo: 2 }
+    next.questions.push(next.currentQuestion)
+    next.answers = [{ ...savedAnswer('提交的回答', 2), status: 'SUBMITTED', feedback: { generationMode: 'PENDING', modelNotice: 'AI 通道暂不可用' } }]
+    api.submitMockInterviewAnswer.mockResolvedValue(next)
+    api.saveMockInterviewTextDraft.mockResolvedValue(savedAnswer('提交的回答', 2))
+    const wrapper = mountSession()
+    await flushPromises()
+    expect(wrapper.get('.mi-clock').text()).toContain('02:05')
+    expect(wrapper.get('.mi-clock').text()).toContain('20 分钟')
+    await vi.advanceTimersByTimeAsync(3000)
+    expect(wrapper.get('.mi-clock').text()).toContain('02:08')
+    await wrapper.get('textarea').setValue('提交的回答')
+    await wrapper.get('.submit').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('.mi-clock').text()).toContain('03:10')
+    expect(wrapper.get('.mi-drawer').text()).toContain('本题待评估')
+    expect(wrapper.get('.mi-drawer').text()).toContain('AI 通道暂不可用')
+    expect(wrapper.find('.mi-drawer__score').exists()).toBe(false)
   })
 })

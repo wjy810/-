@@ -4,6 +4,7 @@ import type {
   MockInterviewCreate,
   MockInterviewDashboard,
   MockInterviewDraft,
+  MockInterviewEvaluation,
   MockInterviewReport,
   MockInterviewSession,
   MockInterviewSessionSummary,
@@ -43,14 +44,6 @@ export const submitMockInterviewAnswer = (sessionId: string, questionId: string,
   api<MockInterviewSession>(`${ROOT}/sessions/${encodeURIComponent(sessionId)}/answers/${encodeURIComponent(questionId)}`, {
     method: 'POST', body: JSON.stringify({ answer, expectedVersion }),
   })
-export async function uploadMockInterviewAudio(sessionId: string, questionId: string, sequence: number, file: Blob, durationMs: number) {
-  const body = new FormData()
-  body.append('questionId', questionId)
-  body.append('sequence', String(sequence))
-  body.append('durationMs', String(durationMs))
-  body.append('file', file, `answer-${sequence}.webm`)
-  return api<{ id: string; sequence: number }>(`${ROOT}/sessions/${encodeURIComponent(sessionId)}/audio/chunks`, { method: 'POST', body })
-}
 export const switchMockInterviewMode = (id: string, mode: 'TEXT' | 'VOICE') =>
   api<MockInterviewSession>(`${ROOT}/sessions/${encodeURIComponent(id)}/switch-mode`, { method: 'POST', body: JSON.stringify({ mode }) })
 export const pauseMockInterview = (id: string) => api<MockInterviewSession>(`${ROOT}/sessions/${encodeURIComponent(id)}/pause`, { method: 'POST' })
@@ -59,3 +52,6 @@ export const completeMockInterview = (id: string) => api<MockInterviewReport>(`$
 export const abandonMockInterview = (id: string) => api<MockInterviewSession>(`${ROOT}/sessions/${encodeURIComponent(id)}/abandon`, { method: 'POST' })
 export const retryMockInterview = (id: string) => api<MockInterviewSession>(`${ROOT}/sessions/${encodeURIComponent(id)}/retry`, { method: 'POST' })
 export const fetchMockInterviewReport = (id: string) => api<MockInterviewReport>(`${ROOT}/reports/${encodeURIComponent(id)}`)
+/** Evaluates answers submitted while the model was unavailable; the report is rebuilt from them. */
+export const evaluateMockInterview = (id: string) =>
+  api<MockInterviewEvaluation>(`${ROOT}/sessions/${encodeURIComponent(id)}/evaluate`, { method: 'POST' })

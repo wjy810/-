@@ -6,9 +6,6 @@ import com.jobproof.modules.aigateway.application.AiGatewayException;
 import com.jobproof.modules.mockinterview.application.MockInterviewAiService.Evaluation;
 import com.jobproof.modules.mockinterview.application.MockInterviewAiService.GeneratedQuestions;
 import com.jobproof.modules.mockinterview.application.MockInterviewAiService.QuestionInput;
-import com.jobproof.modules.storage.ObjectStoragePort;
-import com.jobproof.modules.storage.PrivateFileEntity;
-import com.jobproof.modules.storage.PrivateFileJpaRepository;
 import com.jobproof.shared.auth.CurrentAccount;
 import com.jobproof.shared.error.AppException;
 import com.jobproof.shared.id.Ids;
@@ -26,8 +23,9 @@ import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.multipart.MultipartFile;
+import org.springframework.transaction.support.TransactionTemplate;
 
 @Service
 public class MockInterviewService {
@@ -37,25 +35,20 @@ public class MockInterviewService {
     private static final Set<String> DIFFICULTIES = Set.of("FOUNDATION", "STANDARD", "ADVANCED");
     private static final Set<String> FEEDBACK_MODES = Set.of("AFTER_EACH", "AFTER_SESSION");
     private static final Set<String> ACTIVE_STATUSES = Set.of("READY", "IN_PROGRESS", "ANSWERING", "ANALYZING", "FEEDBACK", "PAUSED", "OFFLINE", "TRANSCRIPTION_FAILED");
-    private static final Set<String> AUDIO_TYPES = Set.of("audio/webm", "audio/ogg", "audio/mp4", "audio/mpeg", "audio/wav", "audio/x-wav");
-    private static final Pattern NUMBER = Pattern.compile("(?<![A-Za-z0-9])(?:\\d+(?:[.,]\\d+)?%?)(?![A-Za-z0-9])");
-    private static final int MAX_AUDIO_CHUNK = 2 * 1024 * 1024;
 
     private final JdbcTemplate jdbc;
     private final ObjectMapper mapper;
     private final ClockPort clock;
-    private final ObjectStoragePort storage;
-    private final PrivateFileJpaRepository privateFiles;
     private final MockInterviewAiService ai;
+    private final TransactionTemplate transactions;
 
-    public MockInterviewService(JdbcTemplate jdbc, ObjectMapper mapper, ClockPort clock,
-            ObjectStoragePort storage, PrivateFileJpaRepository privateFiles, MockInterviewAiService ai) {
+    public MockInterviewService(JdbcTemplate jdbc, ObjectMapper mapper, ClockPort clock, MockInterviewAiService ai,
+            PlatformTransactionManager transactionManager) {
         this.jdbc = jdbc;
         this.mapper = mapper;
         this.clock = clock;
-        this.storage = storage;
-        this.privateFiles = privateFiles;
         this.ai = ai;
+        this.transactions = new TransactionTemplate(transactionManager);
     }
 
     @Transactional(readOnly = true)
@@ -71,7 +64,7 @@ public class MockInterviewService {
                 Integer.class, accountId);
         List<SessionSummary> recent = list(current, null, null, null, 6);
         SessionSummary resumable = recent.stream().filter(item -> ACTIVE_STATUSES.contains(item.status())).findFirst().orElse(null);
-        return new DashboardView(total, completed, text, voice, average == null ? 0 : average, resumable, recent);
+        return new DashboardView(total, completed, text, voice, average, resumable, recent);
     }
 
     @Transactional
@@ -163,10 +156,10 @@ public class MockInterviewService {
             settings.put("questionGenerationMode", "BASIC_RULES");
             settings.put("aiNotice", "AI 通道暂不可用，本次使用基础题库；回答和进度仍会完整保存。");
         }
-        jdbc.update("INSERT INTO mock_interview_sessions(id,account_id,draft_id,title,position_name,company_name,mode,interview_type,difficulty,duration_minutes,question_count,language_code,feedback_mode,follow_up_enabled,status,current_question_index,elapsed_seconds,resume_snapshot_json,jd_snapshot_json,materials_snapshot_json,settings_snapshot_json,version_no,created_at,updated_at,started_at,paused_at,completed_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,'IN_PROGRESS',0,0,?,?,?,?,0,?,?,?,NULL,NULL)",
+        jdbc.update("INSERT INTO mock_interview_sessions(id,account_id,draft_id,title,position_name,company_name,mode,interview_type,difficulty,duration_minutes,question_count,language_code,feedback_mode,follow_up_enabled,status,current_question_index,elapsed_seconds,resume_snapshot_json,jd_snapshot_json,materials_snapshot_json,settings_snapshot_json,version_no,created_at,updated_at,started_at,resumed_at,paused_at,completed_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,'IN_PROGRESS',0,0,?,?,?,?,0,?,?,?,?,NULL,NULL)",
                 id, accountId, clean(command.draftId()), title, position, company, mode, type, difficulty,
                 duration, questionCount, blankTo(command.languageCode(), "zh-CN"), feedbackMode,
-                command.followUpEnabled(), json(resume), json(jd), json(materials), json(settings), now, now, now);
+                command.followUpEnabled(), json(resume), json(jd), json(materials), json(settings), now, now, now, now);
         for (int i = 0; i < seeds.size(); i++) {
             QuestionSeed seed = seeds.get(i);
             jdbc.update("INSERT INTO mock_interview_questions(id,session_id,order_no,question_type,prompt_text,source_label,source_refs_json,status,created_at) VALUES(?,?,?,?,?,?,?,'PENDING',?)",
@@ -232,7 +225,9 @@ public class MockInterviewService {
                 rs.getString("id"), rs.getString("title"), rs.getString("position_name"), rs.getString("company_name"),
                 rs.getString("mode"), rs.getString("interview_type"), rs.getString("difficulty"), rs.getString("status"),
                 rs.getInt("current_question_index"), rs.getInt("question_count"), (Integer) rs.getObject("overall_score"),
-                instant(rs.getTimestamp("updated_at")), instant(rs.getTimestamp("completed_at"))), args.toArray()).stream().limit(safeLimit).toList();
+                instant(rs.getTimestamp("updated_at")), instant(rs.getTimestamp("completed_at")),
+                listElapsed(rs.getInt("elapsed_seconds"), instant(rs.getTimestamp("resumed_at"))), rs.getInt("duration_minutes")),
+                args.toArray()).stream().limit(safeLimit).toList();
     }
 
     @Transactional(readOnly = true)
@@ -262,11 +257,9 @@ public class MockInterviewService {
             scores = evaluation.scores();
             feedback = evaluation.feedback();
         } catch (AiGatewayException exception) {
-            scores = score(text, row.positionName());
-            LinkedHashMap<String, Object> fallback = new LinkedHashMap<>(feedback(text, scores, row.followUpEnabled()));
-            fallback.put("generationMode", "BASIC_RULES");
-            fallback.put("modelNotice", "AI 通道暂不可用，本题使用基础规则反馈，不代表模型评估。");
-            feedback = fallback;
+            // No model, no score: counting characters is not an evaluation (BE-1).
+            scores = Map.of();
+            feedback = pendingFeedback();
         }
         upsertAnswer(row, question, row.mode(), text, "SUBMITTED", command.expectedVersion(), scores, feedback);
         Instant now = clock.now();
@@ -275,6 +268,7 @@ public class MockInterviewService {
         boolean complete = next >= row.questionCount();
         jdbc.update("UPDATE mock_interview_sessions SET current_question_index=?,status=?,version_no=version_no+1,updated_at=?,completed_at=? WHERE id=? AND account_id=?",
                 next, complete ? "COMPLETED" : "IN_PROGRESS", now, complete ? now : null, sessionId, current.accountId());
+        if (complete) stopClock(row, now);
         if (complete) generateReport(current.accountId(), sessionId);
         return session(current, sessionId);
     }
@@ -284,36 +278,6 @@ public class MockInterviewService {
         SessionRow row = requireActive(current, sessionId);
         QuestionView question = question(row.id(), questionId);
         return upsertAnswer(row, question, "VOICE", command.answer(), "DRAFT", command.expectedVersion(), Map.of(), Map.of());
-    }
-
-    @Transactional
-    public AudioChunkView uploadAudio(CurrentAccount current, String sessionId, String questionId, int sequence,
-            int durationMs, MultipartFile upload) {
-        SessionRow row = requireActive(current, sessionId);
-        question(row.id(), questionId);
-        if (!"VOICE".equals(row.mode())) throw AppException.conflict("MOCK_INTERVIEW_NOT_VOICE", "当前会话不是语音模式");
-        if (upload == null || upload.isEmpty()) throw AppException.user("AUDIO_CHUNK_REQUIRED", "录音分片为空");
-        if (upload.getSize() > MAX_AUDIO_CHUNK) throw AppException.user("AUDIO_CHUNK_TOO_LARGE", "单个录音分片不能超过 2 MiB");
-        String type = cleanContentType(upload.getContentType());
-        if (!AUDIO_TYPES.contains(type)) throw AppException.user("AUDIO_TYPE_UNSUPPORTED", "录音仅支持 WebM、OGG、MP4、MP3 或 WAV");
-        int safeSequence = Math.max(0, sequence);
-        if (count("SELECT COUNT(*) FROM mock_interview_audio_chunks WHERE session_id=? AND question_id=? AND sequence_no=?", sessionId, questionId, safeSequence) > 0) {
-            return audioChunk(sessionId, questionId, safeSequence);
-        }
-        byte[] body;
-        try { body = upload.getBytes(); } catch (Exception exception) { throw AppException.user("AUDIO_CHUNK_INVALID", "无法读取录音分片"); }
-        Instant now = clock.now();
-        String chunkId = Ids.newId();
-        String fileId = Ids.newId();
-        String extension = type.contains("ogg") ? ".ogg" : type.contains("mp4") ? ".m4a" : type.contains("mpeg") ? ".mp3" : type.contains("wav") ? ".wav" : ".webm";
-        String key = "private/" + current.accountId() + "/mock-interviews/" + sessionId + "/" + fileId + extension;
-        storage.put(key, body);
-        PrivateFileEntity file = new PrivateFileEntity();
-        file.setId(fileId); file.setOwnerId(current.accountId()); file.setObjectKey(key); file.setContentType(type); file.setSizeBytes(body.length); file.setCreatedAt(now);
-        privateFiles.save(file);
-        jdbc.update("INSERT INTO mock_interview_audio_chunks(id,account_id,session_id,question_id,sequence_no,private_file_id,duration_ms,content_type,size_bytes,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
-                chunkId, current.accountId(), sessionId, questionId, safeSequence, fileId, Math.max(0, durationMs), type, body.length, now);
-        return new AudioChunkView(chunkId, safeSequence, fileId, type, body.length, Math.max(0, durationMs), now);
     }
 
     @Transactional
@@ -330,6 +294,7 @@ public class MockInterviewService {
     public SessionView pause(CurrentAccount current, String sessionId) {
         SessionRow row = requireActive(current, sessionId);
         Instant now = clock.now();
+        stopClock(row, now);
         jdbc.update("UPDATE mock_interview_sessions SET status='PAUSED',paused_at=?,updated_at=?,version_no=version_no+1 WHERE id=? AND account_id=?",
                 now, now, row.id(), current.accountId());
         return session(current, sessionId);
@@ -341,8 +306,9 @@ public class MockInterviewService {
         if (!"PAUSED".equals(row.status()) && !"OFFLINE".equals(row.status()) && !"TRANSCRIPTION_FAILED".equals(row.status())) {
             throw AppException.conflict("MOCK_INTERVIEW_NOT_RESUMABLE", "当前面试不在可恢复状态");
         }
-        jdbc.update("UPDATE mock_interview_sessions SET status='IN_PROGRESS',paused_at=NULL,updated_at=?,version_no=version_no+1 WHERE id=? AND account_id=?",
-                clock.now(), row.id(), current.accountId());
+        Instant now = clock.now();
+        jdbc.update("UPDATE mock_interview_sessions SET status='IN_PROGRESS',paused_at=NULL,resumed_at=?,updated_at=?,version_no=version_no+1 WHERE id=? AND account_id=?",
+                now, now, row.id(), current.accountId());
         return session(current, sessionId);
     }
 
@@ -351,6 +317,7 @@ public class MockInterviewService {
         SessionRow row = requireOwn(current, sessionId);
         if ("ABANDONED".equals(row.status())) throw AppException.conflict("MOCK_INTERVIEW_ABANDONED", "已放弃的记录不能生成报告");
         Instant now = clock.now();
+        stopClock(row, now);
         jdbc.update("UPDATE mock_interview_sessions SET status='COMPLETED',completed_at=?,updated_at=?,version_no=version_no+1 WHERE id=? AND account_id=?",
                 now, now, row.id(), current.accountId());
         generateReport(current.accountId(), sessionId);
@@ -361,28 +328,66 @@ public class MockInterviewService {
     public SessionView abandon(CurrentAccount current, String sessionId) {
         SessionRow row = requireOwn(current, sessionId);
         if ("COMPLETED".equals(row.status())) throw AppException.conflict("MOCK_INTERVIEW_COMPLETED", "已完成的记录不能放弃");
+        Instant now = clock.now();
+        stopClock(row, now);
         jdbc.update("UPDATE mock_interview_sessions SET status='ABANDONED',updated_at=?,version_no=version_no+1 WHERE id=? AND account_id=?",
-                clock.now(), row.id(), current.accountId());
+                now, row.id(), current.accountId());
         return session(current, sessionId);
     }
 
-    @Transactional(readOnly = true)
+    /**
+     * Evaluates answers submitted while the model was unavailable. Runs outside a transaction (model
+     * calls are slow); each evaluated answer is saved on its own, then the report is rebuilt.
+     */
+    public EvaluationResult evaluatePending(CurrentAccount current, String sessionId) {
+        SessionRow row = requireOwn(current, sessionId);
+        if ("ABANDONED".equals(row.status())) throw AppException.conflict("MOCK_INTERVIEW_ABANDONED", "已放弃的记录不能评估");
+        List<ReviewRow> pending = questionsWithAnswers(sessionId).stream()
+                .filter(item -> item.answer() != null && "SUBMITTED".equals(item.answer().status()) && item.scores().isEmpty())
+                .toList();
+        int evaluated = 0;
+        boolean available = true;
+        for (ReviewRow item : pending) {
+            Evaluation evaluation;
+            try {
+                evaluation = ai.evaluateAnswer(current.accountId(), row.positionName(),
+                        new QuestionInput(item.question().questionType(), item.question().prompt(), item.question().sourceRefs()),
+                        item.answer().answer(), row.followUpEnabled(), map(row.resumeSnapshotJson()), map(row.jdSnapshotJson()));
+            } catch (AiGatewayException exception) {
+                available = false;
+                break;
+            }
+            int changed = jdbc.update("UPDATE mock_interview_answers SET score_json=?,feedback_json=?,version_no=version_no+1,updated_at=? WHERE id=? AND version_no=?",
+                    json(evaluation.scores()), json(evaluation.feedback()), clock.now(), item.answer().id(), item.answer().version());
+            if (changed == 1) evaluated++;
+        }
+        if (evaluated > 0) {
+            transactions.executeWithoutResult(status -> {
+                jdbc.update("DELETE FROM mock_interview_reports WHERE session_id=?", sessionId);
+                if ("COMPLETED".equals(row.status())) generateReport(current.accountId(), sessionId);
+            });
+        }
+        return new EvaluationResult(evaluated, pending.size() - evaluated, available);
+    }
+
+    @Transactional
     public ReportView report(CurrentAccount current, String sessionId) {
         assertSeeker(current);
         SessionRow session = requireOwn(current, sessionId);
         if (!"COMPLETED".equals(session.status())) throw AppException.conflict("MOCK_INTERVIEW_REPORT_NOT_READY", "面试完成后才会生成报告");
-        Map<String, Object> row;
-        try {
-            row = jdbc.queryForMap("SELECT * FROM mock_interview_reports WHERE session_id=? AND account_id=?", sessionId, current.accountId());
-        } catch (EmptyResultDataAccessException exception) {
-            throw AppException.conflict("MOCK_INTERVIEW_REPORT_NOT_READY", "报告仍在生成中");
-        }
+        // Reports dropped by a re-evaluation or by V69 are rebuilt from the stored answers.
+        generateReport(current.accountId(), sessionId);
+        Map<String, Object> row = jdbc.queryForMap("SELECT * FROM mock_interview_reports WHERE session_id=? AND account_id=?",
+                sessionId, current.accountId());
         List<QuestionReview> reviews = questionsWithAnswers(sessionId).stream().map(item -> new QuestionReview(
                 item.question(), item.answer(), item.feedback(), item.scores())).toList();
-        return new ReportView(String.valueOf(row.get("id")), summary(session), number(row.get("overall_score")),
+        int answered = (int) reviews.stream().filter(item -> item.answer() != null && "SUBMITTED".equals(item.answer().status())).count();
+        int evaluated = number(row.get("evaluated_count"));
+        return new ReportView(String.valueOf(row.get("id")), summary(session),
+                row.get("overall_score") == null ? null : number(row.get("overall_score")),
                 intMap(String.valueOf(row.get("dimensions_json"))), map(String.valueOf(row.get("summary_json"))),
                 stringList(String.valueOf(row.get("recommendations_json"))), reviews,
-                instant(row.get("generated_at")));
+                instant(row.get("generated_at")), evaluated, Math.max(0, answered - evaluated));
     }
 
     @Transactional
@@ -390,8 +395,8 @@ public class MockInterviewService {
         SessionRow source = requireOwn(current, sessionId);
         Instant now = clock.now();
         String id = Ids.newId();
-        jdbc.update("INSERT INTO mock_interview_sessions(id,account_id,draft_id,title,position_name,company_name,mode,interview_type,difficulty,duration_minutes,question_count,language_code,feedback_mode,follow_up_enabled,status,current_question_index,elapsed_seconds,resume_snapshot_json,jd_snapshot_json,materials_snapshot_json,settings_snapshot_json,version_no,created_at,updated_at,started_at,paused_at,completed_at) SELECT ?,account_id,NULL,title,position_name,company_name,mode,interview_type,difficulty,duration_minutes,question_count,language_code,feedback_mode,follow_up_enabled,'IN_PROGRESS',0,0,resume_snapshot_json,jd_snapshot_json,materials_snapshot_json,settings_snapshot_json,0,?,?,?,NULL,NULL FROM mock_interview_sessions WHERE id=? AND account_id=?",
-                id, now, now, now, sessionId, current.accountId());
+        jdbc.update("INSERT INTO mock_interview_sessions(id,account_id,draft_id,title,position_name,company_name,mode,interview_type,difficulty,duration_minutes,question_count,language_code,feedback_mode,follow_up_enabled,status,current_question_index,elapsed_seconds,resume_snapshot_json,jd_snapshot_json,materials_snapshot_json,settings_snapshot_json,version_no,created_at,updated_at,started_at,resumed_at,paused_at,completed_at) SELECT ?,account_id,NULL,title,position_name,company_name,mode,interview_type,difficulty,duration_minutes,question_count,language_code,feedback_mode,follow_up_enabled,'IN_PROGRESS',0,0,resume_snapshot_json,jd_snapshot_json,materials_snapshot_json,settings_snapshot_json,0,?,?,?,?,NULL,NULL FROM mock_interview_sessions WHERE id=? AND account_id=?",
+                id, now, now, now, now, sessionId, current.accountId());
         List<QuestionView> sourceQuestions = questionList(sessionId);
         for (QuestionView question : sourceQuestions) {
             jdbc.update("INSERT INTO mock_interview_questions(id,session_id,order_no,question_type,prompt_text,source_label,source_refs_json,status,created_at) VALUES(?,?,?,?,?,?,?,'PENDING',?)",
@@ -414,7 +419,8 @@ public class MockInterviewService {
         try { score = jdbc.queryForObject("SELECT overall_score FROM mock_interview_reports WHERE session_id=?", Integer.class, row.id()); }
         catch (EmptyResultDataAccessException ignored) { }
         return new SessionSummary(row.id(), row.title(), row.positionName(), row.companyName(), row.mode(), row.interviewType(),
-                row.difficulty(), row.status(), row.currentQuestionIndex(), row.questionCount(), score, row.updatedAt(), row.completedAt());
+                row.difficulty(), row.status(), row.currentQuestionIndex(), row.questionCount(), score, row.updatedAt(), row.completedAt(),
+                elapsedSeconds(row), row.durationMinutes());
     }
 
     private SessionRow requireActive(CurrentAccount current, String sessionId) {
@@ -434,7 +440,7 @@ public class MockInterviewService {
                     rs.getInt("current_question_index"), rs.getInt("elapsed_seconds"), rs.getString("resume_snapshot_json"),
                     rs.getString("jd_snapshot_json"), rs.getString("materials_snapshot_json"), rs.getString("settings_snapshot_json"),
                     rs.getInt("version_no"), instant(rs.getTimestamp("created_at")), instant(rs.getTimestamp("updated_at")),
-                    instant(rs.getTimestamp("completed_at"))), sessionId, current.accountId());
+                    instant(rs.getTimestamp("completed_at")), instant(rs.getTimestamp("resumed_at"))), sessionId, current.accountId());
         } catch (EmptyResultDataAccessException exception) {
             throw AppException.user("MOCK_INTERVIEW_NOT_FOUND", "模拟面试不存在");
         }
@@ -504,23 +510,63 @@ public class MockInterviewService {
                 instant(rs.getTimestamp("updated_at")), instant(rs.getTimestamp("submitted_at")));
     }
 
+    /**
+     * Builds the report from AI-evaluated answers only (H-5): dimension averages, strengths and risks the
+     * model wrote for this candidate, and its follow-up questions as practice prompts. Nothing is
+     * written in when no answer was evaluated.
+     */
     private void generateReport(String accountId, String sessionId) {
         if (count("SELECT COUNT(*) FROM mock_interview_reports WHERE session_id=?", sessionId) > 0) return;
-        List<ReviewRow> reviews = questionsWithAnswers(sessionId);
-        List<Map<String, Integer>> scoreRows = reviews.stream().filter(item -> !item.scores().isEmpty()).map(ReviewRow::scores).toList();
+        List<ReviewRow> evaluated = questionsWithAnswers(sessionId).stream()
+                .filter(item -> item.answer() != null && !item.scores().isEmpty()).toList();
         Map<String, Integer> dimensions = new LinkedHashMap<>();
         for (String key : List.of("structure", "relevance", "evidence", "expression", "professional")) {
-            dimensions.put(key, average(scoreRows.stream().map(row -> row.get(key)).filter(Objects::nonNull).toList(), 60));
+            List<Integer> values = evaluated.stream().map(row -> row.scores().get(key)).filter(Objects::nonNull).toList();
+            if (!values.isEmpty()) dimensions.put(key, average(values, 0));
         }
-        int overall = average(new ArrayList<>(dimensions.values()), 60);
+        Integer overall = dimensions.isEmpty() ? null : average(new ArrayList<>(dimensions.values()), 0);
         Map<String, Object> summary = new LinkedHashMap<>();
-        summary.put("strengths", List.of("能围绕目标岗位组织回答", "已完成的回答均保留原文和资料引用", "表达结构可在逐题复盘中继续优化"));
-        summary.put("risks", dimensions.get("evidence") < 75
-                ? List.of("量化结果与事实证据不足", "部分回答可补充个人决策和可验证结果")
-                : List.of("面对动态追问时仍需保持事实边界", "建议继续压缩冗余铺垫"));
-        List<String> recommendations = List.of("补充可核验的量化成果", "使用 STAR 结构复盘项目经历", "针对高难度追问进行专项训练");
-        jdbc.update("INSERT INTO mock_interview_reports(id,account_id,session_id,overall_score,dimensions_json,summary_json,recommendations_json,generated_at) VALUES(?,?,?,?,?,?,?,?)",
-                Ids.newId(), accountId, sessionId, overall, json(dimensions), json(summary), json(recommendations), clock.now());
+        summary.put("strengths", distinctFeedback(evaluated, "strengths", 4));
+        summary.put("risks", distinctFeedback(evaluated, "improvements", 4));
+        List<String> recommendations = evaluated.stream()
+                .map(row -> row.feedback().get("suggestedFollowUp"))
+                .filter(value -> value instanceof String text && !text.isBlank())
+                .map(String::valueOf).distinct().limit(3).toList();
+        jdbc.update("INSERT INTO mock_interview_reports(id,account_id,session_id,overall_score,evaluated_count,dimensions_json,summary_json,recommendations_json,generated_at) VALUES(?,?,?,?,?,?,?,?,?)",
+                Ids.newId(), accountId, sessionId, overall, evaluated.size(), json(dimensions), json(summary),
+                json(recommendations), clock.now());
+    }
+
+    private static List<String> distinctFeedback(List<ReviewRow> rows, String key, int limit) {
+        return rows.stream()
+                .flatMap(row -> row.feedback().get(key) instanceof List<?> list ? list.stream() : java.util.stream.Stream.empty())
+                .map(String::valueOf).filter(text -> !text.isBlank()).distinct().limit(limit).toList();
+    }
+
+    private static Map<String, Object> pendingFeedback() {
+        Map<String, Object> feedback = new LinkedHashMap<>();
+        feedback.put("generationMode", "PENDING");
+        feedback.put("modelNotice", "AI 通道暂不可用，本题尚未评估；回答已保存，AI 恢复后可在报告中重新评估。");
+        return feedback;
+    }
+
+    /** Adds the current active stretch to elapsed_seconds and stops the clock. */
+    private void stopClock(SessionRow row, Instant now) {
+        if (row.resumedAt() == null) return;
+        long seconds = Math.max(0, java.time.Duration.between(row.resumedAt(), now).getSeconds());
+        jdbc.update("UPDATE mock_interview_sessions SET elapsed_seconds=elapsed_seconds+?,resumed_at=NULL WHERE id=?",
+                (int) Math.min(Integer.MAX_VALUE, seconds), row.id());
+    }
+
+    private int listElapsed(int accumulated, Instant resumedAt) {
+        long running = resumedAt == null ? 0 : Math.max(0, java.time.Duration.between(resumedAt, clock.now()).getSeconds());
+        return (int) Math.min(Integer.MAX_VALUE, accumulated + running);
+    }
+
+    private int elapsedSeconds(SessionRow row) {
+        long running = row.resumedAt() == null ? 0
+                : Math.max(0, java.time.Duration.between(row.resumedAt(), clock.now()).getSeconds());
+        return (int) Math.min(Integer.MAX_VALUE, row.elapsedSeconds() + running);
     }
 
     private List<ReviewRow> questionsWithAnswers(String sessionId) {
@@ -529,41 +575,6 @@ public class MockInterviewService {
             AnswerView answer = rs.getString("answer_id") == null ? null : new AnswerView(rs.getString("answer_id"), rs.getString("id"), rs.getString("answer_mode"), rs.getString("answer_text"), rs.getString("transcript_text"), rs.getString("answer_status"), intMap(rs.getString("score_json")), map(rs.getString("feedback_json")), rs.getInt("version_no"), instant(rs.getTimestamp("updated_at")), instant(rs.getTimestamp("submitted_at")));
             return new ReviewRow(question, answer, answer == null ? Map.of() : answer.feedback(), answer == null ? Map.of() : answer.scores());
         }, sessionId);
-    }
-
-    private Map<String, Integer> score(String answer, String position) {
-        int chars = (int) answer.codePoints().filter(cp -> !Character.isWhitespace(cp)).count();
-        int paragraphs = (int) answer.lines().filter(line -> !line.isBlank()).count();
-        int numbers = (int) NUMBER.matcher(answer).results().count();
-        boolean star = containsAny(answer, "背景", "目标", "任务", "行动", "结果", "首先", "其次", "最后");
-        boolean relevant = position != null && answer.toLowerCase(Locale.ROOT).contains(position.toLowerCase(Locale.ROOT));
-        Map<String, Integer> result = new LinkedHashMap<>();
-        result.put("structure", clamp(55 + Math.min(20, paragraphs * 5) + (star ? 12 : 0)));
-        result.put("relevance", clamp(68 + (relevant ? 12 : 0) + (chars > 120 ? 6 : 0)));
-        result.put("evidence", clamp(54 + Math.min(28, numbers * 7) + (chars > 180 ? 6 : 0)));
-        result.put("expression", clamp(62 + (chars >= 100 && chars <= 900 ? 14 : 4) + Math.min(8, paragraphs * 2)));
-        result.put("professional", clamp(66 + (chars > 150 ? 10 : 4) + (numbers > 0 ? 6 : 0)));
-        result.put("overall", average(new ArrayList<>(result.values()), 60));
-        return result;
-    }
-
-    private Map<String, Object> feedback(String answer, Map<String, Integer> scores, boolean followUp) {
-        List<String> strengths = new ArrayList<>();
-        if (scores.getOrDefault("structure", 0) >= 75) strengths.add("回答结构清楚，主要信息容易定位");
-        if (scores.getOrDefault("relevance", 0) >= 75) strengths.add("回答与岗位及题目保持相关");
-        if (NUMBER.matcher(answer).find()) strengths.add("使用了可核验的量化信息");
-        if (strengths.isEmpty()) strengths.add("已给出与问题相关的基础回答");
-        List<String> improvements = new ArrayList<>();
-        if (scores.getOrDefault("evidence", 0) < 75) improvements.add("补充结果、样本量或前后对比，并确认数据真实可追溯");
-        if (scores.getOrDefault("structure", 0) < 75) improvements.add("按情境、任务、行动、结果四部分重新组织");
-        if (improvements.isEmpty()) improvements.add("进一步压缩背景铺垫，突出个人决策与贡献");
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("headline", scores.getOrDefault("overall", 0) >= 80 ? "表达清晰，证据较充分" : "方向正确，证据仍可加强");
-        result.put("strengths", strengths);
-        result.put("improvements", improvements);
-        result.put("suggestedFollowUp", followUp ? "如果关键指标没有提升，你会如何定位问题并调整方案？" : null);
-        result.put("evidenceNotice", "反馈只引用本题回答与本次授权资料，不代表真实招聘结果");
-        return result;
     }
 
     private List<QuestionSeed> questions(String position, String company, String type, String difficulty, int count,
@@ -611,19 +622,11 @@ public class MockInterviewService {
         }
     }
 
-    private AudioChunkView audioChunk(String sessionId, String questionId, int sequence) {
-        return jdbc.queryForObject("SELECT * FROM mock_interview_audio_chunks WHERE session_id=? AND question_id=? AND sequence_no=?", (rs, rowNum) -> new AudioChunkView(
-                rs.getString("id"), rs.getInt("sequence_no"), rs.getString("private_file_id"), rs.getString("content_type"),
-                rs.getLong("size_bytes"), rs.getInt("duration_ms"), instant(rs.getTimestamp("created_at"))), sessionId, questionId, sequence);
-    }
-
     private static QuestionSeed seed(String type, String prompt, String source, List<String> refs) { return new QuestionSeed(type, prompt, source, refs); }
     private static int behavioralRank(String value) { return Set.of("BEHAVIORAL", "COLLABORATION", "REFLECTION", "LEARNING").contains(value) ? 0 : 1; }
     private static int professionalRank(String value) { return Set.of("PROFESSIONAL", "PROJECT", "EVIDENCE", "RISK").contains(value) ? 0 : 1; }
     private static int pressureRank(String value) { return Set.of("PRESSURE", "RISK", "BEHAVIORAL", "FOLLOW_UP").contains(value) ? 0 : 1; }
-    private static boolean containsAny(String text, String... values) { for (String value : values) if (text.contains(value)) return true; return false; }
     private static int average(List<Integer> values, int fallback) { return values.isEmpty() ? fallback : (int) Math.round(values.stream().mapToInt(Integer::intValue).average().orElse(fallback)); }
-    private static int clamp(int value) { return Math.max(45, Math.min(96, value)); }
     private int count(String sql, Object... args) { Integer result = jdbc.queryForObject(sql, Integer.class, args); return result == null ? 0 : result; }
     private static int number(Object value) { return value instanceof Number number ? number.intValue() : Integer.parseInt(String.valueOf(value)); }
     private static Instant instant(Object value) { if (value == null) return null; if (value instanceof java.sql.Timestamp ts) return ts.toInstant(); if (value instanceof Instant instant) return instant; return Instant.parse(String.valueOf(value)); }
@@ -631,7 +634,6 @@ public class MockInterviewService {
     private static String blankTo(String value, String fallback) { return value == null || value.isBlank() ? fallback : value.trim(); }
     private static String required(String value, String reason, String message) { if (value == null || value.isBlank()) throw AppException.user(reason, message); return value.trim(); }
     private static String enumValue(String value, Set<String> allowed, String fallback, String reason) { String result = blankTo(value, fallback).toUpperCase(Locale.ROOT); if (!allowed.contains(result)) throw AppException.user(reason, "不支持的选项：" + result); return result; }
-    private static String cleanContentType(String value) { if (value == null) return ""; int semicolon = value.indexOf(';'); return (semicolon < 0 ? value : value.substring(0, semicolon)).trim().toLowerCase(Locale.ROOT); }
     private static void assertVersion(Integer expected, int actual) { if (expected != null && expected != actual) throw AppException.conflict("VERSION_CONFLICT", "数据已在其他页面更新，请刷新后重试"); }
     private static void requireUpdated(int changed) { if (changed != 1) throw AppException.conflict("VERSION_CONFLICT", "数据已在其他页面更新，请刷新后重试"); }
     private static void assertSeeker(CurrentAccount current) { if (current == null || !"SEEKER".equals(current.role())) throw AppException.forbidden("SEEKER_ONLY", "仅求职者可以使用模拟面试"); }
@@ -650,12 +652,14 @@ public class MockInterviewService {
             String feedbackMode, boolean followUpEnabled, boolean consentConfirmed, String jobMatchId) {}
     public record AnswerCommand(String answer, Integer expectedVersion) {}
     public record ModeCommand(String mode) {}
-    public record DashboardView(int total, int completed, int textCount, int voiceCount, int averageScore,
+    /** {@code averageScore} is null until at least one report has an AI-evaluated score. */
+    public record DashboardView(int total, int completed, int textCount, int voiceCount, Integer averageScore,
             SessionSummary resumable, List<SessionSummary> recent) {}
     public record DraftView(String id, int step, String status, Map<String, Object> payload, int version, Instant updatedAt) {}
+    /** {@code elapsedSeconds}: active interview time measured by the server (pauses excluded). */
     public record SessionSummary(String id, String title, String positionName, String companyName, String mode,
             String interviewType, String difficulty, String status, int answeredCount, int questionCount,
-            Integer score, Instant updatedAt, Instant completedAt) {}
+            Integer score, Instant updatedAt, Instant completedAt, Integer elapsedSeconds, Integer durationMinutes) {}
     public record QuestionView(String id, int orderNo, String questionType, String prompt, String sourceLabel,
             List<String> sourceRefs, String status) {}
     public record AnswerView(String id, String questionId, String mode, String answer, String transcript, String status,
@@ -663,18 +667,23 @@ public class MockInterviewService {
     public record SessionView(SessionSummary session, QuestionView currentQuestion, List<QuestionView> questions,
             List<AnswerView> answers, Map<String, Object> resumeSnapshot, Map<String, Object> jdSnapshot,
             Map<String, Object> materialsSnapshot, Map<String, Object> settingsSnapshot) {}
-    public record AudioChunkView(String id, int sequence, String fileId, String contentType, long sizeBytes,
-            int durationMs, Instant createdAt) {}
     public record QuestionReview(QuestionView question, AnswerView answer, Map<String, Object> feedback,
             Map<String, Integer> scores) {}
-    public record ReportView(String id, SessionSummary session, int overallScore, Map<String, Integer> dimensions,
-            Map<String, Object> summary, List<String> recommendations, List<QuestionReview> questions, Instant generatedAt) {}
+    /**
+     * Scores and dimensions come only from AI-evaluated answers; {@code overallScore} is null while none
+     * are evaluated, and {@code pendingCount} answers can be evaluated once the model is available.
+     */
+    public record ReportView(String id, SessionSummary session, Integer overallScore, Map<String, Integer> dimensions,
+            Map<String, Object> summary, List<String> recommendations, List<QuestionReview> questions, Instant generatedAt,
+            int evaluatedCount, int pendingCount) {}
+    public record EvaluationResult(int evaluated, int pending, boolean aiAvailable) {}
 
     private record SessionRow(String id, String accountId, String title, String positionName, String companyName,
             String mode, String interviewType, String difficulty, int durationMinutes, int questionCount,
             String languageCode, String feedbackMode, boolean followUpEnabled, String status, int currentQuestionIndex,
             int elapsedSeconds, String resumeSnapshotJson, String jdSnapshotJson, String materialsSnapshotJson,
-            String settingsSnapshotJson, int version, Instant createdAt, Instant updatedAt, Instant completedAt) {}
+            String settingsSnapshotJson, int version, Instant createdAt, Instant updatedAt, Instant completedAt,
+            Instant resumedAt) {}
     private record QuestionSeed(String type, String prompt, String sourceLabel, List<String> sourceRefs) {}
     private record ReviewRow(QuestionView question, AnswerView answer, Map<String, Object> feedback,
             Map<String, Integer> scores) {}
