@@ -19,7 +19,7 @@ public enum DeletionTargetType {
             case "CAREER_PROFILE", "PROFILE" -> CAREER_PROFILE;
             case "RESUME_MASTER", "RESUME" -> RESUME_MASTER;
             case "RESUME_VERSION", "FROZEN_RESUME", "FROZEN_VERSION" -> RESUME_VERSION;
-            default -> throw AppException.user("TARGET_TYPE_UNSUPPORTED", "该对象不提供物理删除，请使用对应模块的归档功能");
+            default -> throw AppException.user("TARGET_TYPE_UNSUPPORTED", "这类内容不支持永久删除，请使用归档");
         };
     }
 

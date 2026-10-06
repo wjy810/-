@@ -798,7 +798,7 @@ public class ResumeService implements DeletionModuleHandler, AccountExportContri
             renderArtifacts.deleteByAccountId(accountId);
             candidates.deleteByAccountId(accountId);
             masters.deleteByAccountId(accountId);
-            return Result.succeeded("简历主档、候选与版本已按账号删除编排清理");
+            return Result.succeeded("简历、待确认内容与历史版本已清除");
         } catch (RuntimeException ex) {
             return Result.failed("简历清理失败，删除申请保持可重试");
         }

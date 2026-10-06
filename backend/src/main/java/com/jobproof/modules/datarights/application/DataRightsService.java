@@ -46,13 +46,12 @@ import org.springframework.transaction.annotation.Transactional;
 public class DataRightsService {
 
     public static final String IMPACT = """
-            关联影响：账号将进入删除编排；处理开始后禁止重新登录，当前会话仍可查询删除进度；已发出的只读分享将被撤销；未完成导出任务将被取消。\
-            求职资料库、私有资料文件、岗位、匹配报告、简历及只读历史求职记录归档将随账号删除编排清理。\
-            安全审计索引会保留且不含用户原文。提交不是立即物理清空全库。""";
+            提交后将无法再次登录，当前登录仍可查看删除进度；已发出的只读分享会被撤销，未完成的导出会被取消。\
+            求职资料、私有文件、岗位、匹配报告、简历、职业规划和模拟面试记录会随账号一起清除。\
+            安全审计记录会保留，但不含你的原文。清除分步进行，需要一段时间完成。""";
 
     public static final String LEGAL_NOTE = """
-            法定保留年限不在 P0A 锁死。处理中可进入部分受限；例外走合规工单。\
-            P0A 不提供完整运营后台。""";
+            法律法规要求保留的信息会按规定期限保留；处理过程中部分功能会受限。如有疑问，请联系运营方。""";
 
     private final DeletionRequestJpaRepository deletions;
     private final DeletionReceiptJpaRepository receipts;
@@ -122,7 +121,7 @@ public class DataRightsService {
                     List.of());
         }
         if (!"OBJECT".equals(resolvedScope)) {
-            throw AppException.user("SCOPE_INVALID", "S0 仅支持 ACCOUNT 或 OBJECT 范围");
+            throw AppException.user("SCOPE_INVALID", "只能删除整个账号或单个对象");
         }
         ObjectDeletionPlan plan = objectDeletionCatalog.analyze(accountId, targetType, targetId);
         return new DeletionPreview(
@@ -144,7 +143,7 @@ public class DataRightsService {
             throw AppException.user("CONFIRMATION_REQUIRED", "提交删除前必须确认关联影响与不可逆说明");
         }
         if (!"ACCOUNT".equals(scope) && !"OBJECT".equals(scope)) {
-            throw AppException.user("SCOPE_INVALID", "S0 仅支持 ACCOUNT 或 OBJECT 范围");
+            throw AppException.user("SCOPE_INVALID", "只能删除整个账号或单个对象");
         }
         List<String> open = openStatuses();
         if ("OBJECT".equals(scope)) {
@@ -159,7 +158,7 @@ public class DataRightsService {
             if (!plan.canProceed()) {
                 throw AppException.conflict(
                         plan.blockers().isEmpty() ? "DELETION_BLOCKED" : plan.blockers().get(0),
-                        "存在未解除的有效引用，不能进入物理删除");
+                        "这项内容仍被其他内容使用，请先解除引用后再删除");
             }
             return deletions.findFirstByAccountIdAndScopeAndTargetTypeAndTargetIdAndStatusInOrderByCreatedAtDesc(
                             accountId, "OBJECT", parsed.apiValue(), plan.targetId(), open)
@@ -401,7 +400,7 @@ public class DataRightsService {
             requireExport(resourceId, accountId);
             return;
         }
-        throw AppException.user("RESOURCE_TYPE_UNSUPPORTED", "S0 分享仅支持 PRIVATE_FILE 或 EXPORT");
+        throw AppException.user("RESOURCE_TYPE_UNSUPPORTED", "只能分享私有文件或导出文件");
     }
 
     private void tryNotify(String accountId, NotificationType type, String eventId, String title, String body) {

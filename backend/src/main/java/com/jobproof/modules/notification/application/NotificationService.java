@@ -223,11 +223,11 @@ public class NotificationService {
         if (NotificationStatus.SEND_FAILED.name().equals(entity.getStatus())) {
             throw AppException.conflict(
                     "NOTIFICATION_SEND_FAILED",
-                    "发送失败的通知不能标成已读来假装已送达。通知失败不回滚业务。");
+                    "这条通知发送失败，不能标为已读");
         }
         throw AppException.conflict(
                 "NOTIFICATION_NOT_DELIVERED",
-                "只有已送达的通知可以标为已读，不能假装已发送。");
+                "通知尚未送达，暂时不能标为已读");
     }
 
     private NotificationView upsertDelivered(String accountId, NotificationType type, String eventId, String title, String body) {

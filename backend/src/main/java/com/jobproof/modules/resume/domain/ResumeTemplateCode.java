@@ -13,7 +13,7 @@ public enum ResumeTemplateCode {
         try {
             return valueOf(raw.trim().toUpperCase());
         } catch (RuntimeException ex) {
-            throw AppException.user("RESUME_TEMPLATE_UNKNOWN", "P0A 模板仅支持 SOFTWARE_DEV、QA、DATA_ANALYSIS、PRODUCT");
+            throw AppException.user("RESUME_TEMPLATE_UNKNOWN", "不支持这个简历模板");
         }
     }
 

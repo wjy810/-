@@ -72,7 +72,7 @@ public class ExportJobProcessor {
                         NotificationType.TASK_FAILED,
                         task.getId() + ":FAILED",
                         "导出任务失败",
-                        "可按契约手动重试。通知不含敏感正文。");
+                        "数据导出没有完成，请到“数据与隐私”页面重新发起。");
             } catch (RuntimeException ignored) {
                 // 通知失败不回滚任务状态
             }

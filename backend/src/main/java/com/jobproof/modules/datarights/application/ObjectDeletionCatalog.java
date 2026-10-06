@@ -78,7 +78,7 @@ public class ObjectDeletionCatalog {
         List<String> blockers = type == DeletionTargetType.CAREER_RECORD
                 && exists("SELECT COUNT(*) FROM career_library_record_refs WHERE record_id=? AND active=1", id)
                 ? List.of("CAREER_RECORD_REFERENCED") : List.of();
-        return new ObjectDeletionPlan(type, id, type.label() + "将被物理删除且不可恢复",
+        return new ObjectDeletionPlan(type, id, type.label() + "将被永久删除，无法恢复",
                 List.of(new ImpactItem(type.name(), id, "", "TARGET", type.label())), blockers, blockers.isEmpty());
     }
 
@@ -373,8 +373,8 @@ public class ObjectDeletionCatalog {
     private static String blockerMessage(String blocker) {
         return switch (blocker) {
             case "RESUME_TASK_IN_PROGRESS" -> "该简历仍有定制、匹配或导出任务运行中，请等待任务结束或先取消任务";
-            case "CAREER_RECORD_REFERENCED" -> "存在有效简历版本引用，不能物理删除";
-            default -> "存在未解除的有效引用，不能物理删除";
+            case "CAREER_RECORD_REFERENCED" -> "这条资料仍被简历版本使用，请先在简历中移除后再删除";
+            default -> "这项内容仍被其他内容使用，请先解除引用后再删除";
         };
     }
 

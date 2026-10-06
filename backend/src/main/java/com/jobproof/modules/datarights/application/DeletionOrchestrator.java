@@ -144,7 +144,7 @@ public class DeletionOrchestrator {
         } catch (RuntimeException e) {
             log.warn("object deletion failed requestId={} type={} targetId={}",
                     request.getId(), request.getTargetType(), request.getTargetId(), e);
-            return List.of(new Receipt("object", ReceiptStatus.FAILED, "对象级删除失败，删除申请保持可重试"));
+            return List.of(new Receipt("object", ReceiptStatus.FAILED, "删除失败，删除申请会保持可重试"));
         }
     }
 
@@ -152,7 +152,7 @@ public class DeletionOrchestrator {
         List<Receipt> collected = new ArrayList<>();
         collected.add(run("identity", () -> {
             identityService.markDeletionPending(request.getAccountId());
-            return new Receipt("identity", ReceiptStatus.SUCCEEDED, "账号进入删除编排，禁止重新登录；当前会话仍可查询进度");
+            return new Receipt("identity", ReceiptStatus.SUCCEEDED, "账号已停用，无法再次登录；当前登录仍可查看删除进度");
         }));
         collected.add(run("share", () -> {
             dataRightsService.revokeAllShares(request.getAccountId());
@@ -162,7 +162,7 @@ public class DeletionOrchestrator {
             for (PrivateFileEntity file : privateFiles.findByOwnerId(request.getAccountId())) {
                 storage.delete(file.getObjectKey());
             }
-            return new Receipt("storage", ReceiptStatus.SUCCEEDED, "S0 私有文件已清理");
+            return new Receipt("storage", ReceiptStatus.SUCCEEDED, "私有文件已清除");
         }));
         collected.add(run("task", () -> {
             for (AsyncTaskEntity task : tasks.findByAccountIdAndTaskTypeAndStatusIn(
@@ -170,18 +170,18 @@ public class DeletionOrchestrator {
                     TaskTypes.ACCOUNT_EXPORT,
                     List.of("PENDING", "RUNNING"))) {
                 task.setStatus("CANCELLED");
-                task.setFailureReason("账号删除编排取消");
+                task.setFailureReason("账号删除，任务已取消");
                 task.setUpdatedAt(now);
             }
             return new Receipt("task", ReceiptStatus.SUCCEEDED, "未完成导出任务已取消");
         }));
-        collected.add(new Receipt("audit", ReceiptStatus.RESTRICTED, "审计索引保留且不含用户原文；法定例外走合规工单"));
-        collected.add(moduleReceipt("career-library", request.getAccountId(), "求职资料库尚未接入，不能假装已删除"));
-        collected.add(moduleReceipt("job", request.getAccountId(), "S2 岗位尚未接入，不能假装已删除"));
-        collected.add(moduleReceipt("matching", request.getAccountId(), "已退役岗位分析历史尚未接入，不能假装已删除"));
-        collected.add(moduleReceipt("resume-import", request.getAccountId(), "简历导入尚未接入，不能假装已删除"));
-        collected.add(moduleReceipt("resume", request.getAccountId(), "S3 简历尚未接入，不能假装已删除"));
-        collected.add(moduleReceipt("career-planning", request.getAccountId(), "职业规划尚未接入，不能假装已删除"));
+        collected.add(new Receipt("audit", ReceiptStatus.RESTRICTED, "安全审计记录按规定保留，不含你的原文"));
+        collected.add(moduleReceipt("career-library", request.getAccountId(), "求职资料库暂未清除，删除申请会保持可重试"));
+        collected.add(moduleReceipt("job", request.getAccountId(), "岗位资料暂未清除，删除申请会保持可重试"));
+        collected.add(moduleReceipt("matching", request.getAccountId(), "岗位匹配记录暂未清除，删除申请会保持可重试"));
+        collected.add(moduleReceipt("resume-import", request.getAccountId(), "简历导入记录暂未清除，删除申请会保持可重试"));
+        collected.add(moduleReceipt("resume", request.getAccountId(), "简历暂未清除，删除申请会保持可重试"));
+        collected.add(moduleReceipt("career-planning", request.getAccountId(), "职业规划暂未清除，删除申请会保持可重试"));
         return collected;
     }
 
@@ -199,7 +199,7 @@ public class DeletionOrchestrator {
             return action.get();
         } catch (RuntimeException e) {
             log.warn("deletion participant failed module={}", module, e);
-            return new Receipt(module, ReceiptStatus.FAILED, "模块处理失败，进入可重试/工单");
+            return new Receipt(module, ReceiptStatus.FAILED, "这一部分清除失败，删除申请会保持可重试");
         }
     }
 }
