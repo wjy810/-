@@ -266,7 +266,7 @@ export async function apiDownload(path: string): Promise<{ blob: Blob; filename:
   const contentType = (response.headers.get('Content-Type') || '').toLowerCase()
   if (contentType.includes('text/html')) {
     throw new ApiClientError(
-      { category: 'SYSTEM_FAILURE', reason: 'BAD_RESPONSE', message: '服务返回了网页而不是文件。未保存伪造下载。' },
+      { category: 'SYSTEM_FAILURE', reason: 'BAD_RESPONSE', message: '下载没有成功：服务返回的不是文件，请稍后重试。' },
       response.status,
       requestId,
     )

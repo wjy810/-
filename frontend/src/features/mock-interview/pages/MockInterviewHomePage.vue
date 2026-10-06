@@ -7,6 +7,7 @@ import JobProofIcon from '@/shared/ui/JobProofIcon.vue'
 import { formatWhen } from '@/shared/lib/datetime'
 import { errorMessage } from '@/shared/api/types'
 import { useToastFeedback } from '@/shared/ui/toast'
+import UiErrorState from '@/shared/ui/UiErrorState.vue'
 import { fetchMockInterviewDashboard, listMockInterviews } from '../services/mockInterviewApi'
 import type { MockInterviewDashboard, MockInterviewSessionSummary } from '../types'
 import '../mock-interview.css'
@@ -15,6 +16,7 @@ const router = useRouter()
 const dashboard = ref<MockInterviewDashboard | null>(null)
 const sessions = ref<MockInterviewSessionSummary[]>([])
 const loading = ref(true)
+const loadError = ref<unknown>(null)
 const pageError = ref('')
 useToastFeedback(pageError, 'error', 'mock-interview-home-error')
 const showHistory = ref(false)
@@ -32,6 +34,7 @@ const displayed = computed(() => {
 async function load(): Promise<void> {
   loading.value = true
   pageError.value = ''
+  loadError.value = null
   try {
     const [summary, history] = await Promise.all([
       fetchMockInterviewDashboard(),
@@ -40,7 +43,9 @@ async function load(): Promise<void> {
     dashboard.value = summary
     sessions.value = history
   } catch (reason) {
-    pageError.value = errorMessage(reason, '模拟面试数据读取失败')
+    // A failed first load is an error page, never "no interviews yet"; a failed refresh keeps the data.
+    if (dashboard.value) pageError.value = errorMessage(reason, '模拟面试数据刷新失败')
+    else loadError.value = reason
   } finally {
     loading.value = false
   }
@@ -75,6 +80,7 @@ onMounted(load)
         </header>
 
         <section v-if="loading" class="mi-card mi-loading"><span><LoaderCircle class="mi-spin" :size="20" />正在读取训练记录</span></section>
+        <UiErrorState v-else-if="loadError" class="mi-card" :error="loadError" title="训练记录读取失败" @retry="load" />
         <template v-else>
           <section class="mi-home-stats" aria-label="训练统计">
             <article class="mi-card"><span class="mi-stat-icon is-blue"><JobProofIcon name="interview-training-count" :size="23" /></span><div><small>累计训练</small><strong>{{ dashboard?.total ?? 0 }}</strong><p>{{ dashboard?.completed ?? 0 }} 次已完成</p></div></article>

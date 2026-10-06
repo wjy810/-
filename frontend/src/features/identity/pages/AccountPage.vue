@@ -210,7 +210,7 @@ onMounted(() => void loadSessions())
 
     <section class="settings-card security-record">
       <header class="card__head"><div><h3 class="card__title">安全记录</h3><p class="card__sub">当前仍有效的登录会话活动</p></div></header>
-      <div class="card__body table-wrap"><table><thead><tr><th>事件类型</th><th>会话标识</th><th>首次登录</th><th>最近活动</th></tr></thead><tbody><tr v-for="item in sessions" :key="item.id"><td><span class="event-label"><AppIcon name="lock" :size="13" />登录</span></td><td><code>{{ item.id.slice(0, 8) }}</code></td><td>{{ formatWhen(item.createdAt) }}</td><td>{{ formatWhen(item.lastSeenAt) }}</td></tr></tbody></table><p v-if="!loading && !sessions.length" class="empty">暂无安全记录。</p></div>
+      <div class="card__body table-wrap"><table><thead><tr><th>事件类型</th><th>设备</th><th>首次登录</th><th>最近活动</th></tr></thead><tbody><tr v-for="item in sessions" :key="item.id"><td><span class="event-label"><AppIcon name="lock" :size="13" />登录</span></td><td>{{ item.current ? '当前设备' : '其他设备' }}</td><td>{{ formatWhen(item.createdAt) }}</td><td>{{ formatWhen(item.lastSeenAt) }}</td></tr></tbody></table><p v-if="!loading && !sessions.length" class="empty">暂无安全记录。</p></div>
     </section>
   </div>
 </template>

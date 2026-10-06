@@ -56,9 +56,9 @@ watch(clamped, value => animateTo(value))
     <svg :width="size" :height="size" :viewBox="`0 0 ${size} ${size}`">
       <defs v-if="resolvedTone === 'ai'">
         <linearGradient :id="gradientId" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stop-color="#5e59e8" />
-          <stop offset="55%" stop-color="#9b6bf2" />
-          <stop offset="100%" stop-color="#fa8c55" />
+          <stop offset="0%" style="stop-color: var(--gradient-ai-from)" />
+          <stop offset="55%" style="stop-color: var(--gradient-ai-via)" />
+          <stop offset="100%" style="stop-color: var(--gradient-ai-to)" />
         </linearGradient>
       </defs>
       <circle class="ui-ring__track" :cx="size / 2" :cy="size / 2" :r="radius" :stroke-width="stroke" fill="none" />

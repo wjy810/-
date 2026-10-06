@@ -11,6 +11,7 @@ import type { CareerFile, CareerRecord } from '@/features/career-library/types'
 import type { JobTaxonomySelection } from '@/features/ai-resume/types'
 import { errorMessage } from '@/shared/api/types'
 import { useToastFeedback } from '@/shared/ui/toast'
+import UiErrorState from '@/shared/ui/UiErrorState.vue'
 import { createMockInterview, createMockInterviewDraft, saveMockInterviewDraft } from '../services/mockInterviewApi'
 import type { MockInterviewCreate, MockInterviewDraft, MockInterviewMode } from '../types'
 import { fetchJobMatch, fetchMatchReport } from '@/features/job-match/services/jobMatchApi'
@@ -27,6 +28,7 @@ const resumes = ref<ResumeMasterSummary[]>([])
 const records = ref<CareerRecord[]>([])
 const files = ref<CareerFile[]>([])
 const loading = ref(true)
+const loadError = ref<unknown>(null)
 const saving = ref(false)
 const starting = ref(false)
 const uploading = ref(false)
@@ -63,6 +65,7 @@ const steps = [
 async function load(): Promise<void> {
   loading.value = true
   pageError.value = ''
+  loadError.value = null
   try {
     const jobMatchId = typeof route.query.jobMatchId === 'string' ? route.query.jobMatchId : ''
     const [resumeItems, recordPage, filePage, draftValue, matchValue, reportValue] = await Promise.all([
@@ -89,7 +92,7 @@ async function load(): Promise<void> {
     }
     if (!form.resumeId && resumes.value[0]) form.resumeId = resumes.value[0].id
   } catch (reason) {
-    pageError.value = errorMessage(reason, '创建面试所需资料读取失败')
+    loadError.value = reason
   } finally {
     loading.value = false
   }
@@ -232,6 +235,7 @@ onBeforeUnmount(() => { testStream?.getTracks().forEach((track) => track.stop())
         </ol>
         <div v-if="linkedMatch" class="mi-linked-match"><ShieldCheck :size="17" /><span><strong>已关联岗位匹配报告</strong><small>{{ linkedMatch.title }}<template v-if="linkedMatch.company"> · {{ linkedMatch.company }}</template>，出题将使用已冻结的要求、优势、缺口和面试主题。</small></span></div>
         <section v-if="loading" class="mi-card mi-loading"><span><LoaderCircle class="mi-spin" :size="20" />正在准备创建流程</span></section>
+        <UiErrorState v-else-if="loadError" class="mi-card" :error="loadError" title="创建面试所需的资料读取失败" @retry="load" />
 
         <template v-else>
           <section v-if="step === 1" class="mi-step-content">

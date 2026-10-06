@@ -205,7 +205,10 @@
   --color-info-soft: var(--ink-50);
   --color-info-text: var(--ink-700);
 
-  --gradient-ai: linear-gradient(120deg, #5e59e8 0%, #9b6bf2 48%, #fa8c55 100%);
+  --gradient-ai-from: #5e59e8;
+  --gradient-ai-via: #9b6bf2;
+  --gradient-ai-to: #fa8c55;
+  --gradient-ai: linear-gradient(120deg, var(--gradient-ai-from) 0%, var(--gradient-ai-via) 48%, var(--gradient-ai-to) 100%);
   --gradient-ai-soft: linear-gradient(120deg, rgba(94, 89, 232, 0.1) 0%, rgba(155, 107, 242, 0.08) 48%, rgba(250, 140, 85, 0.1) 100%);
   --gradient-hero-glow: radial-gradient(60% 60% at 70% 30%, rgba(94, 89, 232, 0.18), transparent 70%),
     radial-gradient(40% 50% at 20% 80%, rgba(250, 140, 85, 0.16), transparent 70%);

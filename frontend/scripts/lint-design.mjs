@@ -17,6 +17,29 @@ const HEX_ALLOWED = {
   'src/features/identity/components/AuthDialog.vue': 10,
 }
 
+/**
+ * Hex literals outside <style> (scripts, templates, inline styles, .ts) with their ceilings. These
+ * render colours that must not follow the theme: brand art, user-picked swatches, the browser's
+ * theme-color meta. Resume templates and the token files define colours and are exempt.
+ */
+const SCRIPT_HEX_ALLOWED = {
+  // The logo's fixed gradient.
+  'src/shared/ui/BrandMark.vue': 11,
+  // Deterministic avatar background palette.
+  'src/shared/ui/UiAvatar.vue': 10,
+  // A miniature of a white resume page.
+  'src/features/dashboard/components/ResumeMiniCard.vue': 5,
+  // Default custom accent offered in the colour picker.
+  'src/features/ai-resume/workbench/components/DesignView.vue': 1,
+  // <meta name="theme-color"> for light and dark.
+  'src/stores/preferences.ts': 2,
+  // Pending tokenisation (docs/phase2/00 X-7); ceilings drop to 0 when done.
+  'src/features/career-planning/components/CareerAbilityCanvas.vue': 13,
+  'src/features/career-planning/pages/CareerCanvasOverviewPage.vue': 8,
+  'src/features/job-match/pages/JobMatchReportPage.vue': 6,
+}
+const SCRIPT_HEX_EXEMPT = /^src\/(design|resume-render)\//
+
 /** Files allowed to import reka-ui directly, and why. */
 const REKA_ALLOWED = {
   'src/app/App.vue': 'app-wide TooltipProvider',
@@ -42,6 +65,13 @@ function styleText(path, source) {
   return [...source.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/g)].map(match => match[1]).join('\n')
 }
 
+/** Everything a .vue file renders or computes outside <style>; the whole file for .ts. */
+function nonStyleText(path, source) {
+  if (path.endsWith('.ts')) return source
+  if (!path.endsWith('.vue')) return ''
+  return source.replace(/<style[^>]*>[\s\S]*?<\/style>/g, '')
+}
+
 function countHex(css) {
   return css.split('\n').filter(line => !IGNORED_LINE.test(line))
     .reduce((total, line) => total + (line.match(HEX)?.length ?? 0), 0)
@@ -60,6 +90,16 @@ for await (const path of files(src)) {
       problems.push(`${rel}: ${count} hard-coded colour${count > 1 ? 's' : ''} (allowed ${ceiling}); use tokens from src/design/tokens.css`)
     } else if (count < ceiling) {
       shrunk.push(`${rel}: ${count} < ${ceiling}`)
+    }
+  }
+
+  if (!SCRIPT_HEX_EXEMPT.test(rel)) {
+    const count = countHex(nonStyleText(path, source))
+    const ceiling = SCRIPT_HEX_ALLOWED[rel] ?? 0
+    if (count > ceiling) {
+      problems.push(`${rel}: ${count} hard-coded colour${count > 1 ? 's' : ''} in script/template (allowed ${ceiling}); bind a token, e.g. style="color: var(--…)"`)
+    } else if (count < ceiling) {
+      shrunk.push(`${rel} (script/template): ${count} < ${ceiling}`)
     }
   }
 
