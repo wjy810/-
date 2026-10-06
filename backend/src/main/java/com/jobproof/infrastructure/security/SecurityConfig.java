@@ -1,6 +1,7 @@
 package com.jobproof.infrastructure.security;
 
 import com.jobproof.infrastructure.config.JobProofProperties;
+import com.jobproof.infrastructure.web.RequestIdFilter;
 import com.jobproof.shared.auth.CurrentAccount;
 import com.jobproof.shared.error.AppException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -95,9 +96,12 @@ public class SecurityConfig {
         res.setStatus(status);
         res.setCharacterEncoding("UTF-8");
         res.setContentType("application/json;charset=UTF-8");
+        // requestId is either validated against [A-Za-z0-9-] or a generated UUID, so it is safe to embed.
+        String requestId = RequestIdFilter.current();
         res.getWriter().write("{\"ok\":false,\"error\":{\"category\":\""
                 + (status == 401 ? "UNAUTHENTICATED" : "FORBIDDEN")
-                + "\",\"reason\":\"" + reason + "\",\"message\":\"" + message + "\"}}");
+                + "\",\"reason\":\"" + reason + "\",\"message\":\"" + message + "\""
+                + (requestId == null ? "" : ",\"requestId\":\"" + requestId + "\"") + "}}");
     }
 
     public static boolean isSafeMethod(HttpServletRequest request) {

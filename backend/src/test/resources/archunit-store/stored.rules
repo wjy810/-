@@ -1,0 +1,7 @@
+#
+#Tue Oct 06 20:34:14 CST 2026
+R1\ web\ packages\ do\ not\ access\ infra\ packages=cf8b9786-8140-481a-bfc3-00753fb9bb27
+R2\ modules\ do\ not\ access\ another\ module's\ infra\ or\ web\ package=0f21ac35-c0d5-449e-88a4-896254e8da34
+R3\ infrastructure\ and\ shared\ do\ not\ depend\ on\ modules=3d4c473a-0cf2-49dc-9d13-e24d7715dc03
+R4\ rest\ controllers\ reside\ in\ web\ packages\ and\ end\ with\ Controller=d1c22a6e-9a7e-42ee-98ec-c1b962eb7342
+R5\ domain\ packages\ do\ not\ depend\ on\ Spring\ Web=233e6560-d70f-4afc-ae23-5fa63b52acca

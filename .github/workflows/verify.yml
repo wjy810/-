@@ -48,7 +48,7 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: '21'
           cache: maven
       - run: mvn -B verify
       - name: Reject embedded credentials in production artifact
@@ -78,7 +78,7 @@ jobs:
           - {name: clamav, image: 'clamav/clamav:1.4.6@sha256:b25d9199257ae7ef45e0cc4c7eaa60ce7e5447796f0090d5ff311d1a30980cc3'}
           - {name: nginx, image: 'nginx:1.30.4-alpine-slim@sha256:77da26c31397bf6694b4bf93275f5b40b0b120ba1b8f114264b603e592c561d6'}
           - {name: certbot, image: 'certbot/certbot:v5.8.0'}
-          - {name: java-base, image: 'eclipse-temurin:17-jre-jammy'}
+          - {name: java-base, image: 'eclipse-temurin:21-jre-jammy'}
     steps:
       - uses: actions/checkout@v4
       - name: Container CVE and license inventory

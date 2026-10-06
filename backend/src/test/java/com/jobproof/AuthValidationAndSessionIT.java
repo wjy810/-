@@ -3,6 +3,7 @@ package com.jobproof;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -59,6 +60,21 @@ class AuthValidationAndSessionIT {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error.category").value("USER_CORRECTABLE"))
                 .andExpect(jsonPath("$.error.reason").value("INVALID_CREDENTIALS"));
+    }
+
+    @Test
+    void validationErrorsNameTheFieldsAndCarryTheRequestId() throws Exception {
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .header("X-Request-Id", "trace-validation-01")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"email":"someone@example.com","password":""}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.reason").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.error.fields.password").value("必填"))
+                .andExpect(jsonPath("$.error.requestId").value("trace-validation-01"))
+                .andExpect(header().string("X-Request-Id", "trace-validation-01"));
     }
 
     @Test

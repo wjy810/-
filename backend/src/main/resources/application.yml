@@ -10,6 +10,16 @@ server:
 spring:
   application:
     name: jobproof-api
+  threads:
+    virtual:
+      # Request handling and @Scheduled jobs run on virtual threads (docs/03 §5.7); set false to fall back.
+      enabled: ${JOBPROOF_VIRTUAL_THREADS:true}
+  task:
+    scheduling:
+      # Used only when virtual threads are off: a slow job must not starve the other schedules.
+      pool:
+        size: ${JOBPROOF_SCHEDULER_POOL_SIZE:6}
+      thread-name-prefix: jobproof-sched-
   mail:
     host: ${QQ_SMTP_HOST:smtp.qq.com}
     port: ${QQ_SMTP_PORT:465}
@@ -185,3 +195,8 @@ jobproof:
   career-planning:
     enabled: ${JOBPROOF_CAREER_PLANNING_ENABLED:false}
     model: ${JOBPROOF_CAREER_PLANNING_MODEL:qwen-plus}
+
+logging:
+  pattern:
+    # Every line carries the request id set by RequestIdFilter (empty for background work).
+    level: "%5p [%X{requestId:-}]"

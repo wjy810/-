@@ -6,6 +6,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.persistence.OptimisticLockException;
 import jakarta.validation.ConstraintViolationException;
 import java.io.IOException;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -18,6 +19,7 @@ import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.web.HttpMediaTypeNotAcceptableException;
 import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
+import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.ServletRequestBindingException;
@@ -59,8 +61,36 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler({MethodArgumentNotValidException.class, ConstraintViolationException.class, IllegalArgumentException.class})
     public ResponseEntity<ApiResponse<Void>> handleValidation(Exception ex) {
+        Map<String, String> fields = new LinkedHashMap<>();
+        if (ex instanceof MethodArgumentNotValidException invalid) {
+            for (FieldError error : invalid.getBindingResult().getFieldErrors()) {
+                fields.putIfAbsent(error.getField(), fieldMessage(error.getCode()));
+            }
+        } else if (ex instanceof ConstraintViolationException violations) {
+            violations.getConstraintViolations().forEach(violation -> fields.putIfAbsent(
+                    lastPathNode(violation.getPropertyPath().toString()),
+                    fieldMessage(violation.getConstraintDescriptor().getAnnotation().annotationType().getSimpleName())));
+        }
         return jsonError(HttpStatus.BAD_REQUEST, new ApiError(
-                ErrorCategory.USER_CORRECTABLE.name(), "VALIDATION_FAILED", "请求参数不正确"));
+                ErrorCategory.USER_CORRECTABLE.name(), "VALIDATION_FAILED", "请求参数不正确").withFields(fields));
+    }
+
+    /** Stable Chinese messages per constraint, independent of the server's locale. */
+    static String fieldMessage(String constraint) {
+        if (constraint == null) return "格式不正确";
+        return switch (constraint) {
+            case "NotBlank", "NotNull", "NotEmpty" -> "必填";
+            case "Size", "Length" -> "长度不符合要求";
+            case "Email" -> "邮箱格式不正确";
+            case "Min", "Max", "DecimalMin", "DecimalMax", "Positive", "PositiveOrZero", "Negative", "NegativeOrZero", "Range" -> "取值超出范围";
+            case "Past", "PastOrPresent", "Future", "FutureOrPresent" -> "日期不在允许范围内";
+            default -> "格式不正确";
+        };
+    }
+
+    private static String lastPathNode(String path) {
+        int dot = path.lastIndexOf('.');
+        return dot >= 0 ? path.substring(dot + 1) : path;
     }
 
     @ExceptionHandler({
@@ -132,6 +162,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiResponse<Void>> handleUnknown(Exception ex) {
+        // The request id is in the MDC (and in the response body), so support can find this entry.
         log.error("unhandled error", ex);
         return jsonError(HttpStatus.INTERNAL_SERVER_ERROR, new ApiError(
                 ErrorCategory.SYSTEM_FAILURE.name(), "SYSTEM_FAILURE", "系统繁忙，请稍后重试"));

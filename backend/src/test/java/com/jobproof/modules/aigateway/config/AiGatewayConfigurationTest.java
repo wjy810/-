@@ -1,4 +1,4 @@
-package com.jobproof.infrastructure.config;
+package com.jobproof.modules.aigateway.config;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 

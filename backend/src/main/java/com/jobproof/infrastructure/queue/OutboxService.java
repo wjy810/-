@@ -30,6 +30,7 @@ public class OutboxService {
         event.setEventType(eventType);
         event.setPayloadJson(write(payload));
         event.setCreatedAt(clock.now());
+        event.setStatus(OutboxRelay.PENDING);
         repository.save(event);
     }
 

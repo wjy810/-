@@ -1,7 +1,7 @@
 name: ${JOBPROOF_DRILL_PROJECT:?isolated project required}
 services:
   app:
-    image: eclipse-temurin:17-jre-jammy
+    image: eclipse-temurin:21-jre-jammy
     command: ["java", "-Xmx384m", "-XX:MaxMetaspaceSize=192m", "-XX:+UseSerialGC", "-XX:ActiveProcessorCount=2", "-jar", "/app/jobproof-backend.jar"]
     environment:
       SPRING_PROFILES_ACTIVE: local,test

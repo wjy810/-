@@ -87,3 +87,9 @@ jobproof:
       enabled: false
     seeker:
       enabled: false
+
+logging:
+  structured:
+    format:
+      # One JSON object per line (Elastic Common Schema); MDC requestId is included automatically.
+      console: ${JOBPROOF_LOG_FORMAT:ecs}
