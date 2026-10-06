@@ -45,12 +45,13 @@ const workModes = [
   { value: 'HYBRID', label: '混合办公' },
   { value: 'REMOTE', label: '远程办公' },
 ]
-const cityOptions = [
-  { value: '', label: '请选择目标城市' },
-  { value: '北京', label: '北京' }, { value: '上海', label: '上海' }, { value: '广州', label: '广州' },
-  { value: '深圳', label: '深圳' }, { value: '杭州', label: '杭州' }, { value: '成都', label: '成都' },
-  { value: '武汉', label: '武汉' }, { value: '南京', label: '南京' }, { value: '其他', label: '其他' },
-]
+const COMMON_CITIES = ['北京', '上海', '广州', '深圳', '杭州', '成都', '武汉', '南京']
+// A city typed elsewhere (onboarding accepts any city) must still show as the selected value.
+const cityOptions = computed(() => {
+  const cities = form.targetCity && !COMMON_CITIES.includes(form.targetCity) && form.targetCity !== '其他'
+    ? [...COMMON_CITIES, form.targetCity] : COMMON_CITIES
+  return [{ value: '', label: '请选择目标城市' }, ...cities.map(city => ({ value: city, label: city })), { value: '其他', label: '其他' }]
+})
 
 const initial = computed(() => form.name.trim().charAt(0) || '求')
 const completeness = computed(() => props.overview.profileCompleteness || props.profile.completeness || 0)

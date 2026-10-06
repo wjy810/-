@@ -15,7 +15,7 @@ export async function pollTask(
       throw new DOMException('轮询已取消', 'AbortError')
     }
     if (Date.now() - started > maxWaitMs) {
-      throw new Error('任务仍在进行，已停止自动刷新。请稍后点重新读取，不会自动重试。')
+      throw new Error('任务仍在进行，已停止自动刷新。请稍后刷新页面查看结果。')
     }
     await wait(intervalMs, signal)
     current = await fetchTask(taskId)
