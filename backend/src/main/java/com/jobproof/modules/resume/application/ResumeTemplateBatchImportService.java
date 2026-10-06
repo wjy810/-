@@ -70,8 +70,8 @@ public class ResumeTemplateBatchImportService {
     private final ObjectMapper mapper;
 
     public ResumeTemplateBatchImportService(
-            @Value("${jobproof.templates.catalog-source-dir:../简历模板/hicv-word-resume-templates-main/hicv-word-resume-templates-main/templates}") String sourceRoot,
-            @Value("${jobproof.templates.catalog-license-file:../简历模板/hicv-word-resume-templates-main/hicv-word-resume-templates-main/LICENSE}") String licenseFile,
+            @Value("${jobproof.templates.catalog-source-dir:../assets/resume-templates/templates}") String sourceRoot,
+            @Value("${jobproof.templates.catalog-license-file:../assets/resume-templates/LICENSE}") String licenseFile,
             ResumeTemplateImportBatchJpaRepository batches, ResumeTemplateImportItemJpaRepository items,
             ResumeTemplateAssetJpaRepository assets, ResumeTemplateCatalogEntryJpaRepository catalog,
             ResumeTemplateCatalogFacetJpaRepository facets, ResumeTemplateEvidenceJpaRepository evidence,
