@@ -1,35 +1,24 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
-import { errorMessage } from '@/shared/api/types'
+import { computed, onMounted } from 'vue'
+import { useLoadState } from '@/shared/lib/useLoadState'
 import AppButton from '@/shared/ui/AppButton.vue'
 import AppIcon from '@/shared/ui/AppIcon.vue'
 import AppTag from '@/shared/ui/AppTag.vue'
-import { useToastFeedback } from '@/shared/ui/toast'
+import PageState from '@/shared/ui/PageState.vue'
+import UiSkeleton from '@/shared/ui/UiSkeleton.vue'
 import { fetchAiResumeQuota } from '../services/aiResumeApi'
-import type { AiQuota } from '../types'
 
-const quota = ref<AiQuota | null>(null)
-const loading = ref(true)
-const pageError = ref('')
-useToastFeedback(pageError, 'error', 'ai-resume-usage-error')
+const { data: quota, error, loading, loaded, load } = useLoadState(() => fetchAiResumeQuota())
 
 const quotaPercent = computed(() => {
   const total = quota.value?.grantedUnits ?? 0
   const used = quota.value?.usedUnits ?? 0
   return total > 0 ? Math.min(100, Math.max(0, Math.round((used / total) * 100))) : 0
 })
-
-async function load(): Promise<void> {
-  loading.value = true
-  try {
-    quota.value = await fetchAiResumeQuota()
-    pageError.value = ''
-  } catch (reason) {
-    pageError.value = errorMessage(reason, 'AI 额度读取失败')
-  } finally {
-    loading.value = false
-  }
-}
+const periodLabel = computed(() => {
+  const match = quota.value?.periodKey?.match(/^(\d{4})-(\d{2})$/)
+  return match ? `${match[1]} 年 ${Number(match[2])} 月` : quota.value?.periodKey || '本月'
+})
 
 onMounted(load)
 </script>
@@ -51,24 +40,32 @@ onMounted(load)
       </div>
     </header>
 
-    <section class="settings-card quota-overview">
-      <div class="quota-overview__main">
-        <div class="quota-overview__title">
-          <span><AppIcon name="sparkles" :size="20" /></span>
-          <div><small>{{ quota?.periodKey || '本月' }} AI 额度</small><strong>{{ loading ? '正在读取…' : `${quota?.remainingUnits ?? 0} 次可用` }}</strong></div>
-          <AppTag tone="blue">SYSTEM 通道</AppTag>
+    <PageState :loading="loading" :error="error" :loaded="loaded" error-title="AI 额度读取失败" compact @retry="load">
+      <template #skeleton>
+        <section class="settings-card quota-overview" aria-busy="true">
+          <div class="quota-overview__main"><UiSkeleton height="44px" width="60%" /><UiSkeleton height="7px" /></div>
+          <div class="quota-metrics"><UiSkeleton height="48px" /><UiSkeleton height="48px" /><UiSkeleton height="48px" /></div>
+        </section>
+      </template>
+      <section v-if="quota" class="settings-card quota-overview">
+        <div class="quota-overview__main">
+          <div class="quota-overview__title">
+            <span><AppIcon name="sparkles" :size="20" /></span>
+            <div><small>{{ periodLabel }} AI 额度</small><strong>{{ quota.remainingUnits }} 次可用</strong></div>
+            <AppTag tone="blue">平台提供</AppTag>
+          </div>
+          <div class="quota-progress" :aria-label="`本月额度已使用 ${quotaPercent}%`">
+            <span><i :style="{ width: `${quotaPercent}%` }" /></span>
+            <small>本月已使用 {{ quotaPercent }}%</small>
+          </div>
         </div>
-        <div class="quota-progress" :aria-label="`本月额度已使用 ${quotaPercent}%`">
-          <span><i :style="{ width: `${quotaPercent}%` }" /></span>
-          <small>本月已使用 {{ quotaPercent }}%</small>
+        <div class="quota-metrics">
+          <div><small>总额度</small><strong>{{ quota.grantedUnits }}</strong><span>次调用</span></div>
+          <div><small>已使用</small><strong>{{ quota.usedUnits }}</strong><span>次调用</span></div>
+          <div><small>处理中占用</small><strong>{{ quota.heldUnits }}</strong><span>次调用</span></div>
         </div>
-      </div>
-      <div class="quota-metrics">
-        <div><small>总额度</small><strong>{{ quota?.grantedUnits ?? 0 }}</strong><span>次调用</span></div>
-        <div><small>已使用</small><strong>{{ quota?.usedUnits ?? 0 }}</strong><span>次调用</span></div>
-        <div><small>任务预占</small><strong>{{ quota?.heldUnits ?? 0 }}</strong><span>处理中</span></div>
-      </div>
-    </section>
+      </section>
+    </PageState>
 
     <div class="usage-grid">
       <section class="settings-card policy-card">
@@ -76,11 +73,11 @@ onMounted(load)
         <div class="card__body policy-list">
           <article>
             <span><AppIcon name="settings" :size="17" /></span>
-            <div><strong>模型与密钥</strong><p>由管理员验收 SYSTEM 通道，你无需选择模型或录入个人 Key。</p></div>
+            <div><strong>模型与密钥</strong><p>模型由平台统一提供和维护，你无需选择模型或填写密钥。</p></div>
           </article>
           <article>
             <span><AppIcon name="refresh" :size="17" /></span>
-            <div><strong>失败返还</strong><p>没有产生可用结果的系统失败或取消，会自动返还预占次数。</p></div>
+            <div><strong>失败返还</strong><p>处理中的任务会先占用次数；因系统原因失败或被取消、没有得到可用结果时，占用的次数会自动返还。</p></div>
           </article>
           <article>
             <span><AppIcon name="clock" :size="17" /></span>

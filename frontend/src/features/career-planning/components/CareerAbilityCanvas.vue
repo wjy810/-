@@ -36,6 +36,7 @@ import {
   visibleCanvasNodeIds,
 } from '../utils/canvas'
 import { branchGrowth, confirmedMastery } from '../utils/canvasMotion'
+import { readThemeColor, useThemeColors } from '../utils/themeColors'
 
 const props = defineProps<{
   sessionId: string
@@ -57,6 +58,19 @@ const emit = defineEmits<{
 type CanvasFlowData = { item: CanvasNode }
 type MobileRow = { node: CanvasNode; level: number; childCount: number; expanded: boolean }
 type CanvasHistoryState = { physicalVersion: number; undo: number[]; redo: number[] }
+
+// SVG attributes and animation keyframes need concrete colours; edges use tokens directly.
+const flowColors = useThemeColors({
+  pattern: '--dot-color',
+  career: '--color-primary',
+  domain: '--color-success',
+  node: '--color-primary-border',
+})
+
+function miniMapNodeColor(node: Node<CanvasFlowData>): string {
+  const type = node.data?.item?.type
+  return type === 'CAREER' ? flowColors.value.career : type === 'DOMAIN' ? flowColors.value.domain : flowColors.value.node
+}
 
 const currentCanvas = ref(props.canvas)
 const query = ref('')
@@ -114,6 +128,10 @@ async function animateCanvasChange(previous: ReadonlySet<string>, completed = ne
   const growth = branchGrowth(previous, desktopVisibleIds.value, displayedCanvas.value.relations)
   await nextTick()
   if (revision !== animationRevision || !canvasStage.value) return
+  const success = readThemeColor('--color-success')
+  const edge = readThemeColor('--color-primary-border')
+  const glow = `color-mix(in srgb, ${success} 22%, transparent)`
+  const glowClear = `color-mix(in srgb, ${success} 0%, transparent)`
   const animate = (element: Element | null, keyframes: Keyframe[], delay = 0, duration = 240) => {
     if (!element || typeof element.animate !== 'function') return
     activeAnimations.push(element.animate(keyframes, { duration, delay, easing: 'cubic-bezier(.2,.7,.3,1)', fill: 'backwards' }))
@@ -122,7 +140,7 @@ async function animateCanvasChange(previous: ReadonlySet<string>, completed = ne
     const id = element.dataset.id ?? ''
     const delay = growth.nodes.get(id)
     if (delay != null) animate(element.querySelector('.flow-card'), [{ opacity: 0, transform: 'translateX(6px)' }, { opacity: 1, transform: 'translateX(0)' }], delay + 40, 240)
-    if (completed.has(id)) animate(element.querySelector('.flow-card'), [{ boxShadow: '0 0 0 0 #15966600' }, { boxShadow: '0 0 0 4px #15966638', offset: .45 }, { boxShadow: '0 0 0 0 #15966600' }], 0, 480)
+    if (completed.has(id)) animate(element.querySelector('.flow-card'), [{ boxShadow: `0 0 0 0 ${glowClear}` }, { boxShadow: `0 0 0 4px ${glow}`, offset: .45 }, { boxShadow: `0 0 0 0 ${glowClear}` }], 0, 480)
   }
   for (const relation of displayedCanvas.value.relations) {
     const group = Array.from(canvasStage.value.querySelectorAll<SVGElement>('.vue-flow__edge')).find(element => element.dataset.id === relation.id)
@@ -133,7 +151,7 @@ async function animateCanvasChange(previous: ReadonlySet<string>, completed = ne
       // Existing SVG runs child -> parent: negative dash offset reveals from the parent end.
       animate(path, [{ strokeDasharray: `${length} ${length}`, strokeDashoffset: -length }, { strokeDasharray: `${length} ${length}`, strokeDashoffset: 0 }], delay, 240)
     }
-    if (relation.type === 'TREE_PARENT' && completed.has(relation.fromNodeId)) animate(path ?? null, [{ stroke: '#8eaae9', strokeWidth: 1.7 }, { stroke: '#159666', strokeWidth: 3, offset: .45 }, { stroke: '#8eaae9', strokeWidth: 1.7 }], 0, 480)
+    if (relation.type === 'TREE_PARENT' && completed.has(relation.fromNodeId)) animate(path ?? null, [{ stroke: edge, strokeWidth: 1.7 }, { stroke: success, strokeWidth: 3, offset: .45 }, { stroke: edge, strokeWidth: 1.7 }], 0, 480)
   }
 }
 
@@ -466,10 +484,10 @@ const flowEdges = computed<Edge[]>(() => displayedCanvas.value.relations
     class: relation.type === 'PREREQUISITE' ? 'cp-flow-edge--prerequisite' : 'cp-flow-edge--tree',
     style: {
       ...(relation.type === 'PREREQUISITE'
-        ? { stroke: '#667aa6', strokeWidth: 1.7, strokeDasharray: '7 5' }
-        : { stroke: '#8eaae9', strokeWidth: 1.7 }),
+        ? { stroke: 'var(--text-tertiary)', strokeWidth: 1.7, strokeDasharray: '7 5' }
+        : { stroke: 'var(--color-primary-border)', strokeWidth: 1.7 }),
       ...(highlightedPath.value.size && highlightedPath.value.has(relation.fromNodeId) && highlightedPath.value.has(relation.toNodeId)
-        ? { stroke: '#2563eb', strokeWidth: 2.25 }
+        ? { stroke: 'var(--color-primary)', strokeWidth: 2.25 }
         : highlightedPath.value.size ? { opacity: .46 } : {}),
     },
   })))
@@ -891,7 +909,7 @@ async function followGenerationTask(initial: TaskView): Promise<void> {
       await applyGeneratedCanvas()
       emit('notice', '完整能力树已生成，并保存为新的画布版本。')
     } else if (terminal.status === 'FAILED') {
-      emit('error', terminal.failureReason || `能力树生成失败（${terminal.errorCode || 'CAREER_CANVAS_GENERATION_FAILED'}）`)
+      emit('error', terminal.failureReason || '能力树生成没有完成，画布没有被修改，请稍后重试。')
     }
     if (!isOpenTask(terminal.status)) window.localStorage.removeItem(generationStorageKey())
   } catch (reason) {
@@ -971,7 +989,7 @@ async function followInferenceTask(initial: TaskView): Promise<void> {
       await revealInferenceProposal(terminal)
       emit('notice', '节点推演已完成，请逐项确认候选差异。')
     } else if (terminal.status === 'FAILED') {
-      emit('error', terminal.failureReason || `节点推演失败（${terminal.errorCode || 'CAREER_INFERENCE_GENERATION_FAILED'}）`)
+      emit('error', terminal.failureReason || '节点推演没有完成，画布没有被修改，请稍后重试。')
     }
     if (!isOpenTask(terminal.status)) window.localStorage.removeItem(inferenceStorageKey())
   } catch (reason) {
@@ -1231,8 +1249,8 @@ function fitCurrent(): void {
           @node-drag-stop="onNodeDragStop"
           @init="fitCurrent"
         >
-          <Background pattern-color="#dbe5f4" :gap="18" :size="1.2" />
-          <MiniMap pannable zoomable :node-color="node => node.data?.item?.type === 'CAREER' ? '#1769ff' : node.data?.item?.type === 'DOMAIN' ? '#12a67a' : '#8aa7e8'" />
+          <Background :pattern-color="flowColors.pattern" :gap="18" :size="1.2" />
+          <MiniMap pannable zoomable :node-color="miniMapNodeColor" />
           <Controls position="bottom-right" :show-interactive="false" />
           <template #node-career="{ data }">
             <Handle type="target" :position="Position.Left" />

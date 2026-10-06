@@ -2,10 +2,11 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import {
   ArrowRight, Camera, CheckCircle2, Info, Link2, LoaderCircle, LockKeyhole, MapPin,
-  ShieldCheck, Sparkles, Target, Trash2, UserRound, WandSparkles,
+  ShieldCheck, Target, Trash2, UserRound,
 } from 'lucide-vue-next'
 import AppModal from '@/shared/ui/AppModal.vue'
 import AppSelect from '@/shared/ui/AppSelect.vue'
+import UiButton from '@/shared/ui/UiButton.vue'
 import JobTaxonomyPicker from '@/features/ai-resume/components/JobTaxonomyPicker.vue'
 import { listJobTaxonomy } from '@/features/ai-resume/services/aiResumeApi'
 import { errorMessage } from '@/shared/api/types'
@@ -130,25 +131,25 @@ async function onAvatarInput(event: Event): Promise<void> {
     return
   }
   if (file.size > 10 * 1024 * 1024) {
-    emit('error', '头像文件不能超过 10 MiB。')
+    emit('error', '头像文件不能超过 10 MB。')
     return
   }
   avatarPending.value = true
   avatarReady.value = false
   try {
     const upload = await uploadCareerAvatar(file)
-    emit('notice', '头像已进入私有隔离区，正在执行安全扫描。')
+    emit('notice', '头像已上传，正在进行安全检查…')
     const task = await pollTask(upload.task.id, () => {}, undefined, 900, 180_000)
     if (task.status !== 'SUCCEEDED') {
-      throw new Error('头像未通过安全扫描或缩略图生成失败')
+      throw new Error('头像没有通过安全检查或处理失败，请换一张图片重试')
     }
     const updated = await commitCareerAvatar(upload.file.id)
     emit('profileUpdated', updated)
     avatarNonce.value = Date.now()
     avatarReady.value = true
-    emit('notice', '头像已通过安全门禁并更新。')
+    emit('notice', '头像已更新。')
   } catch (reason) {
-    emit('error', errorMessage(reason, '头像上传失败，原头像未公开'))
+    emit('error', errorMessage(reason, '头像上传失败，原头像保持不变'))
   } finally { avatarPending.value = false }
 }
 
@@ -159,7 +160,7 @@ async function removeAvatar(): Promise<void> {
     const updated = await deleteCareerAvatar()
     avatarReady.value = false
     emit('profileUpdated', updated)
-    emit('notice', '头像已从职业主档移除。')
+    emit('notice', '头像已删除。')
   } catch (reason) { emit('error', errorMessage(reason, '头像删除失败')) }
   finally { avatarPending.value = false }
 }
@@ -235,28 +236,25 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', beforeUnload))
         <p class="profile-status" :class="{ 'is-dirty': dirty }" role="status">{{ pending ? '正在保存资料…' : dirty ? '有未保存的修改，完成后请保存。' : '资料已保存；仅在你授权后用于 AI 建议。' }}</p>
         <div class="profile-missing-head"><h4>待完善资料</h4><span>{{ missing.length }} 项</span></div>
         <div v-if="missing.length" class="missing-list">
-          <button v-for="item in missing.slice(0, 4)" :key="item.key" type="button" @click="focusField(item.fieldId)">
+          <button v-for="item in missing" :key="item.key" type="button" @click="focusField(item.fieldId)">
             <Info :size="17" /><span><strong>{{ item.label }}</strong><small>补充后可提高 AI 简历建议的准确度</small></span><ArrowRight :size="16" />
           </button>
         </div>
         <p v-else class="all-complete"><CheckCircle2 :size="18" />核心资料已经完整</p>
       </section>
 
-      <section class="career-card aside-card ai-suggestion-card">
-        <div class="ai-card-head"><span><Sparkles :size="21" /></span><h3>AI 补全建议</h3></div>
-        <p>根据你的经历和资料完整度，优先补齐缺失项可提高 AI 简历建议质量。</p>
-        <button type="button" :disabled="!missing.length" @click="missing[0] && focusField(missing[0].fieldId)"><WandSparkles :size="17" />查看首项建议</button>
-        <small>仅使用你已确认的结构化资料</small>
-      </section>
-
-      <button class="privacy-entry" type="button" @click="privacyOpen = true"><ShieldCheck :size="17" />隐私设置<ArrowRight :size="16" /></button>
+      <button class="privacy-entry" type="button" @click="privacyOpen = true"><ShieldCheck :size="17" />隐私说明<ArrowRight :size="16" /></button>
     </aside>
 
-    <AppModal :open="privacyOpen" title="资料库隐私设置" :width="520" @close="privacyOpen = false">
+    <AppModal :open="privacyOpen" title="资料库隐私说明" :width="520" @close="privacyOpen = false">
       <div class="privacy-dialog">
         <LockKeyhole :size="26" />
         <div><strong>默认仅你可见</strong><p>管理员不能查看文件正文。AI 仅在具体会话中获得你的明确授权后读取已确认的结构化资料，原始文件和预览图片不会发送给模型。</p></div>
       </div>
+      <template #footer>
+        <UiButton variant="ghost" @click="privacyOpen = false">关闭</UiButton>
+        <UiButton variant="secondary" to="/account/data-rights">导出或删除我的数据</UiButton>
+      </template>
     </AppModal>
   </div>
 </template>

@@ -33,9 +33,6 @@ const SCRIPT_HEX_ALLOWED = {
   'src/features/ai-resume/workbench/components/DesignView.vue': 1,
   // <meta name="theme-color"> for light and dark.
   'src/stores/preferences.ts': 2,
-  // Pending tokenisation (docs/phase2/00 X-7); ceilings drop to 0 when done.
-  'src/features/career-planning/components/CareerAbilityCanvas.vue': 13,
-  'src/features/career-planning/pages/CareerCanvasOverviewPage.vue': 8,
 }
 const SCRIPT_HEX_EXEMPT = /^src\/(design|resume-render)\//
 

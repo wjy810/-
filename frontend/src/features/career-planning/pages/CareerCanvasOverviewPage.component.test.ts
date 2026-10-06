@@ -38,6 +38,20 @@ const dashboard = {
   ],
 }
 
+const stubs = {
+  AppChrome: { template: '<div><slot name="topbar"/><slot/></div>' },
+  AppSelect: { props: ['modelValue'], template: '<select :value="modelValue" />' },
+  RouterLink: { template: '<a><slot/></a>' },
+  AppModal: {
+    props: ['open'],
+    template: '<section v-if="open" role="dialog"><slot/><footer><slot name="footer"/></footer></section>',
+  },
+  JobTaxonomyPicker: {
+    template: '<button class="taxonomy-fixture" @click="$emit(\'select\', { job: { id: \'job-1\', displayName: \'后端开发\' }, categoryId: \'category-1\', groupId: \'group-1\' })">选择测试岗位</button>',
+  },
+  UiIllustration: true,
+}
+
 describe('CareerCanvasOverviewPage', () => {
   beforeEach(() => {
     Object.values(api).forEach(mock => mock.mockReset())
@@ -53,22 +67,7 @@ describe('CareerCanvasOverviewPage', () => {
   })
 
   it('renders independent canvas summaries and creates a fresh target canvas', async () => {
-    const wrapper = mount(CareerCanvasOverviewPage, {
-      global: {
-        stubs: {
-          AppChrome: { template: '<div><slot name="topbar"/><slot/></div>' },
-          AppSelect: { props: ['modelValue'], template: '<select :value="modelValue" />' },
-          RouterLink: { template: '<a><slot/></a>' },
-          AppModal: {
-            props: ['open'],
-            template: '<section v-if="open" role="dialog"><slot/><footer><slot name="footer"/></footer></section>',
-          },
-          JobTaxonomyPicker: {
-            template: '<button class="taxonomy-fixture" @click="$emit(\'select\', { job: { id: \'job-1\', displayName: \'后端开发\' }, categoryId: \'category-1\', groupId: \'group-1\' })">选择测试岗位</button>',
-          },
-        },
-      },
-    })
+    const wrapper = mount(CareerCanvasOverviewPage, { global: { stubs } })
     await flushPromises()
 
     expect(api.fetchCareerCanvasDashboard).toHaveBeenCalledWith('', 'ALL', 'RECENT')
@@ -90,11 +89,34 @@ describe('CareerCanvasOverviewPage', () => {
 
     await wrapper.findAll('button').find(button => button.text().includes('新建能力画布'))!.trigger('click')
     await wrapper.get('.taxonomy-fixture').trigger('click')
-    await wrapper.findAll('button').find(button => button.text().includes('创建目标画布'))!.trigger('click')
+    const create = wrapper.findAll('button').find(button => button.text().includes('创建目标画布'))!
+    expect((create.element as HTMLButtonElement).disabled).toBe(true)
+    expect(wrapper.get('.dialog-consent input').element).toHaveProperty('checked', false)
+    expect(wrapper.find('#new-canvas-consent-hint').exists()).toBe(true)
+
+    await wrapper.get('.dialog-consent input').setValue(true)
+    expect((create.element as HTMLButtonElement).disabled).toBe(false)
+    await create.trigger('click')
     await flushPromises()
     expect(api.createCareerCanvas).toHaveBeenCalledWith('job-1', true)
     expect(router.push).toHaveBeenCalledWith({
       name: 'career-planning-session', params: { sessionId: 'session-new' }, query: { view: 'canvas', source: 'new' },
     })
+  })
+
+  it('shows an error with retry instead of an empty overview when the first read fails', async () => {
+    api.fetchCareerCanvasDashboard.mockReset()
+      .mockRejectedValueOnce(new Error('network down'))
+      .mockResolvedValueOnce(dashboard)
+    const wrapper = mount(CareerCanvasOverviewPage, { global: { stubs } })
+    await flushPromises()
+
+    expect(wrapper.find('.overview-stats').exists()).toBe(false)
+    expect(wrapper.find('.create-canvas-card').exists()).toBe(false)
+    expect(wrapper.find('[role="alert"]').exists()).toBe(true)
+
+    await wrapper.get('[role="alert"] button').trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('Java 后端工程师')
   })
 })

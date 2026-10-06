@@ -5,6 +5,7 @@ import { useRoute, useRouter } from 'vue-router'
 import AppDatePicker from '@/shared/ui/AppDatePicker.vue'
 import AppModal from '@/shared/ui/AppModal.vue'
 import AppSelect from '@/shared/ui/AppSelect.vue'
+import UiErrorState from '@/shared/ui/UiErrorState.vue'
 import { useToastFeedback } from '@/shared/ui/toast'
 import { errorMessage, isVersionConflict } from '@/shared/api/types'
 import UpdateContent from '../components/UpdateContent.vue'
@@ -16,7 +17,7 @@ import '../updates.css'
 const route = useRoute(); const router = useRouter()
 const id = computed(() => typeof route.params.id === 'string' ? route.params.id : '')
 const isNew = computed(() => !id.value)
-const loading = ref(!isNew.value); const pending = ref(''); const error = ref(''); const notice = ref('')
+const loading = ref(!isNew.value); const loadError = ref<unknown>(null); const pending = ref(''); const error = ref(''); const notice = ref('')
 useToastFeedback(error, 'error', 'admin-changelog-editor-error')
 useToastFeedback(notice, 'success', 'admin-changelog-editor-notice')
 const saveState = ref(isNew.value ? '尚未创建' : '正在读取'); const previewMode = ref<'desktop' | 'mobile'>('desktop')
@@ -79,7 +80,8 @@ async function onImageSelected(index: number, event: Event): Promise<void> {
   finally { uploadingSection.value = -1 }
 }
 
-async function load(): Promise<void> { if (isNew.value) return; loading.value = true; try { hydrate(await fetchAdminUpdate(id.value)) } catch (reason) { error.value = errorMessage(reason, '版本读取失败') } finally { loading.value = false; setTimeout(() => { suppressAutosave = false }, 0) } }
+// A failed load shows an error with retry, never a blank form that could be saved over the real version.
+async function load(): Promise<void> { if (isNew.value) return; loading.value = true; try { hydrate(await fetchAdminUpdate(id.value)); loadError.value = null } catch (reason) { loadError.value = reason } finally { loading.value = false; setTimeout(() => { suppressAutosave = false }, 0) } }
 
 async function save(auto = false): Promise<boolean> {
   if (isNew.value) {
@@ -108,7 +110,7 @@ onMounted(load); onUnmounted(() => window.clearTimeout(saveTimer))
 
 <template>
   <section class="page admin-editor"><header class="page-head"><div><h1 class="page-head__title">{{ isNew ? '新建更新版本' : `编辑版本 ${draft.versionLabel}` }}</h1><p class="page-head__sub">结构化编写、实时预览并经过发布检查后触达用户。</p></div><div class="page-head__actions"><span class="save-state" :class="{ 'is-error': saveState.includes('失败') || saveState.includes('冲突') }">{{ saveState }}</span><RouterLink class="btn btn--ghost" to="/updates"><Eye :size="16" />公开页</RouterLink></div></header>
-    <div v-if="loading" class="empty-state">正在读取版本…</div><div v-else class="admin-editor__grid"><form class="admin-editor__form" @submit.prevent="save(false)"><div class="editor-grid"><label class="editor-field"><span>版本号</span><input v-model.trim="draft.versionLabel" placeholder="v1.0.0" :disabled="detail?.release.status==='PUBLISHED'" /></label><label class="editor-field"><span>发布类型</span><AppSelect v-model="draft.releaseType" :options="typeOptions" aria-label="发布类型" /></label><label class="editor-field wide"><span>标题</span><input v-model.trim="draft.title" maxlength="255" placeholder="概括这次更新" /></label><label class="editor-field wide"><span>摘要</span><textarea v-model.trim="draft.summary" maxlength="500" placeholder="10-500 字，说明更新对用户的价值" /></label><label class="editor-field"><span>受众</span><AppSelect v-model="draft.audience" :options="audienceOptions" aria-label="发布受众" /></label><div class="editor-field"><span>触达方式</span><label class="editor-module"><input v-model="draft.showWhatsNew" type="checkbox" />首次登录亮点弹窗</label><label class="editor-module"><input v-model="draft.sendNotification" type="checkbox" />发送站内通知</label></div><div class="editor-field wide"><span>产品模块</span><div class="editor-modules"><label v-for="(label, value) in MODULE_LABELS" :key="value" class="editor-module"><input type="checkbox" :checked="draft.modules.includes(value)" @change="toggleModule(value)" />{{ label }}</label></div></div><label class="editor-field"><span>体验按钮文字</span><input v-model.trim="draft.ctaLabel" placeholder="立即体验" /></label><label class="editor-field"><span>体验地址</span><input v-model.trim="draft.ctaPath" placeholder="/resumes 或 https://…" /></label></div>
+    <div v-if="loading" class="empty-state">正在读取版本…</div><UiErrorState v-else-if="loadError" :error="loadError" title="版本读取失败" @retry="load" /><div v-else class="admin-editor__grid"><form class="admin-editor__form" @submit.prevent="save(false)"><div class="editor-grid"><label class="editor-field"><span>版本号</span><input v-model.trim="draft.versionLabel" placeholder="v1.0.0" :disabled="detail?.release.status==='PUBLISHED'" /></label><label class="editor-field"><span>发布类型</span><AppSelect v-model="draft.releaseType" :options="typeOptions" aria-label="发布类型" /></label><label class="editor-field wide"><span>标题</span><input v-model.trim="draft.title" maxlength="255" placeholder="概括这次更新" /></label><label class="editor-field wide"><span>摘要</span><textarea v-model.trim="draft.summary" maxlength="500" placeholder="10-500 字，说明更新对用户的价值" /></label><label class="editor-field"><span>受众</span><AppSelect v-model="draft.audience" :options="audienceOptions" aria-label="发布受众" /></label><div class="editor-field"><span>触达方式</span><label class="editor-module"><input v-model="draft.showWhatsNew" type="checkbox" />首次登录亮点弹窗</label><label class="editor-module"><input v-model="draft.sendNotification" type="checkbox" />发送站内通知</label></div><div class="editor-field wide"><span>产品模块</span><div class="editor-modules"><label v-for="(label, value) in MODULE_LABELS" :key="value" class="editor-module"><input type="checkbox" :checked="draft.modules.includes(value)" @change="toggleModule(value)" />{{ label }}</label></div></div><label class="editor-field"><span>体验按钮文字</span><input v-model.trim="draft.ctaLabel" placeholder="立即体验" /></label><label class="editor-field"><span>体验地址</span><input v-model.trim="draft.ctaPath" placeholder="/resumes 或 https://…" /></label></div>
       <section class="editor-sections">
         <div class="section-title"><h2>更新内容</h2><button class="btn btn--ghost btn--sm" type="button" @click="addSection"><Plus :size="15" />添加区块</button></div>
         <TransitionGroup name="editor-section" tag="div" class="editor-section-list">

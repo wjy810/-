@@ -195,7 +195,7 @@ export const routes: RouteRecordRaw[] = [
       {
         path: 'job-match/:id/analyzing',
         name: 'job-match-analyzing',
-        meta: { ...authed, feature: 'jobMatch', title: '分析中' },
+        meta: { ...authed, feature: 'jobMatch', title: '分析进度' },
         component: () => import('@/features/job-match/pages/JobMatchAnalyzingPage.vue'),
       },
       {

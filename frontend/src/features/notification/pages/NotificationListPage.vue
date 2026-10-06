@@ -7,17 +7,19 @@ import AppEmpty from '@/shared/ui/AppEmpty.vue'
 import AppIcon from '@/shared/ui/AppIcon.vue'
 import JobProofIcon from '@/shared/ui/JobProofIcon.vue'
 import AppTag from '@/shared/ui/AppTag.vue'
+import PageState from '@/shared/ui/PageState.vue'
 import { useToastFeedback } from '@/shared/ui/toast'
 import ForbidState from '@/shared/ui/ForbidState.vue'
 import { errorMessage, isForbidden } from '@/shared/api/types'
 import { formatWhen } from '@/shared/lib/datetime'
+import { useLoadState } from '@/shared/lib/useLoadState'
 import type { JobProofIconName } from '@/shared/ui/jobProofIcons'
 import {
   canMarkRead,
   dataRightsPathForNotice,
   glossNotificationStatus,
   glossNotificationType,
-  isProtectedNotice,
+  glossTaskType,
   markReadBlockedReason,
 } from '../labels'
 import {
@@ -51,24 +53,23 @@ type DecoratedRow = {
   taskish: boolean
 }
 
-// 任务类通知：点击可打开异步任务详情抽屉
+// 任务类通知：点击可打开任务详情抽屉
 const TASKISH_TYPES = new Set(['TASK_COMPLETED', 'TASK_FAILED', 'DATA_EXPORT_PROGRESS', 'DATA_DELETION_PROGRESS'])
 
-const loading = ref(true)
 const router = useRouter()
 const pending = ref('')
-const pageError = ref('')
 const formError = ref('')
 const notice = ref('')
-useToastFeedback(pageError, 'error', 'notification-list-page-error')
 useToastFeedback(formError, 'error', 'notification-list-action-error')
 useToastFeedback(notice, 'success', 'notification-list-notice')
-const forbidden = ref<unknown>(null)
-const items = ref<NotificationView[]>([])
-const total = ref(0)
 const page = ref(0)
 const size = 20
 const filter = ref<'all' | 'unread'>('all')
+const { data, error: loadError, loading, loaded, load } = useLoadState(() =>
+  listNotifications(page.value, size, filter.value === 'unread' ? 'DELIVERED' : undefined))
+const forbidden = computed(() => (isForbidden(loadError.value) ? loadError.value : null))
+const items = computed<NotificationView[]>(() => data.value?.items ?? [])
+const total = computed(() => data.value?.total ?? 0)
 const unread = ref(0)
 const selected = ref<NotificationView | null>(null)
 const selectedTask = ref<AsyncTaskView | null>(null)
@@ -89,8 +90,8 @@ function taskStatusTone(status?: string | null): TagTone {
 
 function taskStatusText(status?: string | null): string {
   const labels: Record<string, string> = {
-    PENDING: '等待资源调度',
-    RUNNING: '任务执行中',
+    PENDING: '排队中',
+    RUNNING: '处理中',
     SUCCEEDED: '任务已完成',
     FAILED: '任务执行失败',
     CANCELLED: '任务已取消',
@@ -186,27 +187,6 @@ async function refreshUnread(): Promise<void> {
   }
 }
 
-async function load(): Promise<void> {
-  loading.value = true
-  pageError.value = ''
-  forbidden.value = null
-  try {
-    const result = await listNotifications(page.value, size, filter.value === 'unread' ? 'DELIVERED' : undefined)
-    items.value = result.items ?? []
-    total.value = result.total ?? 0
-  } catch (error) {
-    items.value = []
-    total.value = 0
-    if (isForbidden(error)) {
-      forbidden.value = error
-      return
-    }
-    pageError.value = errorMessage(error, '通知读取失败')
-  } finally {
-    loading.value = false
-  }
-}
-
 async function onRead(id: string): Promise<void> {
   const item = items.value.find((row) => row.id === id)
   if (!item) {
@@ -235,7 +215,7 @@ async function onRead(id: string): Promise<void> {
 
 async function onReadBatch(): Promise<void> {
   if (!readableIds.value.length) {
-    formError.value = '当前页没有已送达、尚未已读的通知。发送失败不能假装已发送。'
+    formError.value = '当前页没有未读通知。'
     return
   }
   pending.value = 'batch'
@@ -243,7 +223,7 @@ async function onReadBatch(): Promise<void> {
   notice.value = ''
   try {
     await markNotificationsReadBatch(readableIds.value)
-    notice.value = `已将 ${readableIds.value.length} 条已送达通知标为已读。`
+    notice.value = `已将 ${readableIds.value.length} 条通知标为已读。`
     await Promise.all([load(), refreshUnread()])
   } catch (error) {
     formError.value = errorMessage(error, '批量已读失败')
@@ -279,7 +259,7 @@ async function openItem(row: DecoratedRow): Promise<void> {
   taskError.value = ''
   const taskId = row.item.eventId?.trim()
   if (!taskId) {
-    taskError.value = '通知未携带任务编号，无法读取真实任务详情。'
+    taskError.value = '这条通知没有关联的任务，无法查看任务详情。'
     return
   }
   taskLoading.value = true
@@ -325,7 +305,7 @@ onMounted(() => {
       <header class="page-head">
         <div>
           <h1 class="page-head__title">通知中心</h1>
-          <p class="page-head__sub">重要通知及时处理，不错过任何关键信息。安全、授权和数据权利通知不可完全关闭。</p>
+          <p class="page-head__sub">任务进度、数据导出和账号安全等消息会汇总在这里。</p>
         </div>
         <div class="page-head__actions">
           <button
@@ -344,7 +324,7 @@ onMounted(() => {
       </header>
 
       <AppBanner v-if="failedCount" tone="bad">
-        有 {{ failedCount }} 条发送失败。业务状态不会因此回滚，本页也不会把它们画成已送达。
+        本页有 {{ failedCount }} 条通知发送失败。这不影响对应的业务结果，可到相关页面查看最新状态。
       </AppBanner>
 
       <div class="n-toolbar">
@@ -372,33 +352,33 @@ onMounted(() => {
             未读<template v-if="unread">（{{ unread > 99 ? '99+' : unread }}）</template>
           </button>
         </div>
-        <span class="fine">共 {{ total }} 条 · 本页 {{ items.length }} 条</span>
+        <span v-if="loaded" class="fine">共 {{ total }} 条 · 本页 {{ items.length }} 条</span>
       </div>
 
-      <div v-if="loading && !items.length" class="n-list" aria-busy="true">
-        <div v-for="n in 4" :key="n" class="n-row n-skel">
-          <div class="bone" />
-          <div class="bone bone--short" />
-        </div>
-      </div>
-
-      <AppEmpty
-        v-else-if="pageError && !items.length"
-        text="通知读取失败"
-        hint="失败不能当成没有通知，请重试。"
-        icon="alert-circle"
+      <PageState
+        class="n-groups"
+        :loading="loading"
+        :error="loadError"
+        :loaded="loaded"
+        :empty="!groups.length"
+        error-title="通知读取失败"
+        @retry="load"
       >
-        <button class="btn btn--primary" type="button" @click="load">重新读取</button>
-      </AppEmpty>
-
-      <AppEmpty
-        v-else-if="!groups.length"
-        :text="filter === 'unread' ? '没有未读通知' : '还没有站内通知'"
-        hint="空是合法状态，不会用假发送记录填充。"
-        icon="bell"
-      />
-
-      <template v-else>
+        <template #skeleton>
+          <div class="n-list" aria-busy="true">
+            <div v-for="n in 4" :key="n" class="n-row n-skel">
+              <div class="bone" />
+              <div class="bone bone--short" />
+            </div>
+          </div>
+        </template>
+        <template #empty>
+          <AppEmpty
+            :text="filter === 'unread' ? '没有未读通知' : '还没有站内通知'"
+            :hint="filter === 'unread' ? '所有通知都已读。' : '任务完成、数据导出和账号安全等消息会出现在这里。'"
+            icon="bell"
+          />
+        </template>
         <div v-for="group in groups" :key="`${filter}-${group.label}`" class="n-block">
           <p class="n-group">{{ group.label }}</p>
           <ul class="n-list">
@@ -421,7 +401,6 @@ onMounted(() => {
                 <p class="fine">
                   {{ glossNotificationType(row.item.type) }} · {{ formatWhen(row.item.createdAt) }}
                   <template v-if="row.item.readAt"> · 已读于 {{ formatWhen(row.item.readAt) }}</template>
-                  <template v-if="isProtectedNotice(row.item)"> · 安全/数据权利通知不可关闭</template>
                 </p>
                 <p v-if="row.blockReason" class="fine n-lock">{{ row.blockReason }}</p>
               </div>
@@ -442,15 +421,15 @@ onMounted(() => {
             </li>
           </ul>
         </div>
-      </template>
+      </PageState>
 
-      <div v-if="total > size" class="pager">
+      <div v-if="loaded && total > size" class="pager">
         <button class="pager__page" type="button" :disabled="!hasPrev || loading" @click="onPrev">上一页</button>
         <span>第 {{ page + 1 }} 页</span>
         <button class="pager__page" type="button" :disabled="!hasNext || loading" @click="onNext">下一页</button>
       </div>
 
-      <AppDrawer :open="!!selected" title="异步任务详情" :width="520" @close="closeTaskDrawer">
+      <AppDrawer :open="!!selected" title="任务详情" :width="520" @close="closeTaskDrawer">
         <template v-if="selected">
           <div class="d-status">
             <AppTag v-if="selectedTask" :tone="taskStatusTone(selectedTask.status)">{{ taskStatusText(selectedTask.status) }}</AppTag>
@@ -469,9 +448,7 @@ onMounted(() => {
               <h4 class="d-sec__title">任务信息</h4>
               <dl class="kv">
                 <dt>任务类型</dt>
-                <dd>{{ selectedTask.taskType }}</dd>
-                <dt>任务编号</dt>
-                <dd class="kv__mono">{{ selectedTask.id }}</dd>
+                <dd>{{ glossTaskType(selectedTask.taskType) }}</dd>
                 <dt>创建时间</dt>
                 <dd>{{ formatWhen(selectedTask.createdAt) }}</dd>
                 <dt>更新时间</dt>
@@ -480,17 +457,7 @@ onMounted(() => {
             </section>
 
             <section class="d-sec">
-              <h4 class="d-sec__title">输入与结果版本</h4>
-              <dl class="kv">
-                <dt>输入版本</dt>
-                <dd class="kv__mono">{{ selectedTask.inputVersion || '—' }}</dd>
-                <dt>结果版本</dt>
-                <dd class="kv__mono">{{ selectedTask.resultVersion || '—' }}</dd>
-              </dl>
-            </section>
-
-            <section class="d-sec">
-              <h4 class="d-sec__title">处理时间线</h4>
+              <h4 class="d-sec__title">处理进度</h4>
               <ol class="d-timeline">
                 <li><span />任务已提交 · {{ formatWhen(selectedTask.createdAt) }}</li>
                 <li><span />{{ taskStatusText(selectedTask.status) }} · {{ formatWhen(selectedTask.updatedAt) }}</li>
@@ -501,8 +468,13 @@ onMounted(() => {
               <strong>失败原因：</strong>{{ selectedTask.failureReason }}
             </AppBanner>
             <AppBanner v-if="selectedTask.status === 'FAILED'" tone="ok">
-              业务数据未丢失；任务失败只影响本次结果产物。
+              你已保存的资料和简历不受影响，只是这次任务没有产出结果，可以回到对应页面重新发起。
             </AppBanner>
+
+            <details class="d-tech">
+              <summary>联系客服时可提供</summary>
+              <p>任务编号 <code class="kv__mono">{{ selectedTask.id }}</code></p>
+            </details>
           </template>
 
           <section class="d-sec">
@@ -777,6 +749,26 @@ onMounted(() => {
   border-radius: 50%;
   background: var(--color-primary);
   box-shadow: 0 0 0 4px var(--color-primary-soft);
+}
+
+.n-groups {
+  display: grid;
+  gap: 16px;
+}
+
+.d-tech {
+  padding: 14px 0 0;
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.d-tech summary {
+  cursor: pointer;
+}
+
+.d-tech p {
+  margin-top: 6px;
+  user-select: all;
 }
 
 .d-body {

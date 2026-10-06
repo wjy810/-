@@ -2,9 +2,11 @@
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
-  FolderPlus, Import, LockKeyhole, Plus, Search, ShieldCheck, UploadCloud,
+  FileUp, FolderPlus, LockKeyhole, Plus, Search, ShieldCheck, UploadCloud,
 } from 'lucide-vue-next'
 import { errorMessage } from '@/shared/api/types'
+import { useLoadState } from '@/shared/lib/useLoadState'
+import PageState from '@/shared/ui/PageState.vue'
 import { useToastFeedback } from '@/shared/ui/toast'
 import CareerLibraryTabs, { type CareerLibraryView } from '../components/CareerLibraryTabs.vue'
 import CareerProfileTab from '../components/CareerProfileTab.vue'
@@ -20,7 +22,11 @@ const route = useRoute()
 const router = useRouter()
 const profile = ref<CareerProfile | null>(null)
 const overview = ref<CareerOverview | null>(null)
-const loading = ref(true)
+const shell = useLoadState(() => Promise.all([fetchCareerProfile(), fetchCareerOverview()]))
+watch(shell.data, (value) => {
+  if (value) [profile.value, overview.value] = value
+})
+const { loading, error: shellError, loaded, load: loadShell } = shell
 const profilePending = ref(false)
 const pageError = ref('')
 const notice = ref('')
@@ -39,6 +45,8 @@ const searchOpen = ref(false)
 const searchPending = ref(false)
 const recordsTab = ref<InstanceType<typeof CareerRecordsTab> | null>(null)
 const filesTab = ref<InstanceType<typeof CareerFilesTab> | null>(null)
+/** Category to preselect once the files tab has mounted and its picker can open. */
+const pendingPick = ref<string | null>(null)
 let searchTimer = 0
 
 function textQuery(key: string): string {
@@ -48,16 +56,6 @@ function textQuery(key: string): string {
 
 function readView(value: unknown): CareerLibraryView {
   return value === 'records' || value === 'files' ? value : 'profile'
-}
-
-async function loadShell(): Promise<void> {
-  loading.value = true
-  try {
-    const [profileValue, overviewValue] = await Promise.all([fetchCareerProfile(), fetchCareerOverview()])
-    profile.value = profileValue
-    overview.value = overviewValue
-  } catch (reason) { pageError.value = errorMessage(reason, '求职资料库读取失败') }
-  finally { loading.value = false }
 }
 
 async function refreshOverview(): Promise<void> {
@@ -104,7 +102,7 @@ async function saveProfile(values: { basics: Record<string, unknown>; intentions
   try {
     profile.value = await saveCareerProfile({ ...profile.value, ...values })
     await refreshOverview()
-    notice.value = '个人信息已保存，AI 简历可在你授权后使用新的资料快照。'
+    notice.value = '个人信息已保存；之后经你授权的 AI 简历会使用最新资料。'
   } catch (reason) { pageError.value = errorMessage(reason, '个人信息保存失败') }
   finally { profilePending.value = false }
 }
@@ -141,59 +139,78 @@ async function selectSearchResult(result: CareerSearchResult): Promise<void> {
   window.setTimeout(() => document.getElementById(result.targetId)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 500)
 }
 
-async function importResume(): Promise<void> {
-  await changeView('files')
-  await patchQuery({ type: 'RESUME' })
-  await nextTick()
-  filesTab.value?.chooseFile()
+/** Switches to the files view filtered to `category` and opens the file picker there. */
+async function pickFile(category: string): Promise<void> {
+  pendingPick.value = category
+  if (view.value !== 'files') await changeView('files')
+  await patchQuery({ type: category })
+  if (filesTab.value) openPendingPick()
 }
 
+function openPendingPick(): void {
+  if (pendingPick.value === null || !filesTab.value) return
+  pendingPick.value = null
+  filesTab.value.chooseFile()
+}
+
+/** Permanent deletion happens on the data-rights page, which shows what will be removed first. */
+function removeItem(target: { type: string; id: string }): void {
+  void router.push({ path: '/account/data-rights', query: { targetType: target.type, targetId: target.id } })
+}
+
+watch(filesTab, openPendingPick)
 watch(() => route.query.view, (value) => { view.value = readView(value) })
 onMounted(loadShell)
 onBeforeUnmount(() => window.clearTimeout(searchTimer))
 </script>
 
 <template>
+  <div class="career-library-page">
+    <header class="career-page-head">
+      <div>
+        <h1>求职资料库</h1>
+        <p>维护长期职业档案、结构化经历和私有文件，供简历与经你授权的 AI 使用。</p>
+        <small v-if="view === 'profile'"><ShieldCheck :size="14" />仅在 AI 对话中经你授权后使用；不采集年龄、性别、婚育和民族等敏感字段。</small>
+        <small v-else-if="view === 'records'"><FileUp :size="14" />上传的简历文件保存在“文件资料”中，可预览和下载，不会自动拆分成经历记录。</small>
+      </div>
+      <div v-if="loaded" class="career-head-actions">
+        <template v-if="view === 'profile'">
+          <RouterLink class="career-btn ghost privacy-button" to="/account/data-rights"><LockKeyhole :size="16" />数据与隐私</RouterLink>
+          <button class="career-btn primary" type="submit" form="career-profile-form" :disabled="profilePending">{{ profilePending ? '保存中' : '保存修改' }}</button>
+        </template>
+        <template v-else-if="view === 'records'">
+          <button class="career-btn ghost" type="button" title="文件保存到“文件资料”，不会自动生成经历记录" @click="pickFile('RESUME')"><FileUp :size="17" />上传简历文件</button>
+          <button class="career-btn primary" type="button" @click="recordsTab?.openCreate()"><Plus :size="17" />添加记录</button>
+        </template>
+        <template v-else>
+          <button class="career-btn ghost" type="button" @click="filesTab?.openFolder()"><FolderPlus :size="17" />新建文件夹</button>
+          <button class="career-btn primary" type="button" @click="filesTab?.chooseFile()"><UploadCloud :size="17" />上传文件</button>
+        </template>
+      </div>
+    </header>
 
-    <div class="career-library-page">
-      <header class="career-page-head">
-        <div><h1>求职资料库</h1><p>维护长期职业档案、结构化经历和私有文件，供简历与经你授权的 AI 使用。</p><small v-if="view === 'profile'"><ShieldCheck :size="14" />仅在 AI 对话中经你授权后使用；不采集年龄、性别、婚育和民族等敏感字段。</small></div>
-        <div class="career-head-actions">
-          <template v-if="view === 'profile'">
-            <button class="career-btn ghost privacy-button" type="button"><LockKeyhole :size="16" />隐私设置</button>
-            <button class="career-btn primary" type="submit" form="career-profile-form" :disabled="profilePending">{{ profilePending ? '保存中' : '保存修改' }}</button>
-          </template>
-          <template v-else-if="view === 'records'">
-            <button class="career-btn ghost" type="button" @click="importResume"><Import :size="17" />导入简历</button>
-            <button class="career-btn primary" type="button" @click="recordsTab?.openCreate()"><Plus :size="17" />添加记录</button>
-          </template>
-          <template v-else>
-            <button class="career-btn ghost" type="button" @click="filesTab?.openFolder()"><FolderPlus :size="17" />新建文件夹</button>
-            <button class="career-btn primary" type="button" @click="filesTab?.chooseFile()"><UploadCloud :size="17" />上传文件</button>
-          </template>
-        </div>
-      </header>
-
-      <div class="career-toolbar">
-        <CareerLibraryTabs :model-value="view" @update:model-value="changeView" />
-        <div class="library-global-search">
-          <Search :size="18" />
-          <input :value="globalSearch" placeholder="搜索资料库中的经历、文件或文件夹…" aria-label="搜索求职资料库" @focus="globalSearch && (searchOpen = true)" @input="handleGlobalSearch(($event.target as HTMLInputElement).value)" />
-          <div v-if="searchOpen" class="global-search-results">
-            <p v-if="searchPending">正在搜索...</p>
-            <button v-for="result in searchResults" v-else :key="`${result.type}-${result.id}`" type="button" @click="selectSearchResult(result)"><Search :size="15" /><span><strong>{{ result.title }}</strong><small>{{ result.subtitle }}</small></span></button>
-            <p v-if="!searchPending && !searchResults.length">没有匹配的资料或操作</p>
-          </div>
+    <div class="career-toolbar">
+      <CareerLibraryTabs :model-value="view" @update:model-value="changeView" />
+      <div class="library-global-search">
+        <Search :size="18" />
+        <input :value="globalSearch" placeholder="搜索资料库中的经历、文件或文件夹…" aria-label="搜索求职资料库" @focus="globalSearch && (searchOpen = true)" @input="handleGlobalSearch(($event.target as HTMLInputElement).value)" />
+        <div v-if="searchOpen" class="global-search-results">
+          <p v-if="searchPending">正在搜索...</p>
+          <button v-for="result in searchResults" v-else :key="`${result.type}-${result.id}`" type="button" @click="selectSearchResult(result)"><Search :size="15" /><span><strong>{{ result.title }}</strong><small>{{ result.subtitle }}</small></span></button>
+          <p v-if="!searchPending && !searchResults.length">没有匹配的资料或操作</p>
         </div>
       </div>
+    </div>
 
+    <PageState :loading="loading" :error="shellError" :loaded="loaded" error-title="求职资料库读取失败" @retry="loadShell">
+      <template #skeleton><div class="career-shell-loading"><span class="bone" /><span class="bone" /></div></template>
       <Transition name="career-view" mode="out-in">
-        <div :key="loading || !profile || !overview ? 'loading' : view" class="career-view-panel">
-          <div v-if="loading || !profile || !overview" class="career-shell-loading"><span class="bone" /><span class="bone" /></div>
-          <CareerProfileTab v-else-if="view === 'profile'" :profile="profile" :overview="overview" :pending="profilePending" @save="saveProfile" @profile-updated="profile = $event; refreshOverview()" @notice="setNotice" @error="setError" />
-          <CareerRecordsTab v-else-if="view === 'records'" ref="recordsTab" :overview="overview" :q="q" :type="type" :status="status" :sort="sort" :layout="layout" @query="patchQuery" @changed="refreshOverview" @import-resume="importResume" @notice="setNotice" @error="setError" />
-          <CareerFilesTab v-else ref="filesTab" :overview="overview" :q="q" :type="type" :status="status" :sort="sort" :layout="layout" :folder-id="folderId" @query="patchQuery" @changed="refreshOverview" @notice="setNotice" @error="setError" />
+        <div v-if="profile && overview" :key="view" class="career-view-panel">
+          <CareerProfileTab v-if="view === 'profile'" :profile="profile" :overview="overview" :pending="profilePending" @save="saveProfile" @profile-updated="profile = $event; refreshOverview()" @notice="setNotice" @error="setError" />
+          <CareerRecordsTab v-else-if="view === 'records'" ref="recordsTab" :overview="overview" :q="q" :type="type" :status="status" :sort="sort" :layout="layout" @query="patchQuery" @changed="refreshOverview" @upload-file="pickFile" @remove="removeItem" @notice="setNotice" @error="setError" />
+          <CareerFilesTab v-else ref="filesTab" :overview="overview" :q="q" :type="type" :status="status" :sort="sort" :layout="layout" :folder-id="folderId" @query="patchQuery" @changed="refreshOverview" @remove="removeItem" @notice="setNotice" @error="setError" />
         </div>
       </Transition>
-    </div>
+    </PageState>
+  </div>
 </template>

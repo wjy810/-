@@ -3,8 +3,8 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { ArrowRight, Filter, Search, SlidersHorizontal } from 'lucide-vue-next'
 import { useRoute, useRouter } from 'vue-router'
 import AppSelect from '@/shared/ui/AppSelect.vue'
-import { useToastFeedback } from '@/shared/ui/toast'
-import { errorMessage } from '@/shared/api/types'
+import PageState from '@/shared/ui/PageState.vue'
+import { useLoadState } from '@/shared/lib/useLoadState'
 import { MODULE_LABELS, TYPE_LABELS, moduleLabel, typeLabel } from '../labels'
 import { fetchLatestUpdate, fetchUpdateFacets, listUpdates } from '../services/updatesApi'
 import { applyUpdateMetadata, buildUpdateMetadata } from '../metadata'
@@ -14,13 +14,9 @@ import '../updates.css'
 
 const route = useRoute()
 const router = useRouter()
-const loading = ref(true)
-const error = ref('')
-useToastFeedback(error, 'error', 'update-list-error')
-const items = ref<ReleaseSummary[]>([])
-const total = ref(0)
 const latest = ref<ReleaseDetail | null>(null)
-const facets = ref<UpdateFacets>({ types: {}, modules: {}, versions: [] })
+/** Null until the facet counts load; options then show no counts rather than zeros. */
+const facets = ref<UpdateFacets | null>(null)
 const filterOpen = ref(false)
 const initialFilters = parseUpdateFilters(route.query)
 const q = ref(initialFilters.q)
@@ -31,18 +27,27 @@ const versionTo = ref(initialFilters.versionTo)
 const publishedRange = ref(initialFilters.range)
 const page = ref(initialFilters.page)
 const size = 12
-const resultRevision = ref(0)
+const { data: result, error, loading, loaded, load } = useLoadState(() => listUpdates({
+  q: q.value, type: type.value, module: module.value, versionFrom: versionFrom.value, versionTo: versionTo.value,
+  publishedFrom: publishedFromForRange(publishedRange.value), page: page.value, size,
+}))
+const items = computed<ReleaseSummary[]>(() => result.value?.items ?? [])
+const total = computed(() => result.value?.total ?? 0)
+const filtered = computed(() => {
+  const applied = parseUpdateFilters(route.query)
+  return Boolean(applied.q || applied.type || applied.module || applied.versionFrom || applied.versionTo || applied.range)
+})
 let restoreMetadata: () => void = () => undefined
 
 const typeOptions = computed(() => [
   { value: '', label: '全部类型' },
-  ...Object.keys(TYPE_LABELS).map((value) => ({ value, label: typeLabel(value), count: facets.value.types[value] || 0 })),
+  ...Object.keys(TYPE_LABELS).map((value) => ({ value, label: typeLabel(value), count: facets.value ? facets.value.types[value] || 0 : undefined })),
 ])
 const moduleOptions = computed(() => [
   { value: '', label: '全部模块' },
-  ...Object.keys(MODULE_LABELS).map((value) => ({ value, label: moduleLabel(value), count: facets.value.modules[value] || 0 })),
+  ...Object.keys(MODULE_LABELS).map((value) => ({ value, label: moduleLabel(value), count: facets.value ? facets.value.modules[value] || 0 : undefined })),
 ])
-const versionOptions = computed(() => [{ value: '', label: '不限版本' }, ...facets.value.versions.map((value) => ({ value, label: value }))])
+const versionOptions = computed(() => [{ value: '', label: '不限版本' }, ...(facets.value?.versions ?? []).map((value) => ({ value, label: value }))])
 const rangeOptions = [
   { value: '', label: '全部时间' }, { value: '7', label: '最近 7 天' }, { value: '30', label: '最近 30 天' }, { value: '90', label: '最近 90 天' },
 ]
@@ -50,23 +55,6 @@ const activeTypeIndex = computed(() => Math.max(0, typeOptions.value.findIndex(o
 
 function dateOnly(value?: string | null): string {
   return value ? new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(value)).replaceAll('/', '-') : '尚未发布'
-}
-
-async function load(): Promise<void> {
-  loading.value = true
-  error.value = ''
-  const publishedFrom = publishedFromForRange(publishedRange.value)
-  try {
-    const result = await listUpdates({ q: q.value, type: type.value, module: module.value, versionFrom: versionFrom.value,
-      versionTo: versionTo.value, publishedFrom, page: page.value, size })
-    items.value = result.items
-    total.value = result.total
-  } catch (reason) {
-    error.value = errorMessage(reason, '更新日志读取失败')
-  } finally {
-    resultRevision.value += 1
-    loading.value = false
-  }
 }
 
 async function apply(): Promise<void> {
@@ -86,11 +74,9 @@ async function turn(delta: number): Promise<void> {
 
 onMounted(async () => {
   restoreMetadata = applyUpdateMetadata(buildUpdateMetadata())
-  try {
-    const [facetResult, latestResult] = await Promise.all([fetchUpdateFacets(), fetchLatestUpdate()])
-    facets.value = facetResult
-    latest.value = latestResult
-  } catch { /* The timeline remains independently usable. */ }
+  // Facets and the latest-version card are optional; the timeline stays usable without them.
+  void fetchUpdateFacets().then((value) => { facets.value = value }).catch(() => undefined)
+  void fetchLatestUpdate().then((value) => { latest.value = value }).catch(() => undefined)
   await load()
 })
 onUnmounted(() => restoreMetadata())
@@ -121,18 +107,26 @@ onUnmounted(() => restoreMetadata())
         </Transition>
         <div class="updates-grid">
           <section>
-            <Transition name="updates-results" mode="out-in">
-            <div v-if="loading" key="loading" class="updates-timeline" aria-busy="true"><article v-for="n in 4" :key="n" class="update-card"><div class="bone" /><div><div class="bone" /><div class="bone bone--short" /></div></article></div>
-            <div v-else-if="!items.length" :key="`empty-${resultRevision}`" class="updates-empty"><SlidersHorizontal :size="34" /><h2>暂时没有符合条件的版本</h2><p>可以调整筛选条件；尚未发布真实版本时，这里保持为空。</p></div>
-            <div v-else :key="`items-${resultRevision}`" class="updates-timeline">
-              <article v-for="item in items" :key="item.id" class="update-card">
-                <div class="update-card__version"><strong>{{ item.versionLabel }}</strong><time>{{ dateOnly(item.publishedAt) }}</time><span class="update-pill is-status">{{ item.status === 'ARCHIVED' ? '已归档' : '正式发布' }}</span></div>
-                <div class="update-card__main"><h2>{{ item.title }}</h2><p>{{ item.summary }}</p><div class="update-card__modules"><span class="update-pill">{{ typeLabel(item.releaseType) }}</span><span v-for="tag in item.modules" :key="tag" class="update-pill">{{ moduleLabel(tag) }}</span></div></div>
-                <RouterLink class="update-card__link" :to="`/updates/${item.slug}`">查看详情 <ArrowRight :size="17" /></RouterLink>
-              </article>
-            </div>
-            </Transition>
-            <div v-if="total > size" class="updates-pager"><button class="btn btn--ghost" :disabled="page<=0||loading" @click="turn(-1)">上一页</button><span>第 {{ page + 1 }} 页</span><button class="btn btn--ghost" :disabled="(page+1)*size>=total||loading" @click="turn(1)">下一页</button></div>
+            <PageState :loading="loading" :error="error" :loaded="loaded" :empty="!items.length" error-title="更新日志读取失败" @retry="load">
+              <template #skeleton>
+                <div class="updates-timeline" aria-busy="true"><article v-for="n in 4" :key="n" class="update-card"><div class="bone" /><div><div class="bone" /><div class="bone bone--short" /></div></article></div>
+              </template>
+              <template #empty>
+                <div class="updates-empty">
+                  <SlidersHorizontal :size="34" />
+                  <h2>{{ filtered ? '没有符合条件的版本' : '还没有发布版本更新' }}</h2>
+                  <p>{{ filtered ? '换个关键词，或清空筛选条件再试。' : '新版本发布后会在这里列出。' }}</p>
+                </div>
+              </template>
+              <div class="updates-timeline" :class="{ 'is-refreshing': loading }">
+                <article v-for="item in items" :key="item.id" class="update-card">
+                  <div class="update-card__version"><strong>{{ item.versionLabel }}</strong><time>{{ dateOnly(item.publishedAt) }}</time><span class="update-pill is-status">{{ item.status === 'ARCHIVED' ? '已归档' : '正式发布' }}</span></div>
+                  <div class="update-card__main"><h2>{{ item.title }}</h2><p>{{ item.summary }}</p><div class="update-card__modules"><span class="update-pill">{{ typeLabel(item.releaseType) }}</span><span v-for="tag in item.modules" :key="tag" class="update-pill">{{ moduleLabel(tag) }}</span></div></div>
+                  <RouterLink class="update-card__link" :to="`/updates/${item.slug}`">查看详情 <ArrowRight :size="17" /></RouterLink>
+                </article>
+              </div>
+            </PageState>
+            <div v-if="loaded && total > size" class="updates-pager"><button class="btn btn--ghost" :disabled="page<=0||loading" @click="turn(-1)">上一页</button><span>第 {{ page + 1 }} 页 · 共 {{ total }} 个版本</span><button class="btn btn--ghost" :disabled="(page+1)*size>=total||loading" @click="turn(1)">下一页</button></div>
           </section>
           <aside class="updates-aside">
             <section v-if="latest" class="latest-card"><small>最新版本</small><h2>{{ latest.release.versionLabel }}</h2><span class="update-pill is-status">正式发布</span><h3>{{ latest.release.title }}</h3><p>{{ latest.release.summary }}</p><RouterLink class="btn btn--primary" :to="`/updates/${latest.release.slug}`">查看完整更新 <ArrowRight :size="16" /></RouterLink></section>
@@ -175,15 +169,13 @@ onUnmounted(() => restoreMetadata())
 }
 .updates-filter-panel { animation: none; }
 .updates-filter-enter-active,
-.updates-filter-leave-active,
-.updates-results-enter-active,
-.updates-results-leave-active {
+.updates-filter-leave-active {
   transition: opacity var(--motion-base) ease, transform var(--motion-base) var(--motion-ease);
 }
 .updates-filter-enter-from { opacity: 0; transform: translateY(-7px); }
 .updates-filter-leave-to { opacity: 0; transform: translateY(-5px); }
-.updates-results-enter-from { opacity: 0; transform: translateY(7px); }
-.updates-results-leave-to { opacity: 0; transform: translateY(-3px); }
+.updates-timeline.is-refreshing { opacity: .6; transition: opacity var(--motion-base) ease; }
+.updates-empty > svg { display: block; margin: 0 auto 12px; }
 
 @media (max-width: 700px) {
   .updates-chip,
@@ -201,7 +193,6 @@ onUnmounted(() => restoreMetadata())
   .updates-chip-indicator,
   .updates-filter-enter-active,
   .updates-filter-leave-active,
-  .updates-results-enter-active,
-  .updates-results-leave-active { transition: none; }
+  .updates-timeline.is-refreshing { transition: none; }
 }
 </style>

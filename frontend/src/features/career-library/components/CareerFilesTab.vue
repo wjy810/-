@@ -1,20 +1,25 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import {
-  Archive, ArrowRight, Download, Eye, File, FileImage, FileText,
+  Archive, ArchiveRestore, ArrowRight, Download, Eye, File, FileImage, FileText,
   Folder, FolderPlus, Grid2X2, HardDrive, Info, List, LoaderCircle, MoreVertical,
-  Pencil, RefreshCcw, Search, ShieldCheck, UploadCloud, X,
+  Pencil, RefreshCcw, Search, ShieldCheck, Trash2, UploadCloud, X,
 } from 'lucide-vue-next'
 import AppModal from '@/shared/ui/AppModal.vue'
 import AppSelect from '@/shared/ui/AppSelect.vue'
+import PageState from '@/shared/ui/PageState.vue'
+import UiDropdownMenu, { type MenuItem } from '@/shared/ui/UiDropdownMenu.vue'
+import UiSkeleton from '@/shared/ui/UiSkeleton.vue'
 import { isAbortError, pollTask } from '@/shared/lib/pollTask'
+import { useLoadState } from '@/shared/lib/useLoadState'
 import { errorMessage, isApiClientError } from '@/shared/api/types'
 import {
   archiveCareerFile, archiveCareerFolder, createCareerFolder, downloadCareerFile,
   fetchCareerFiles, fetchCareerFolders, fetchCareerStorage, restoreCareerFile,
   retryCareerFile, updateCareerFile, uploadCareerFile,
 } from '../services/careerLibraryApi'
-import type { CareerFile, CareerFileFolder, CareerOverview, CareerStorage } from '../types'
+import { usePagedList } from '../usePagedList'
+import type { CareerFile, CareerFileFolder, CareerOverview } from '../types'
 
 const props = defineProps<{
   overview: CareerOverview
@@ -28,14 +33,23 @@ const props = defineProps<{
 const emit = defineEmits<{
   query: [value: Record<string, string>]
   changed: []
+  /** Permanent deletion goes through the data-rights page, which previews the impact first. */
+  remove: [target: { type: 'CAREER_FILE'; id: string }]
   notice: [message: string]
   error: [message: string]
 }>()
 
-const files = ref<CareerFile[]>([])
-const folders = ref<CareerFileFolder[]>([])
-const storage = ref<CareerStorage>({ usedBytes: 0, quotaBytes: 20 * 1024 * 1024, availableBytes: 20 * 1024 * 1024, categoryCounts: {} })
-const loading = ref(true)
+const {
+  items: files, total, error: filesError, loading, loaded, load: loadFiles, hasMore, loadingMore, loadMore,
+} = usePagedList((page, size) => fetchCareerFiles({
+  keyword: props.q, category: props.type, status: props.status || 'ALL', folderId: props.folderId,
+  sort: props.sort || 'RECENT', page, size,
+}), 48)
+const foldersState = useLoadState(() => fetchCareerFolders())
+const storageState = useLoadState(() => fetchCareerStorage())
+const folders = computed<CareerFileFolder[]>(() => foldersState.data.value ?? [])
+/** Null until the storage summary loads: no invented quota or zero counts. */
+const storage = computed(() => storageState.data.value)
 const pending = ref('')
 const isDragging = ref(false)
 const selectedUpload = ref<File | null>(null)
@@ -71,23 +85,15 @@ const folderOptions = computed(() => [
   ...folders.value.map((folder) => ({ value: folder.id, label: folder.name, count: folder.fileCount })),
 ])
 const previewPages = computed(() => Array.from({ length: previewFile.value?.previewPageCount || 0 }, (_, index) => index + 1))
-const usagePercent = computed(() => Math.min(100, Math.round(storage.value.usedBytes * 100 / Math.max(1, storage.value.quotaBytes))))
+const usagePercent = computed(() => storage.value ? Math.min(100, Math.round(storage.value.usedBytes * 100 / Math.max(1, storage.value.quotaBytes))) : 0)
 
 async function load(): Promise<void> {
-  loading.value = true
-  try {
-    const [filePage, folderList, storageView] = await Promise.all([
-      fetchCareerFiles({
-        keyword: props.q, category: props.type, status: props.status || 'ALL', folderId: props.folderId,
-        sort: props.sort || 'RECENT', size: 100,
-      }),
-      fetchCareerFolders(), fetchCareerStorage(),
-    ])
-    files.value = filePage.items
-    folders.value = folderList
-    storage.value = storageView
-  } catch (reason) { emit('error', errorMessage(reason, '文件资料读取失败')) }
-  finally { loading.value = false }
+  await Promise.all([loadFiles(), foldersState.load(), storageState.load()])
+}
+
+async function showMore(): Promise<void> {
+  try { await loadMore() }
+  catch (reason) { emit('error', errorMessage(reason, '更多文件读取失败，已显示的内容不受影响')) }
 }
 
 function chooseFile(): void { fileInput.value?.click() }
@@ -96,8 +102,9 @@ function acceptFile(file?: File): void {
   if (!file) return
   const extension = file.name.split('.').pop()?.toLowerCase() || ''
   if (!allowedExtensions.has(extension)) { emit('error', '仅支持 DOCX、PDF、PNG、JPEG 和 WebP 文件。'); return }
-  if (file.size > maxUploadBytes) { emit('error', '单个文件不能超过 10 MiB。'); return }
-  if (storage.value.usedBytes + file.size > storage.value.quotaBytes) { emit('error', '资料库剩余容量不足 20 MiB 配额，无法上传该文件。'); return }
+  if (file.size > maxUploadBytes) { emit('error', '单个文件不能超过 10 MB。'); return }
+  // When the storage summary failed to load, the server still enforces the quota.
+  if (storage.value && file.size > storage.value.availableBytes) { emit('error', `资料库剩余空间只有 ${fileSize(storage.value.availableBytes)}，无法上传这个文件。`); return }
   selectedUpload.value = file
   uploadForm.displayName = file.name.replace(/\.[^.]+$/, '')
   uploadForm.category = props.type && categoryOptions.some((item) => item.value === props.type) ? props.type : 'RESUME'
@@ -116,9 +123,10 @@ async function startUpload(): Promise<void> {
   pending.value = 'upload'
   try {
     const result = await uploadCareerFile(selectedUpload.value, uploadForm.category, uploadForm.displayName, uploadForm.folderId)
+    if (!files.value.some((file) => file.id === result.file.id)) total.value += 1
     files.value = [result.file, ...files.value.filter((file) => file.id !== result.file.id)]
     clearSelection()
-    emit('notice', '文件已进入私有隔离区，正在进行安全扫描。')
+    emit('notice', '文件已上传，正在进行安全检查，完成后即可预览和下载。')
     void watchTask(result.file.id, result.task.id)
     await refreshStorage()
   } catch (reason) { emit('error', uploadError(reason)) }
@@ -135,7 +143,7 @@ async function watchTask(fileId: string, taskId: string): Promise<void> {
       if (file && file.processingStatus === 'SCANNING') file.processingStatus = 'PREVIEWING'
     }, controller.signal, 900, 240_000)
     await load()
-    if (task.status === 'SUCCEEDED') emit('notice', '文件已通过安全扫描并生成逐页预览。')
+    if (task.status === 'SUCCEEDED') emit('notice', '文件已通过安全检查，可以预览和下载了。')
     else emit('error', taskFailure(task.failureReason))
   } catch (reason) {
     if (!isAbortError(reason)) { await load(); emit('error', errorMessage(reason, '文件处理状态读取失败')) }
@@ -143,26 +151,32 @@ async function watchTask(fileId: string, taskId: string): Promise<void> {
 }
 
 async function refreshStorage(): Promise<void> {
-  try { storage.value = await fetchCareerStorage() } catch { /* 文件主流程不因统计失败中断 */ }
+  await storageState.load()
 }
 
 function uploadError(reason: unknown): string {
-  if (reason instanceof TypeError) return '网络连接中断，文件尚未提交。请确认后端服务可用后重试。'
+  if (reason instanceof TypeError) return '网络连接中断，文件没有上传成功，请检查网络后重试。'
   if (isApiClientError(reason)) {
-    if (reason.reason === 'PAYLOAD_TOO_LARGE' || /TOO_LARGE/.test(reason.reason)) return '文件超过 10 MiB，未上传。'
-    if (/QUOTA/.test(reason.reason)) return '资料库容量不足，20 MiB 配额已用完。'
-    if (/TYPE|FORMAT|PDF_|DOCX_|IMAGE_/.test(reason.reason)) return reason.message || '文件格式或安全结构不符合要求。'
-    if (/SCAN/.test(reason.reason)) return reason.message || '安全扫描失败，文件保持隔离。'
-    if (reason.reason === 'BAD_RESPONSE') return '后端服务未返回有效响应，请确认 8080 服务正在运行。'
+    if (reason.reason === 'PAYLOAD_TOO_LARGE' || /TOO_LARGE/.test(reason.reason)) return '文件超过 10 MB，没有上传。'
+    if (/QUOTA/.test(reason.reason)) return '资料库空间不足，文件没有上传。可以先永久删除不需要的文件。'
+    if (/TYPE|FORMAT|PDF_|DOCX_|IMAGE_/.test(reason.reason)) return '文件格式不受支持或文件已损坏，请换一个文件。'
+    if (/SCAN/.test(reason.reason)) return '文件没有通过安全检查，未保存。'
+    if (reason.reason === 'BAD_RESPONSE') return '服务暂时没有响应，文件没有上传成功，请稍后重试。'
   }
-  return errorMessage(reason, '文件上传失败，未写入资料库')
+  return errorMessage(reason, '文件上传失败，没有保存到资料库')
 }
 
 function taskFailure(reason?: string | null): string {
-  if (/SCAN_UNAVAILABLE|SCAN_ERROR/.test(reason || '')) return '安全扫描服务不可用，文件保持隔离；可稍后重试。'
-  if (/PREVIEW/.test(reason || '')) return '文件通过扫描，但逐页预览生成失败；可稍后重试。'
-  if (/MALWARE/.test(reason || '')) return '检测到恶意内容，原始文件字节已删除。'
-  return '文件处理失败，已保持隔离，不能预览或下载。'
+  if (/SCAN_UNAVAILABLE|SCAN_ERROR/.test(reason || '')) return '安全检查暂时无法进行，文件暂不可用，可稍后点“重试”。'
+  if (/PREVIEW/.test(reason || '')) return '文件已通过安全检查，但预览生成失败，可稍后点“重试”。'
+  if (/MALWARE/.test(reason || '')) return '文件中检测到不安全的内容，已被删除。'
+  return '文件处理失败，暂时不能预览或下载。'
+}
+
+function failureNote(file: CareerFile): string {
+  if (file.processingStatus === 'INFECTED') return '文件中检测到不安全的内容，已被删除。'
+  if (file.processingStatus === 'PREVIEW_FAILED') return '预览生成失败，可以重试。'
+  return '安全检查没有完成，暂时不能预览或下载，可以重试。'
 }
 
 async function retry(file: CareerFile): Promise<void> {
@@ -194,7 +208,7 @@ async function saveEdit(): Promise<void> {
   try {
     await updateCareerFile(editFile.value, editForm)
     editFile.value = null
-    await load(); emit('changed'); emit('notice', '文件名称和分类已更新。')
+    await load(); emit('changed'); emit('notice', '文件信息已更新。')
   } catch (reason) { emit('error', errorMessage(reason, '文件资料更新失败')) }
   finally { pending.value = '' }
 }
@@ -224,20 +238,32 @@ async function removeFolder(folder: CareerFileFolder): Promise<void> {
 }
 
 function fileExtension(file: CareerFile): string { return file.originalFilename.split('.').pop()?.toUpperCase() || 'FILE' }
-function fileSize(bytes: number): string { return bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KiB` : `${(bytes / 1024 / 1024).toFixed(1)} MiB` }
+function fileSize(bytes: number): string { return bytes < 1024 * 1024 ? `${bytes > 0 ? Math.max(1, Math.round(bytes / 1024)) : 0} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB` }
 function categoryLabel(category: string): string { return categoryOptions.find((item) => item.value === category)?.label || category }
 function stateLabel(file: CareerFile): string {
-  if (file.processingStatus === 'SCANNING') return '安全扫描中'
+  if (file.processingStatus === 'SCANNING') return '安全检查中'
   if (file.processingStatus === 'PREVIEWING') return '生成预览中'
-  if (file.processingStatus === 'SCAN_FAILED') return '扫描失败'
+  if (file.processingStatus === 'SCAN_FAILED') return '检查未完成'
   if (file.processingStatus === 'PREVIEW_FAILED') return '预览失败'
-  if (file.processingStatus === 'INFECTED') return '已阻断'
+  if (file.processingStatus === 'INFECTED') return '已拦截'
   return file.status === 'ARCHIVED' ? '已归档' : '使用中'
+}
+function fileMenu(file: CareerFile): MenuItem[] {
+  const ready = file.processingStatus === 'READY'
+  const archived = file.status === 'ARCHIVED'
+  return [
+    { label: '预览', icon: Eye, disabled: !ready, onSelect: () => { previewFile.value = file } },
+    { label: '下载', icon: Download, disabled: !ready || pending.value === file.id, onSelect: () => void download(file) },
+    { label: '重命名或移动', icon: Pencil, onSelect: () => openEdit(file) },
+    { label: archived ? '恢复使用' : '归档', icon: archived ? ArchiveRestore : Archive, disabled: pending.value === file.id, onSelect: () => void toggleArchive(file) },
+    { type: 'separator' },
+    { label: '永久删除…', icon: Trash2, danger: true, onSelect: () => emit('remove', { type: 'CAREER_FILE', id: file.id }) },
+  ]
 }
 function processing(file: CareerFile): boolean { return file.processingStatus === 'SCANNING' || file.processingStatus === 'PREVIEWING' }
 function setQuery(key: string, value: string | number): void { emit('query', { [key]: String(value) }) }
 
-watch(() => [props.q, props.type, props.status, props.sort, props.folderId], load)
+watch(() => [props.q, props.type, props.status, props.sort, props.folderId], () => { void loadFiles() })
 onMounted(load)
 onBeforeUnmount(() => taskControllers.forEach((controller) => controller.abort()))
 defineExpose({ chooseFile, openFolder })
@@ -258,7 +284,7 @@ defineExpose({ chooseFile, openFolder })
       >
         <div v-if="!selectedUpload" class="dropzone-empty" @click="chooseFile">
           <UploadCloud :size="34" /><strong>拖拽文件到此处，或<button type="button">点击选择</button></strong>
-          <p>支持 DOCX、PDF、PNG、JPEG、WebP，单文件不超过 10 MiB</p><small>首版仅支持预览和下载，不解析字段。</small>
+          <p>支持 DOCX、PDF、PNG、JPEG、WebP，单个文件不超过 10 MB</p><small>文件只保存在你的资料库，可预览和下载；不会自动解析成经历记录。</small>
         </div>
         <div v-else class="upload-ready">
           <span class="file-hero-icon docx"><FileText :size="27" /></span>
@@ -279,34 +305,62 @@ defineExpose({ chooseFile, openFolder })
       </section>
 
       <section class="file-grid" :class="{ list: layout === 'list' }" aria-live="polite">
-        <div v-if="loading" class="files-loading"><span v-for="n in 6" :key="n" class="career-card bone-card" /></div>
-        <div v-else-if="!files.length" class="career-card career-empty"><Folder :size="30" /><strong>还没有符合条件的文件</strong><p>上传后会先进入隔离区，通过安全扫描和预览门禁后才可使用。</p><button type="button" @click="chooseFile"><UploadCloud :size="16" />上传文件</button></div>
-        <article v-for="file in files" v-else :id="file.id" :key="file.id" class="career-card file-card" :class="{ processing: processing(file), failed: /FAILED|INFECTED/.test(file.processingStatus) }">
-          <button class="file-more" type="button" title="更多操作"><MoreVertical :size="18" /></button>
-          <div class="file-card-main">
-            <span class="file-hero-icon" :class="fileExtension(file).toLowerCase()">
-              <FileImage v-if="/PNG|JPG|JPEG|WEBP/.test(fileExtension(file))" :size="27" />
-              <FileText v-else :size="27" /><small>{{ fileExtension(file) }}</small>
-            </span>
-            <div class="file-card-copy"><strong :title="file.displayName">{{ file.displayName }}</strong><div><span>{{ categoryLabel(file.category) }}</span><em :class="{ bad: /FAILED|INFECTED/.test(file.processingStatus) }">{{ stateLabel(file) }}</em></div><p>{{ fileSize(file.sizeBytes) }}<b>·</b>{{ new Date(file.updatedAt).toLocaleString('zh-CN', { hour12: false }) }}</p></div>
+        <PageState class="career-grid-state" :loading="loading" :error="filesError" :loaded="loaded" :empty="!files.length" error-title="文件资料读取失败" compact @retry="loadFiles">
+          <template #skeleton><div class="files-loading"><span v-for="n in 6" :key="n" class="career-card bone-card" /></div></template>
+          <template #empty>
+            <div class="career-card career-empty"><Folder :size="30" /><strong>还没有符合条件的文件</strong><p>上传后会先做安全检查并生成预览，完成后即可预览和下载。</p><button type="button" @click="chooseFile"><UploadCloud :size="16" />上传文件</button></div>
+          </template>
+          <article v-for="file in files" :id="file.id" :key="file.id" class="career-card file-card" :class="{ processing: processing(file), failed: /FAILED|INFECTED/.test(file.processingStatus) }">
+            <UiDropdownMenu :items="fileMenu(file)"><button class="file-more" type="button" title="更多操作" aria-label="更多操作"><MoreVertical :size="18" /></button></UiDropdownMenu>
+            <div class="file-card-main">
+              <span class="file-hero-icon" :class="fileExtension(file).toLowerCase()">
+                <FileImage v-if="/PNG|JPG|JPEG|WEBP/.test(fileExtension(file))" :size="27" />
+                <FileText v-else :size="27" /><small>{{ fileExtension(file) }}</small>
+              </span>
+              <div class="file-card-copy"><strong :title="file.displayName">{{ file.displayName }}</strong><div><span>{{ categoryLabel(file.category) }}</span><em :class="{ bad: /FAILED|INFECTED/.test(file.processingStatus) }">{{ stateLabel(file) }}</em></div><p>{{ fileSize(file.sizeBytes) }}<b>·</b>{{ new Date(file.updatedAt).toLocaleString('zh-CN', { hour12: false }) }}</p></div>
+            </div>
+            <div v-if="processing(file)" class="file-processing"><LoaderCircle :size="16" /><span><strong>{{ stateLabel(file) }}</strong><small>可以离开页面，处理会继续</small></span><i /></div>
+            <div v-else-if="/FAILED|INFECTED/.test(file.processingStatus)" class="file-processing failed"><Info :size="16" /><span><strong>{{ stateLabel(file) }}</strong><small>{{ failureNote(file) }}</small></span><button v-if="file.processingStatus !== 'INFECTED'" type="button" @click="retry(file)"><RefreshCcw :size="14" />重试</button></div>
+            <footer>
+              <button type="button" :disabled="file.processingStatus !== 'READY'" @click="previewFile = file"><Eye :size="17" />预览</button>
+              <button type="button" :disabled="file.processingStatus !== 'READY'" @click="download(file)"><Download :size="17" />下载</button>
+              <button type="button" @click="openEdit(file)"><Pencil :size="17" />重命名</button>
+              <button v-if="layout === 'list'" type="button" @click="toggleArchive(file)"><Archive :size="17" />{{ file.status === 'ARCHIVED' ? '恢复' : '归档' }}</button>
+            </footer>
+          </article>
+          <div v-if="hasMore" class="career-load-more">
+            <span>已显示 {{ files.length }} / {{ total }} 个文件</span>
+            <button class="career-btn ghost" type="button" :disabled="loadingMore" @click="showMore">{{ loadingMore ? '加载中…' : '加载更多' }}</button>
           </div>
-          <div v-if="processing(file)" class="file-processing"><LoaderCircle :size="16" /><span><strong>{{ stateLabel(file) }}</strong><small>可以离开页面，任务会继续</small></span><i /></div>
-          <div v-else-if="/FAILED|INFECTED/.test(file.processingStatus)" class="file-processing failed"><Info :size="16" /><span><strong>{{ stateLabel(file) }}</strong><small>{{ file.previewError || '文件保持隔离，不能预览或下载' }}</small></span><button v-if="file.processingStatus !== 'INFECTED'" type="button" @click="retry(file)"><RefreshCcw :size="14" />重试</button></div>
-          <footer>
-            <button type="button" :disabled="file.processingStatus !== 'READY'" @click="previewFile = file"><Eye :size="17" />预览</button>
-            <button type="button" :disabled="file.processingStatus !== 'READY'" @click="download(file)"><Download :size="17" />下载</button>
-            <button type="button" @click="openEdit(file)"><Pencil :size="17" />重命名</button>
-            <button v-if="layout === 'list'" type="button" @click="toggleArchive(file)"><Archive :size="17" />{{ file.status === 'ARCHIVED' ? '恢复' : '归档' }}</button>
-          </footer>
-        </article>
+        </PageState>
       </section>
     </main>
 
     <aside class="career-aside-column">
-      <section class="career-card aside-card storage-card"><header><div><HardDrive :size="19" /><h3>存储空间</h3></div></header><strong>{{ fileSize(storage.usedBytes) }} <small>/ {{ fileSize(storage.quotaBytes) }}</small></strong><span>{{ usagePercent }}%</span><div class="storage-progress"><i :style="{ width: `${usagePercent}%` }" /></div><p><span>已使用 {{ fileSize(storage.usedBytes) }}</span><span>可用 {{ fileSize(storage.availableBytes) }}</span></p></section>
-      <section class="career-card aside-card category-card"><header><div><Folder :size="19" /><h3>分类概览</h3></div></header><div class="category-overview"><button v-for="category in uploadCategories" :key="category.value" type="button" @click="setQuery('type', category.value)"><span><File :size="16" />{{ category.label }}</span><strong>{{ storage.categoryCounts[category.value] || 0 }}</strong></button></div><button class="aside-link" type="button" @click="setQuery('type', '')">查看全部文件<ArrowRight :size="15" /></button></section>
+      <section class="career-card aside-card storage-card">
+        <header><div><HardDrive :size="19" /><h3>存储空间</h3></div></header>
+        <PageState :loading="storageState.loading.value" :error="storageState.error.value" :loaded="storageState.loaded.value" error-title="存储空间读取失败" compact @retry="storageState.load">
+          <template #skeleton><UiSkeleton height="64px" radius="var(--radius-md)" /></template>
+          <template v-if="storage">
+            <strong>{{ fileSize(storage.usedBytes) }} <small>/ {{ fileSize(storage.quotaBytes) }}</small></strong><span>{{ usagePercent }}%</span>
+            <div class="storage-progress"><i :style="{ width: `${usagePercent}%` }" /></div>
+            <p><span>已使用 {{ fileSize(storage.usedBytes) }}</span><span>可用 {{ fileSize(storage.availableBytes) }}</span></p>
+          </template>
+        </PageState>
+      </section>
+      <section class="career-card aside-card category-card">
+        <header><div><Folder :size="19" /><h3>分类概览</h3></div></header>
+        <div class="category-overview">
+          <button v-for="category in uploadCategories" :key="category.value" type="button" @click="setQuery('type', category.value)"><span><File :size="16" />{{ category.label }}</span><strong v-if="storage">{{ storage.categoryCounts[category.value] || 0 }}</strong></button>
+        </div>
+        <button class="aside-link" type="button" @click="setQuery('type', '')">查看全部文件<ArrowRight :size="15" /></button>
+      </section>
       <section v-if="folders.length" class="career-card aside-card category-card"><header><div><FolderPlus :size="19" /><h3>我的文件夹</h3></div></header><div class="category-overview"><button v-for="folder in folders" :key="folder.id" type="button" @click="setQuery('folderId', folder.id)"><span><Folder :size="16" />{{ folder.name }}</span><strong>{{ folder.fileCount }}</strong><i title="归档文件夹" @click.stop="removeFolder(folder)"><Archive :size="14" /></i></button></div></section>
-      <section class="career-card aside-card privacy-file-card"><ShieldCheck :size="21" /><div><h3>隐私说明</h3><p>文件仅用于你授权的 AI 对话，不向招聘方自动公开。</p><button type="button">了解更多隐私政策<ArrowRight :size="15" /></button></div></section>
+      <section v-else-if="foldersState.error.value && !foldersState.loaded.value" class="career-card aside-card category-card">
+        <header><div><FolderPlus :size="19" /><h3>我的文件夹</h3></div></header>
+        <PageState :loading="foldersState.loading.value" :error="foldersState.error.value" error-title="文件夹读取失败" compact @retry="foldersState.load" />
+      </section>
+      <section class="career-card aside-card privacy-file-card"><ShieldCheck :size="21" /><div><h3>隐私说明</h3><p>文件只有你自己能查看，不会发送给 AI，也不会向招聘方公开。</p><RouterLink class="privacy-file-card__link" to="/privacy">查看隐私政策<ArrowRight :size="15" /></RouterLink></div></section>
     </aside>
 
     <AppModal :open="Boolean(previewFile)" :title="previewFile?.displayName || '文件预览'" :width="960" @close="previewFile = null"><div class="career-preview-pages"><img v-for="page in previewPages" :key="page" :src="`/api/v1/career-library/files/${previewFile?.id}/preview-pages/${page}`" :alt="`第 ${page} 页`" /></div></AppModal>

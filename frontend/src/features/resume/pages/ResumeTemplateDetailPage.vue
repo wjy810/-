@@ -4,27 +4,28 @@
  * font and header switches, what the template suits and what can be adjusted, and the two ways to
  * use it — start a new AI resume, or apply it to an existing resume.
  */
-import { computed, onMounted, ref, shallowRef, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ArrowLeft, ArrowRight, Check, FileStack } from 'lucide-vue-next'
+import { ArrowLeft, ArrowRight, Check, FileStack, RotateCcw } from 'lucide-vue-next'
+import PageState from '@/shared/ui/PageState.vue'
 import UiButton from '@/shared/ui/UiButton.vue'
-import UiErrorState from '@/shared/ui/UiErrorState.vue'
+import UiEmptyState from '@/shared/ui/UiEmptyState.vue'
 import UiSegmented from '@/shared/ui/UiSegmented.vue'
 import UiSelect from '@/shared/ui/UiSelect.vue'
 import UiSkeleton from '@/shared/ui/UiSkeleton.vue'
 import ForbidState from '@/shared/ui/ForbidState.vue'
 import { useToastFeedback } from '@/shared/ui/toast'
-import { errorMessage, isForbidden } from '@/shared/api/types'
+import { errorMessage, isForbidden, isNotFound } from '@/shared/api/types'
+import { useLoadState } from '@/shared/lib/useLoadState'
 import ResumeDocument from '@/resume-render/components/ResumeDocument.vue'
 import { sampleFor } from '@/resume-render/samples'
 import type { FontPairing } from '@/resume-render/theme/design'
-import type { TemplateManifest, TemplateModule } from '@/resume-render/templates/manifest'
+import type { TemplateManifest } from '@/resume-render/templates/manifest'
 import { manifestOf } from '@/resume-render/templates/manifests'
 import { loadTemplate } from '@/resume-render/templates/registry'
 import { ensureAiResume, selectAiResumeTemplate } from '@/features/ai-resume/services/aiResumeApi'
 import { fetchResumeTemplate, listResumes } from '../services/resumeApi'
 import { templateFacts } from '../templateFacts'
-import type { ResumeMasterSummary } from '../types'
 
 const FONT_LABELS: Record<FontPairing, string> = { sans: '现代黑体', serif: '经典宋体', mixed: '宋黑混排', tech: '技术等宽' }
 const ADJUSTABLE = ['配色与自定义强调色', '字体组合', '字号 5 档', '行距、段落间距、页边距', '目标页数（自动 / 1 页 / 2 页）', '日期格式', '板块顺序、显示与标题']
@@ -33,11 +34,18 @@ const route = useRoute()
 const router = useRouter()
 const templateId = computed(() => String(route.params.templateId ?? ''))
 const manifest = computed<TemplateManifest | undefined>(() => manifestOf(templateId.value))
-const module = shallowRef<TemplateModule | null>(null)
-const loading = ref(true)
-const loadError = ref<unknown>(null)
-const forbidden = ref<unknown>(null)
-const resumes = ref<ResumeMasterSummary[]>([])
+// The server decides availability (an operator may have retired the template).
+const templateState = useLoadState(async () => {
+  const id = templateId.value
+  const [, loaded] = await Promise.all([fetchResumeTemplate(id), loadTemplate(id)])
+  return { id, module: loaded }
+})
+const { loading, error: loadError } = templateState
+/** The loaded template, only while it is the one in the URL. */
+const module = computed(() => templateState.data.value?.id === templateId.value ? templateState.data.value.module : null)
+const forbidden = computed(() => (isForbidden(loadError.value) ? loadError.value : null))
+const notFound = computed(() => !manifest.value || (!module.value && isNotFound(loadError.value)))
+const resumeState = useLoadState(() => listResumes())
 const targetMasterId = ref('')
 const applying = ref(false)
 const error = ref('')
@@ -56,7 +64,7 @@ const design = computed(() => ({
   paperSize: paperSize.value,
 }))
 const sample = computed(() => manifest.value ? sampleFor(manifest.value.locale, manifest.value.id === 'campus' ? 'campus' : undefined) : {})
-const usableResumes = computed(() => resumes.value.filter(item => item.status !== 'ARCHIVED'))
+const usableResumes = computed(() => (resumeState.data.value ?? []).filter(item => item.status !== 'ARCHIVED'))
 const resumeOptions = computed(() => usableResumes.value.map(item => ({ value: item.id, label: item.title || '未命名简历' })))
 
 function reset(value: TemplateManifest): void {
@@ -66,24 +74,10 @@ function reset(value: TemplateManifest): void {
   paperSize.value = value.paperSizes[0]!
 }
 
-async function load(): Promise<void> {
-  loading.value = true
-  loadError.value = null
-  forbidden.value = null
-  try {
-    if (!manifest.value) throw new Error('模板不存在或已下架')
-    reset(manifest.value)
-    // The server decides availability (an operator may have retired the template).
-    const [, items, loaded] = await Promise.all([fetchResumeTemplate(templateId.value), listResumes(), loadTemplate(templateId.value)])
-    resumes.value = items
-    module.value = loaded
-    targetMasterId.value = usableResumes.value[0]?.id ?? ''
-  } catch (cause) {
-    if (isForbidden(cause)) forbidden.value = cause
-    else loadError.value = cause
-  } finally {
-    loading.value = false
-  }
+function load(): void {
+  if (!manifest.value) return
+  reset(manifest.value)
+  void templateState.load()
 }
 
 function start(): void {
@@ -108,8 +102,11 @@ async function applyToResume(): Promise<void> {
   }
 }
 
-watch(templateId, () => { void load() })
-onMounted(load)
+watch(resumeState.data, () => {
+  if (!usableResumes.value.some(item => item.id === targetMasterId.value)) targetMasterId.value = usableResumes.value[0]?.id ?? ''
+})
+watch(templateId, load)
+onMounted(() => { load(); void resumeState.load() })
 </script>
 
 <template>
@@ -117,18 +114,25 @@ onMounted(load)
   <section v-else class="page tpl-detail">
     <RouterLink class="tpl-detail__back" to="/resume-templates"><ArrowLeft :size="15" aria-hidden="true" />模板中心</RouterLink>
 
-    <UiErrorState v-if="loadError" :error="loadError" title="模板读取失败" @retry="load" />
+    <UiEmptyState v-if="notFound" title="模板不存在" description="这套模板可能已下架，或链接有误。" illustration="empty-templates">
+      <UiButton variant="secondary" :icon="ArrowLeft" to="/resume-templates">返回模板中心</UiButton>
+    </UiEmptyState>
 
-    <div v-else-if="manifest" class="tpl-detail__grid">
+    <PageState v-else :loading="loading" :error="loadError" :loaded="Boolean(module)" error-title="模板读取失败" @retry="load">
+      <template #skeleton>
+        <div class="tpl-detail__grid" aria-busy="true">
+          <div class="tpl-detail__stage"><UiSkeleton height="960px" radius="2px" /></div>
+          <UiSkeleton height="520px" radius="var(--radius-xl)" />
+        </div>
+      </template>
+    <div v-if="manifest && module" class="tpl-detail__grid">
       <div class="tpl-detail__stage" aria-label="模板预览（示例内容）">
         <ResumeDocument
-          v-if="module && !loading"
           :template="module"
           :content="sample"
           :design="design"
           @layout="pageCount = $event.pageCount"
         />
-        <UiSkeleton v-else height="960px" radius="2px" />
       </div>
 
       <aside class="tpl-detail__panel">
@@ -194,12 +198,15 @@ onMounted(load)
             <UiSelect v-model="targetMasterId" :options="resumeOptions" aria-label="选择要应用的简历" />
             <UiButton variant="secondary" :pending="applying" :disabled="!targetMasterId" @click="applyToResume">应用到这份简历</UiButton>
           </div>
+          <p v-else-if="resumeState.error.value && !resumeState.loaded.value" class="tpl-detail__hint tpl-detail__hint--error" role="alert">
+            你的简历列表没有读取成功，暂时不能直接应用到已有简历。
+            <UiButton size="sm" variant="link" :icon="RotateCcw" :pending="resumeState.loading.value" @click="resumeState.load">重试</UiButton>
+          </p>
           <p class="tpl-detail__hint">换模板只改变版式，内容、字号与间距等通用设置会保留；工作台中 10 秒内可撤销。</p>
         </div>
       </aside>
     </div>
-
-    <UiErrorState v-else-if="!loading" :error="new Error('模板不存在或已下架')" title="模板不存在" />
+    </PageState>
   </section>
 </template>
 
@@ -364,6 +371,11 @@ onMounted(load)
   gap: 6px;
   color: var(--text-tertiary) !important;
   font-size: var(--fs-xs) !important;
+}
+
+.tpl-detail__hint--error {
+  flex-wrap: wrap;
+  color: var(--color-danger-text) !important;
 }
 
 .tpl-detail__actions {

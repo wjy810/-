@@ -2,7 +2,9 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { CareerCanvas } from '../types'
 import {
-  careerCanvasNodeStatusLabel, careerCanvasNodeTypeLabel, careerVersionAuthorLabel, careerVersionReasonLabel,
+  careerCanvasNodeStatusLabel, careerCanvasNodeTypeLabel, careerEvidenceStatusLabel, careerEvidenceStrengthLabel,
+  careerPlanStatusLabel, careerProfileSectionLabel, careerSourceRefLabels, careerValidationCheckpointLabel,
+  careerVersionAuthorLabel, careerVersionReasonLabel,
   hasActionablePlanNodes, hasCanvasContent, initialCareerWorkbenchView, isCareerExecutionPhase,
 } from './presentation.ts'
 
@@ -44,4 +46,26 @@ test('version metadata never leaks internal enum values', () => {
   assert.equal(careerCanvasNodeTypeLabel('DOMAIN'), '能力域')
   assert.equal(careerCanvasNodeTypeLabel('EVIDENCE'), '成果证据')
   assert.equal(careerCanvasNodeTypeLabel('UNKNOWN_INTERNAL_TYPE'), '能力节点')
+})
+
+test('profile, evidence and task labels never print raw enum values', () => {
+  assert.equal(careerProfileSectionLabel('SKILLS'), '技能')
+  assert.equal(careerProfileSectionLabel('UNKNOWN_SECTION'), '其他信息')
+  assert.equal(careerEvidenceStrengthLabel('STRONG'), '证据充分')
+  assert.equal(careerEvidenceStrengthLabel('UNKNOWN'), '')
+  assert.equal(careerEvidenceStatusLabel('PENDING'), '待验证')
+  assert.equal(careerEvidenceStatusLabel('SOMETHING_ELSE'), '待核对')
+  assert.equal(careerPlanStatusLabel('PAUSED'), '已暂停')
+  assert.equal(careerPlanStatusLabel('UNKNOWN'), '')
+  assert.equal(careerValidationCheckpointLabel('PERSISTING_VALIDATIONS'), '正在保存评估结果')
+  assert.equal(careerValidationCheckpointLabel('VALIDATING_SEMANTICS'), '')
+})
+
+test('source references show titles or counted types, never ids', () => {
+  const titles = new Map([['PROFILE_ITEM:9f1c2d3e-aaaa', 'Java 后端项目']])
+  const labels = careerSourceRefLabels([
+    'PROFILE_ITEM:9f1c2d3e-aaaa', 'PROFILE_ITEM:0b7e-bbbb', 'CAREER_RECORD:1', 'CAREER_RECORD:2', 'goal:1', 'odd',
+  ], titles)
+  assert.deepEqual(labels, ['画像条目 · Java 后端项目', '画像条目', '资料库记录 2 项', '目标职业', '其他来源'])
+  assert.ok(labels.every(label => !/[0-9a-f]{4}-/.test(label)))
 })

@@ -129,10 +129,16 @@ async function fetchSession(page: Page, sessionId: string): Promise<CareerPlanni
   return data<CareerPlanningSession>(response)
 }
 
+/** Consent starts unchecked (HON-08); the start buttons stay disabled until it is given. */
+async function giveAiConsent(page: Page): Promise<void> {
+  await page.getByRole('checkbox', { name: /允许本次规划调用 AI/ }).check()
+}
+
 async function createDirectCareerGoal(page: Page, testInfo: TestInfo): Promise<string> {
   await registerFreshSeeker(page, testInfo)
   await page.goto('/career-planning/new')
   await deferWhatsNew(page)
+  await giveAiConsent(page)
   await page.getByRole('button', { name: '开始职业方向判定' }).click()
   await chooseSelect(page, '当前身份', '应届生')
   await chooseSelect(page, '最高学历', '本科')
@@ -474,6 +480,7 @@ test('全新求职者可完成 AI 画像草稿恢复与空资料授权', async (
   await deferWhatsNew(page)
   await expect(page.getByRole('heading', { name: '先确定职业方向，再生成你的能力树' })).toBeVisible()
   await expect(page.getByRole('button', { name: '开始职业方向判定' })).toBeVisible()
+  await giveAiConsent(page)
   await page.getByRole('button', { name: '开始职业方向判定' }).click()
   await expect(page.getByRole('heading', { name: '基础信息' })).toBeVisible()
   await chooseSelect(page, '当前身份', '学生')
@@ -539,6 +546,7 @@ test('AI 访谈可生成方向并完成收藏对比和目标双确认', async ({
   await registerFreshSeeker(page, testInfo)
   await page.goto('/career-planning/new')
   await deferWhatsNew(page)
+  await giveAiConsent(page)
   await page.getByRole('button', { name: '开始职业方向判定' }).click()
   await chooseSelect(page, '当前身份', '应届生')
   await chooseSelect(page, '最高学历', '本科')

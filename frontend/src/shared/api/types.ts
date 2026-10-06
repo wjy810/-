@@ -70,11 +70,8 @@ export function isVersionConflict(error: unknown): error is ApiClientError {
 }
 
 export function versionConflictMessage(error: unknown): string {
-  const detail =
-    isApiClientError(error) && error.message
-      ? error.message
-      : '对象版本冲突，已拒绝覆盖。'
-  return `${detail}（409 VERSION_CONFLICT，请刷新后再提交。这不是系统故障。）`
+  const detail = isApiClientError(error) && error.message?.trim() ? error.message.trim() : '内容已在其他页面更新'
+  return `${detail}，请刷新后再提交。`
 }
 
 export function isValidationFailed(error: unknown): error is ApiClientError {
@@ -133,14 +130,34 @@ function usableServerMessage(error: ApiClientError): string {
   return text
 }
 
-function notSystemFailureStamp(detail: string, status: number, reason: string): string {
-  return `${detail}（${status} ${reason}。这不是系统故障。）`
-}
-
 function correctableCopy(error: ApiClientError, fallback: string, shortChinese: string): string {
   return usableServerMessage(error) || (fallback && !looksLikeSystemFailureCopy(fallback) ? fallback : shortChinese)
 }
 
+/** Plain-language fallbacks by reason; the code itself stays on the error for logs and support. */
+const REASON_COPY: Record<string, string> = {
+  FILE_TOO_LARGE: '文件太大，请压缩后重试',
+  FILE_INVALID: '文件为空或已损坏',
+  FILE_TYPE_NOT_ALLOWED: '不支持这种文件类型，请检查扩展名与文件内容是否一致',
+  PASSWORD_TOO_WEAK: '密码需要 8 到 72 位，且不能与邮箱相同',
+  RESET_CODE_INVALID: '验证码无效或已过期',
+  VALIDATION_FAILED: '填写的内容不符合要求，请检查后重试',
+  UNSUPPORTED_MEDIA_TYPE: '请求格式不受支持，请刷新页面后重试',
+  METHOD_NOT_ALLOWED: '这个操作暂不支持，请刷新页面后重试',
+  NOT_ACCEPTABLE: '请求格式不受支持，请刷新页面后重试',
+  PAYLOAD_TOO_LARGE: '提交的内容太大，请精简后重试',
+  TOO_MANY_REQUESTS: '操作太频繁，请稍后再试',
+  NOT_FOUND: '要找的内容不存在或已被删除',
+}
+
+const STATUS_REASON: Record<number, string> = {
+  405: 'METHOD_NOT_ALLOWED', 406: 'NOT_ACCEPTABLE', 413: 'PAYLOAD_TOO_LARGE', 415: 'UNSUPPORTED_MEDIA_TYPE', 429: 'TOO_MANY_REQUESTS',
+}
+
+/**
+ * The message to show a user for any error. Server messages are already user-facing Chinese and
+ * win; status codes, reason codes and developer hints never appear in the text.
+ */
 export function errorMessage(error: unknown, fallback = '系统繁忙，请稍后重试'): string {
   if (isUnauthenticated(error) || isForbidden(error)) {
     return isApiClientError(error) && error.message ? error.message : fallback
@@ -149,76 +166,17 @@ export function errorMessage(error: unknown, fallback = '系统繁忙，请稍�
     return versionConflictMessage(error)
   }
   if (isApiClientError(error)) {
-    if (error.reason === 'FILE_TOO_LARGE') {
-      return notSystemFailureStamp(usableServerMessage(error) || '附件不超过 1MB', error.status || 400, 'FILE_TOO_LARGE')
-    }
-    if (error.reason === 'FILE_INVALID') {
-      return notSystemFailureStamp(usableServerMessage(error) || '文件不能为空', error.status || 400, 'FILE_INVALID')
-    }
-    if (error.reason === 'FILE_TYPE_NOT_ALLOWED') {
-      return notSystemFailureStamp(
-        usableServerMessage(error) || '仅允许 PDF、PNG、JPEG、WebP 核验附件，且扩展名须与内容一致',
-        error.status || 400,
-        'FILE_TYPE_NOT_ALLOWED',
-      )
-    }
-    if (error.reason === 'PASSWORD_TOO_WEAK') {
-      return notSystemFailureStamp(
-        usableServerMessage(error) || '密码至少 8 位，至多 72 位，不能与邮箱相同',
-        error.status || 400,
-        'PASSWORD_TOO_WEAK',
-      )
-    }
-    if (error.reason === 'RESET_CODE_INVALID') {
-      return notSystemFailureStamp('验证码无效或已过期', error.status || 400, 'RESET_CODE_INVALID')
-    }
-    if (error.reason === 'VALIDATION_FAILED' || (error.status === 400 && isMisclassifiedSystem4xx(error))) {
-      return notSystemFailureStamp(usableServerMessage(error) || '请求参数不正确', 400, 'VALIDATION_FAILED')
-    }
-    if (error.status === 415 || error.reason === 'UNSUPPORTED_MEDIA_TYPE') {
-      return notSystemFailureStamp(
-        usableServerMessage(error) || '请求内容类型不受支持，请使用 application/json',
-        415,
-        'UNSUPPORTED_MEDIA_TYPE',
-      )
-    }
-    if (error.status === 405 || error.reason === 'METHOD_NOT_ALLOWED') {
-      return notSystemFailureStamp(
-        usableServerMessage(error) || '请求方法不受支持',
-        405,
-        'METHOD_NOT_ALLOWED',
-      )
-    }
-    if (error.status === 406 || error.reason === 'NOT_ACCEPTABLE') {
-      return notSystemFailureStamp(
-        usableServerMessage(error) || '响应格式不受支持',
-        406,
-        'NOT_ACCEPTABLE',
-      )
-    }
-    if (error.status === 413 || error.reason === 'PAYLOAD_TOO_LARGE') {
-      return notSystemFailureStamp(usableServerMessage(error) || '请求体过大', 413, 'PAYLOAD_TOO_LARGE')
-    }
-    if (error.status === 429 || error.reason === 'TOO_MANY_REQUESTS') {
-      return notSystemFailureStamp(
-        usableServerMessage(error) || '请求过于频繁，请稍后再试',
-        429,
-        'TOO_MANY_REQUESTS',
-      )
-    }
-    if (error.reason === 'NOT_FOUND' || (error.status === 404 && isMisclassifiedSystem4xx(error))) {
-      return notSystemFailureStamp(usableServerMessage(error) || '接口不存在', 404, 'NOT_FOUND')
-    }
-    if (error.status === 404 || /NOT_FOUND/.test(error.reason)) {
-      return correctableCopy(error, fallback, '对象不存在')
-    }
-    if (isClientHttpError(error)) {
-      return correctableCopy(error, fallback, '请求无法处理')
-    }
+    const server = usableServerMessage(error)
+    if (server) return server
+    const reason = REASON_COPY[error.reason] ? error.reason : STATUS_REASON[error.status]
+    if (reason) return REASON_COPY[reason]
+    if (error.status === 404 || /NOT_FOUND/.test(error.reason)) return correctableCopy(error, fallback, REASON_COPY.NOT_FOUND)
+    if (error.status === 400 && isMisclassifiedSystem4xx(error)) return REASON_COPY.VALIDATION_FAILED
+    if (isClientHttpError(error)) return correctableCopy(error, fallback, '请求无法处理，请检查后重试')
     return error.message || fallback
   }
   if (error instanceof TypeError) {
-    return '无法连接后端。请确认已在 backend/ 执行 mvn spring-boot:run，且本页走 Vite 代理。'
+    return '网络连接失败，请检查网络后重试。'
   }
   if (error instanceof Error && error.message) {
     return error.message

@@ -12,6 +12,7 @@ import {
   addCareerLearningEvidence, saveCareerWeeklyReview, updateCareerLearningPlan, updateCareerPlanTask,
 } from '../services/careerPlanningApi'
 import type { CareerCanvas, CareerLearningPlan, CareerPlanTask, CareerPlanTaskStatus } from '../types'
+import { careerEvidenceStatusLabel } from '../utils/presentation'
 
 const props = defineProps<{
   sessionId: string
@@ -201,7 +202,7 @@ async function setPlanStatus(status: 'ACTIVE' | 'PAUSED' | 'COMPLETED' | 'ARCHIV
       </main>
 
       <aside>
-        <section class="evidence-summary"><h3>本周证据</h3><button v-for="item in plan.evidences.filter(value => tasks.some(task => task.id === value.taskId))" :key="item.id" type="button"><FilePlus2 :size="17" /><span><strong>{{ item.title }}</strong><small>{{ item.verificationStatus }}</small></span><ChevronRight :size="15" /></button><p v-if="!plan.evidences.some(value => tasks.some(task => task.id === value.taskId))">完成任务前添加代码、报告、作品或真实说明。</p></section>
+        <section class="evidence-summary"><h3>本周证据</h3><button v-for="item in plan.evidences.filter(value => tasks.some(task => task.id === value.taskId))" :key="item.id" type="button"><FilePlus2 :size="17" /><span><strong>{{ item.title }}</strong><small>{{ careerEvidenceStatusLabel(item.verificationStatus) }}</small></span><ChevronRight :size="15" /></button><p v-if="!plan.evidences.some(value => tasks.some(task => task.id === value.taskId))">完成任务前添加代码、报告、作品或真实说明。</p></section>
         <section class="weekly-review"><header><h3>本周复盘</h3><button type="button" :aria-expanded="reviewOpen" aria-controls="career-weekly-review" @click="reviewOpen = !reviewOpen"><ChevronDown :size="16" :class="{ rotated: !reviewOpen }" /></button></header><Transition name="review-expand"><div v-if="reviewOpen" id="career-weekly-review"><label>本周收获<textarea v-model="review.completedSummary" rows="3" maxlength="2000" placeholder="完成了什么，学会了什么"></textarea></label><label>阻塞问题<textarea v-model="review.blockers" rows="2" maxlength="2000" placeholder="遇到的问题与原因"></textarea></label><label>调整与下周重点<textarea v-model="review.adjustment" rows="2" maxlength="2000" placeholder="如何调整后续节奏"></textarea></label><input v-model="review.nextWeekFocus" maxlength="1000" placeholder="下周最重要的一件事"><button type="button" :disabled="pending === 'review'" @click="saveReview"><LoaderCircle v-if="pending === 'review'" class="spin" :size="16" />提交本周复盘</button></div></Transition></section>
         <p class="validation-rule"><AlertTriangle :size="17" /><span><strong>验证规则提醒</strong>任务完成只会进入待验证，AI 评估通过且由你确认后，节点才标记为已掌握。</span></p>
       </aside>

@@ -2,13 +2,15 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
-  Bell, CheckCircle2, Eye, LoaderCircle, Network,
+  Bell, CheckCircle2, Eye, LoaderCircle, LockKeyhole, Network,
   Play, Search, Sparkles, Star, Target,
 } from 'lucide-vue-next'
 import JobProofIcon from '@/shared/ui/JobProofIcon.vue'
 import AppModal from '@/shared/ui/AppModal.vue'
 import AppSelect from '@/shared/ui/AppSelect.vue'
+import PageState from '@/shared/ui/PageState.vue'
 import { jobProofIconIds } from '@/shared/ui/jobProofIcons'
+import { useLoadState } from '@/shared/lib/useLoadState'
 import { useToastFeedback } from '@/shared/ui/toast'
 import JobTaxonomyPicker from '@/features/ai-resume/components/JobTaxonomyPicker.vue'
 import type { JobTaxonomySelection } from '@/features/ai-resume/types'
@@ -20,17 +22,19 @@ import type { CareerCanvasDashboard, CareerCanvasSummary } from '../types'
 
 const route = useRoute()
 const router = useRouter()
-const loading = ref(true)
 const pending = ref('')
 const error = ref('')
 useToastFeedback(error, 'error', 'career-canvas-overview-error')
-const dashboard = ref<CareerCanvasDashboard | null>(null)
 const query = ref(typeof route.query.q === 'string' ? route.query.q : '')
 const status = ref(typeof route.query.status === 'string' ? route.query.status : 'ALL')
 const sort = ref(typeof route.query.sort === 'string' ? route.query.sort : 'RECENT')
+// A failed read shows an error with retry, never an empty overview with zero canvases.
+const dashboardLoad = useLoadState<CareerCanvasDashboard>(() => fetchCareerCanvasDashboard(query.value, status.value, sort.value))
+const dashboard = dashboardLoad.data
 const newOpen = ref(false)
 const selectedTargetId = ref('')
 const selectedTargetName = ref('')
+const newConsent = ref(false)
 let reloadTimer = 0
 
 const statusOptions = [
@@ -43,21 +47,10 @@ const sortOptions = [
   { value: 'PROGRESS', label: '进度最高' },
   { value: 'TITLE', label: '职业名称' },
 ]
-const accents = [
-  { solid: '#2563eb', soft: '#edf3ff' },
-  { solid: '#0e7490', soft: '#eaf7fa' },
-  { solid: '#19a763', soft: '#e7f8ef' },
-  { solid: '#df7b1f', soft: '#fff1df' },
-]
-
 const items = computed(() => dashboard.value?.items ?? [])
 const stats = computed(() => dashboard.value?.stats ?? {
   canvasCount: 0, primaryCount: 0, abilityNodeCount: 0, pendingValidationCount: 0, versionCount: 0,
 })
-
-function accent(index: number) {
-  return accents[index % accents.length]
-}
 
 function chooseTarget(selection: JobTaxonomySelection): void {
   selectedTargetId.value = selection.job.id
@@ -69,17 +62,11 @@ function closeNew(): void {
   newOpen.value = false
   selectedTargetId.value = ''
   selectedTargetName.value = ''
+  newConsent.value = false
 }
 
 async function load(): Promise<void> {
-  error.value = ''
-  try {
-    dashboard.value = await fetchCareerCanvasDashboard(query.value, status.value, sort.value)
-  } catch (reason) {
-    error.value = errorMessage(reason, '能力画布总览读取失败')
-  } finally {
-    loading.value = false
-  }
+  await dashboardLoad.load()
 }
 
 function scheduleLoad(): void {
@@ -101,13 +88,18 @@ async function createCanvas(): Promise<void> {
     error.value = '请先从完整岗位库中选择目标职业。'
     return
   }
+  if (!newConsent.value) {
+    error.value = '请先勾选“允许这张画布调用 AI”。'
+    return
+  }
   pending.value = 'create'
   error.value = ''
   try {
-    const session = await createCareerCanvas(selectedTargetId.value, true)
+    const session = await createCareerCanvas(selectedTargetId.value, newConsent.value)
     newOpen.value = false
     selectedTargetId.value = ''
     selectedTargetName.value = ''
+    newConsent.value = false
     await router.push({ name: 'career-planning-session', params: { sessionId: session.id }, query: { view: 'canvas', source: 'new' } })
   } catch (reason) {
     error.value = errorMessage(reason, '新建能力画布失败')
@@ -182,6 +174,8 @@ onBeforeUnmount(() => window.clearTimeout(reloadTimer))
         </nav>
       </header>
 
+      <PageState :loading="dashboardLoad.loading.value" :error="dashboardLoad.error.value" :loaded="dashboardLoad.loaded.value" error-title="能力画布总览没有读取成功" @retry="load">
+      <template #skeleton><div class="overview-loading"><LoaderCircle class="spin" :size="24" />正在整理你的职业画布</div></template>
       <section class="overview-stats" aria-label="能力画布统计">
         <article><span class="is-blue"><JobProofIcon :name="jobProofIconIds.abilityCanvas" :size="20" /></span><div><strong>{{ stats.canvasCount }}</strong><p>能力画布 · {{ stats.primaryCount }} 个主目标</p></div></article>
         <article><span class="is-green"><Network :size="20" /></span><div><strong>{{ stats.abilityNodeCount }}</strong><p>已纳入能力节点</p></div></article>
@@ -199,14 +193,8 @@ onBeforeUnmount(() => window.clearTimeout(reloadTimer))
           </div>
         </header>
 
-        <div v-if="loading" class="overview-loading"><LoaderCircle class="spin" :size="24" />正在整理你的职业画布</div>
-        <div v-else class="canvas-card-grid">
-          <article
-            v-for="(item, index) in items"
-            :key="item.sessionId"
-            class="canvas-summary-card"
-            :style="{ '--accent': accent(index).solid, '--accent-soft': accent(index).soft }"
-          >
+        <div class="canvas-card-grid">
+          <article v-for="item in items" :key="item.sessionId" class="canvas-summary-card">
             <header>
               <span class="canvas-monogram">{{ item.title.trim().slice(0, 2) }}</span>
               <div class="card-status-actions">
@@ -234,11 +222,9 @@ onBeforeUnmount(() => window.clearTimeout(reloadTimer))
               <strong>{{ item.currentFocus || (item.nodeCount > 0 ? '继续完善能力节点与证据' : '等待 AI 生成完整能力树') }}</strong>
             </section>
 
-            <section v-if="item.recentChanges.length || item.nodeCount" class="recent-changes">
+            <section v-if="item.recentChanges.length" class="recent-changes">
               <h4>最近变化</h4>
               <p v-for="(change, changeIndex) in item.recentChanges.slice(0, 2)" :key="`${item.sessionId}-${changeIndex}`"><i />{{ change }}</p>
-              <p v-if="!item.recentChanges.length"><i />第一版目标画布已创建</p>
-              <p><i class="muted" />历史版本可查看与恢复</p>
             </section>
 
             <footer>
@@ -259,6 +245,7 @@ onBeforeUnmount(() => window.clearTimeout(reloadTimer))
           </section>
         </div>
       </section>
+      </PageState>
     </main>
 
     <AppModal :open="newOpen" title="新建能力画布" :width="760" mobile-sheet @close="closeNew">
@@ -266,11 +253,13 @@ onBeforeUnmount(() => window.clearTimeout(reloadTimer))
         <header><span><Sparkles :size="23" /></span><div><h2>选择新的目标职业</h2><p>新画布不会复制旧节点。确认目标后只创建根节点，由 AI 重新生成完整能力树。</p></div></header>
         <JobTaxonomyPicker :selected-name="selectedTargetName" :selected-node-id="selectedTargetId" :disabled="pending === 'create'" @select="chooseTarget" />
         <p class="dialog-safety"><CheckCircle2 :size="16" />旧画布、学习计划、验证和版本记录均会完整保留。</p>
+        <label class="dialog-consent"><input v-model="newConsent" type="checkbox" :disabled="pending === 'create'"><span><strong>允许这张画布调用 AI</strong><small>用于生成能力树、推演节点和能力验证；只发送你确认的结构化资料，不发送原始文件。</small></span></label>
+        <p v-if="!newConsent" id="new-canvas-consent-hint" class="dialog-hint"><LockKeyhole :size="14" aria-hidden="true" />能力树由 AI 生成，勾选 AI 授权后才能创建画布。</p>
       </section>
       <template #footer>
         <button class="dialog-secondary" type="button" :disabled="pending === 'create'" @click="router.push({ name: 'career-planning-new' })"><Target :size="16" />让 AI 帮我选择方向</button>
         <button class="dialog-cancel" type="button" :disabled="pending === 'create'" @click="closeNew">取消</button>
-        <button class="dialog-create" type="button" :disabled="!selectedTargetId || pending === 'create'" @click="createCanvas"><LoaderCircle v-if="pending === 'create'" class="spin" :size="16" /><JobProofIcon v-else :name="jobProofIconIds.newCanvas" :size="16" />创建目标画布</button>
+        <button class="dialog-create" type="button" :disabled="!selectedTargetId || !newConsent || pending === 'create'" :aria-describedby="newConsent ? undefined : 'new-canvas-consent-hint'" @click="createCanvas"><LoaderCircle v-if="pending === 'create'" class="spin" :size="16" /><JobProofIcon v-else :name="jobProofIconIds.newCanvas" :size="16" />创建目标画布</button>
       </template>
     </AppModal>
 </template>
@@ -383,6 +372,13 @@ onBeforeUnmount(() => window.clearTimeout(reloadTimer))
 .new-canvas-dialog header p { margin: 6px 0 0; color: var(--text-secondary); font-size: 13px; line-height: 1.7; }
 .dialog-safety { margin: 0; display: flex; align-items: flex-start; gap: 8px; color: var(--color-success-text); font-size: 13px; }
 .dialog-safety svg { flex-shrink: 0; margin-top: 3px; }
+.dialog-consent { padding: 12px 14px; display: grid; grid-template-columns: 18px minmax(0, 1fr); align-items: start; gap: 10px; border: 1px solid var(--border-subtle); border-radius: 8px; background: var(--surface-2); cursor: pointer; }
+.dialog-consent input { width: 18px; height: 18px; margin: 1px 0 0; accent-color: var(--color-primary); }
+.dialog-consent span { display: grid; gap: 2px; }
+.dialog-consent strong { color: var(--text-primary); font-size: 13px; }
+.dialog-consent small { color: var(--text-secondary); font-size: 12px; line-height: 1.55; }
+.dialog-hint { margin: -8px 0 0; display: flex; align-items: center; gap: 6px; color: var(--text-secondary); font-size: 12px; }
+.dialog-hint svg { flex-shrink: 0; color: var(--color-warning-text); }
 .dialog-secondary, .dialog-cancel, .dialog-create { min-height: 44px; padding: 0 16px; display: flex; align-items: center; justify-content: center; gap: 8px; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--surface-1); }
 .dialog-secondary { margin-right: auto; color: var(--text-secondary); }
 .dialog-create { border-color: var(--color-primary); color: var(--text-on-primary); background: var(--color-primary); }

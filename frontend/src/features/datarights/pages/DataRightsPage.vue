@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import AppBanner from '@/shared/ui/AppBanner.vue'
 import AppButton from '@/shared/ui/AppButton.vue'
@@ -8,20 +8,25 @@ import AppIcon from '@/shared/ui/AppIcon.vue'
 import AppSelect from '@/shared/ui/AppSelect.vue'
 import AppTag from '@/shared/ui/AppTag.vue'
 import ForbidState from '@/shared/ui/ForbidState.vue'
+import PageState from '@/shared/ui/PageState.vue'
 import { useToastFeedback } from '@/shared/ui/toast'
 import { fetchTask, isCancellableTask, isManualRetryTask, isOpenTask, type TaskView } from '@/shared/api/task'
 import { errorMessage, isForbidden } from '@/shared/api/types'
 import { formatWhen } from '@/shared/lib/datetime'
+import { useLoadState } from '@/shared/lib/useLoadState'
 import { downloadCareerHistory, fetchCareerHistory } from '@/features/career-library/services/careerLibraryApi'
-import type { CareerHistorySummary } from '@/features/career-library/types'
 import { isAbortError, pollTask } from '@/shared/lib/pollTask'
 import {
   deletionLooksFinished,
   deletionProgressNote,
   exportDownloadDisabledReason,
-  extraPreviewLines,
+  glossBlocker,
   glossDeletionStatus,
+  glossHistoryType,
   glossImpactRelation,
+  glossReceiptModule,
+  glossReceiptStatus,
+  glossTargetType,
   glossTaskStatus,
   impactRowTone,
   isOpenDeletion,
@@ -45,21 +50,23 @@ import {
 import type { DeletionPreview, DeletionView, ExportView } from '../types'
 
 const route = useRoute()
-const loading = ref(true)
 const pending = ref('')
-const pageError = ref('')
 const formError = ref('')
 const notice = ref('')
-useToastFeedback(pageError, 'error', 'data-rights-page-error')
 useToastFeedback(notice, 'success', 'data-rights-page-notice')
-const forbidden = ref<unknown>(null)
+const previewState = useLoadState(() => fetchDeletionPreview())
+const historyState = useLoadState(() => fetchCareerHistory())
+const preview = computed(() => previewState.data.value)
+const careerHistory = computed(() => historyState.data.value)
+const loading = computed(() => previewState.loading.value || historyState.loading.value)
+const actionForbidden = ref<unknown>(null)
+const forbidden = computed(() => actionForbidden.value
+  ?? [previewState.error.value, historyState.error.value].find((error) => isForbidden(error)) ?? null)
 
-const preview = ref<DeletionPreview | null>(null)
 const objectPreview = ref<DeletionPreview | null>(null)
 const exportView = ref<ExportView | null>(null)
 const exportTask = ref<TaskView | null>(null)
 const deletionView = ref<DeletionView | null>(null)
-const careerHistory = ref<CareerHistorySummary | null>(null)
 
 const exportAck = ref(false)
 const accountAckImpact = ref(false)
@@ -72,13 +79,12 @@ const objectForm = reactive({ targetType: '', targetId: '' })
 let exportPoll: AbortController | null = null
 let deletionPoll: AbortController | null = null
 
-const extraPreview = computed(() => extraPreviewLines(preview.value))
 const objectBlocked = computed(() =>
   objectSubmitBlockedReason(objectPreview.value, objectForm.targetType, objectForm.targetId),
 )
 const objectImpacts = computed(() => objectPreview.value?.impacts ?? [])
-const objectBlockerCodes = computed(() =>
-  (objectPreview.value?.blockers ?? []).map((item) => String(item).trim()).filter(Boolean),
+const objectBlockers = computed(() =>
+  (objectPreview.value?.blockers ?? []).map((item) => String(item).trim()).filter(Boolean).map(glossBlocker),
 )
 const accountDeletionOpen = computed(
   () => deletionView.value?.scope !== 'OBJECT' && isOpenDeletion(deletionView.value?.status),
@@ -92,8 +98,9 @@ const downloadBlock = computed(() =>
   exportDownloadDisabledReason(exportView.value, exportTask.value?.status),
 )
 const canStartExport = computed(() => exportAck.value && !exportBusy.value && !deletionBusy.value)
+// The impact summary must have loaded: the user is confirming they have read it.
 const canSubmitAccountDeletion = computed(
-  () => accountAckImpact.value && accountAckIrreversible.value && !deletionBusy.value,
+  () => Boolean(preview.value) && accountAckImpact.value && accountAckIrreversible.value && !deletionBusy.value,
 )
 const canSubmitObjectDeletion = computed(
   () => !objectBlocked.value && objectAckImpact.value && !deletionBusy.value,
@@ -152,7 +159,7 @@ async function pollDeletionUntilSettled(id: string): Promise<void> {
       throw new DOMException('轮询已取消', 'AbortError')
     }
     if (Date.now() - started > 180_000) {
-      throw new Error('删除仍在处理，已停止自动刷新。请稍后点重新读取，不会自动重试删除。')
+      throw new Error('删除仍在处理中，页面已停止自动刷新，可稍后点“刷新删除进度”查看。')
     }
     await wait(1400, controller.signal)
     current = await fetchDeletion(id)
@@ -180,10 +187,6 @@ async function followExport(view: ExportView): Promise<void> {
   exportView.value = await fetchExport(view.id)
 }
 
-async function loadAccountPreview(): Promise<void> {
-  preview.value = await fetchDeletionPreview()
-}
-
 async function loadObjectPreview(): Promise<void> {
   const targetType = objectForm.targetType.trim()
   const targetId = objectForm.targetId.trim()
@@ -198,81 +201,75 @@ async function loadObjectPreview(): Promise<void> {
   })
 }
 
+function applyTargetFromQuery(): void {
+  const targetType = queryValue('targetType')
+  const targetId = queryValue('targetId')
+  if (targetType) {
+    objectForm.targetType = targetType.toUpperCase()
+  }
+  if (targetId) {
+    objectForm.targetId = targetId
+  }
+}
+
+/** Follows an export or deletion that a notification linked to. Failures stay inline; the rest of the page works. */
 async function hydrateFromQuery(): Promise<void> {
   const exportId = queryValue('exportId')
   const deletionId = queryValue('deletionId')
   const taskId = queryValue('taskId')
   const kind = queryValue('kind')
-  const targetType = queryValue('targetType')
-  const targetId = queryValue('targetId')
-  if (targetType) {
-    objectForm.targetType = targetType
-  }
-  if (targetId) {
-    objectForm.targetId = targetId
-  }
-  if (exportId) {
-    const view = await fetchExport(exportId)
-    await followExport(view)
-  } else if (taskId && kind !== 'deletion') {
-    exportTask.value = await fetchTask(taskId)
-  }
-  if (deletionId) {
-    await pollDeletionUntilSettled(deletionId)
-  } else if (taskId && kind === 'deletion') {
-    const task = await fetchTask(taskId)
-    notice.value =
-      `任务创建结果只给了任务 ${task.id}（${task.status}），没有 deletionId。无法读取删除回执与模块影响，也不会假装对象/账号已删除。请从通知「删除进度」进入。`
-  }
-}
-
-async function loadPage(): Promise<void> {
-  stopExportPoll()
-  stopDeletionPoll()
-  loading.value = true
-  pageError.value = ''
-  formError.value = ''
-  notice.value = ''
-  forbidden.value = null
-  const targetType = queryValue('targetType')
-  const targetId = queryValue('targetId')
-  if (targetType) {
-    objectForm.targetType = targetType
-  }
-  if (targetId) {
-    objectForm.targetId = targetId
-  }
   try {
-    await Promise.all([
-      loadAccountPreview(),
-      fetchCareerHistory().then((value) => { careerHistory.value = value }),
-    ])
-    if (objectForm.targetType.trim() && objectForm.targetId.trim()) {
-      try {
-        await loadObjectPreview()
-      } catch (error) {
-        if (isForbidden(error)) {
-          throw error
-        }
-        objectPreview.value = null
-        formError.value = errorMessage(error, '对象级预览读取失败')
-      }
-    } else {
-      objectPreview.value = null
+    if (exportId) {
+      const view = await fetchExport(exportId)
+      await followExport(view)
+    } else if (taskId && kind !== 'deletion') {
+      exportTask.value = await fetchTask(taskId)
     }
-    await hydrateFromQuery()
+    if (deletionId) {
+      await pollDeletionUntilSettled(deletionId)
+    } else if (taskId && kind === 'deletion') {
+      formError.value = '这个链接无法显示删除进度。请从通知中心的“删除进度”通知进入查看。'
+    }
   } catch (error) {
     if (isAbortError(error)) {
       return
     }
     if (isForbidden(error)) {
-      forbidden.value = error
+      actionForbidden.value = error
       return
     }
-    pageError.value = errorMessage(error, '数据权利页读取失败')
-  } finally {
-    loading.value = false
+    formError.value = errorMessage(error, '处理进度读取失败')
   }
+}
+
+/** Previews a record or file the career library sent here for permanent deletion. */
+async function loadObjectFromQuery(): Promise<void> {
+  if (!objectForm.targetType.trim() || !objectForm.targetId.trim()) {
+    objectPreview.value = null
+    return
+  }
+  try {
+    await loadObjectPreview()
+  } catch (error) {
+    objectPreview.value = null
+    if (isForbidden(error)) {
+      actionForbidden.value = error
+      return
+    }
+    formError.value = errorMessage(error, '所选数据的删除影响读取失败')
+  }
+  await nextTick()
+  document.getElementById('object')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
+
+async function loadPage(): Promise<void> {
+  stopExportPoll()
+  stopDeletionPoll()
+  formError.value = ''
+  notice.value = ''
+  actionForbidden.value = null
+  applyTargetFromQuery()
+  await Promise.all([previewState.load(), historyState.load(), loadObjectFromQuery(), hydrateFromQuery()])
 }
 
 async function onDownloadCareerHistory(format: 'json' | 'md'): Promise<void> {
@@ -281,7 +278,7 @@ async function onDownloadCareerHistory(format: 'json' | 'md'): Promise<void> {
   try {
     await downloadCareerHistory(format)
   } catch (error) {
-    formError.value = errorMessage(error, '历史归档下载失败')
+    formError.value = errorMessage(error, '历史记录下载失败')
   } finally {
     pending.value = ''
   }
@@ -295,15 +292,15 @@ async function onRefreshPreview(): Promise<void> {
   try {
     await loadObjectPreview()
     notice.value = previewIsObjectScoped(objectPreview.value)
-      ? '已按对象参数读取对象级预览。impacts / canProceed / blockers 原文照录，未改写。'
-      : '尚未确认所选数据的删除范围，暂不能提交，请刷新影响预览。'
+      ? '已读取删除影响，请确认后再提交。'
+      : '尚未确认所选数据的删除范围，暂不能提交，请重新预览删除影响。'
   } catch (error) {
     objectPreview.value = null
     if (isForbidden(error)) {
-      forbidden.value = error
+      actionForbidden.value = error
       return
     }
-    formError.value = errorMessage(error, '对象级预览读取失败')
+    formError.value = errorMessage(error, '删除影响读取失败')
   } finally {
     pending.value = ''
   }
@@ -313,26 +310,26 @@ async function onCreateExport(): Promise<void> {
   formError.value = ''
   notice.value = ''
   if (!exportAck.value) {
-    formError.value = '请先确认：导出是异步任务，下载限时，过期作废。'
+    formError.value = '请先勾选确认：导出完成后需在有效期内下载。'
     return
   }
   if (exportBusy.value || deletionBusy.value) {
     formError.value = deletionBusy.value
-      ? '账号删除进行中，不能再发起导出。'
-      : '已有导出任务进行中，不能重复提交。'
+      ? '账号注销正在处理，暂不能导出。'
+      : '已有导出在进行中，请等它完成。'
     return
   }
   pending.value = 'export'
   try {
     const created = await createExport(crypto.randomUUID())
-    notice.value = '导出任务已创建。进度来自任务查询，成功后才开放限时下载。'
+    notice.value = '已开始导出，完成后可以在这里限时下载。'
     await followExport(created)
   } catch (error) {
     if (isAbortError(error)) {
       return
     }
     if (isForbidden(error)) {
-      forbidden.value = error
+      actionForbidden.value = error
       return
     }
     formError.value = errorMessage(error, '发起导出失败')
@@ -369,7 +366,7 @@ async function onRetryExport(): Promise<void> {
   pending.value = 'export-retry'
   try {
     const next = await retryExport(exportView.value.id)
-    notice.value = '已按任务契约手动重试导出。'
+    notice.value = '已重新开始导出。'
     await followExport(next)
   } catch (error) {
     if (isAbortError(error)) {
@@ -457,7 +454,7 @@ async function onDownloadExport(): Promise<void> {
       ? '下载链接无效，已停止下载。请刷新进度或重新导出。'
       : '导出文件暂不可下载，请刷新进度或重新导出。'
   } catch (error) {
-    formError.value = errorMessage(error, '限时下载失败')
+    formError.value = errorMessage(error, '下载失败')
   } finally {
     pending.value = ''
   }
@@ -472,11 +469,11 @@ async function onSubmitAccountDeletion(): Promise<void> {
   }
   if (!accountConfirmOpen.value) {
     accountConfirmOpen.value = true
-    notice.value = '请再次确认。第二次点击才会提交账号删除/注销申请。'
+    notice.value = '请再点一次按钮，确认提交注销申请。'
     return
   }
   if (deletionBusy.value) {
-    formError.value = '已有删除申请在处理，不能重复提交。'
+    formError.value = '已有删除申请在处理，请等它完成后再提交。'
     return
   }
   pending.value = 'delete-account'
@@ -496,10 +493,10 @@ async function onSubmitAccountDeletion(): Promise<void> {
       return
     }
     if (isForbidden(error)) {
-      forbidden.value = error
+      actionForbidden.value = error
       return
     }
-    formError.value = errorMessage(error, '提交删除失败')
+    formError.value = errorMessage(error, '提交注销申请失败')
   } finally {
     pending.value = ''
   }
@@ -514,20 +511,20 @@ async function onSubmitObjectDeletion(): Promise<void> {
     return
   }
   if (!objectAckImpact.value) {
-    formError.value = '对象级提交前必须确认：已阅读对象预览清单；TARGET/CASCADE 会物理删，BOUND/RELATED 只展示。'
+    formError.value = '请先勾选：已阅读删除影响，确认要永久删除这些数据。'
     return
   }
   if (!objectConfirmOpen.value) {
     objectConfirmOpen.value = true
-    notice.value = '请再次确认对象删除。第二次点击才会提交 OBJECT，不会拿账号级预览去删整号。'
+    notice.value = '请再点一次按钮，确认永久删除所选数据。'
     return
   }
   if (accountDeletionOpen.value) {
-    formError.value = '账号级删除进行中，不能再提交对象级删除。'
+    formError.value = '账号注销正在处理，暂不能单独删除数据。'
     return
   }
   if (objectDeletionOpen.value) {
-    formError.value = '已有对象级删除申请在处理，不能重复提交。'
+    formError.value = '已有一项数据删除申请在处理，请等它完成后再提交。'
     return
   }
   pending.value = 'delete-object'
@@ -542,7 +539,7 @@ async function onSubmitObjectDeletion(): Promise<void> {
     if (submitted.scope !== 'OBJECT') {
       notice.value = '返回的删除范围与所选数据不一致，请保留申请编号并联系支持。'
     } else if (deletionLooksFinished(submitted.status)) {
-      notice.value = '所选数据的删除申请已处理完成，具体范围见处理回执。'
+      notice.value = '所选数据的删除申请已处理完成，具体范围见下方处理结果。'
     } else {
       notice.value = '所选数据的删除申请已提交，请留意后续处理进度。'
     }
@@ -555,10 +552,10 @@ async function onSubmitObjectDeletion(): Promise<void> {
       return
     }
     if (isForbidden(error)) {
-      forbidden.value = error
+      actionForbidden.value = error
       return
     }
-    formError.value = errorMessage(error, '提交对象删除失败')
+    formError.value = errorMessage(error, '提交删除申请失败')
   } finally {
     pending.value = ''
   }
@@ -636,48 +633,40 @@ onUnmounted(() => {
                   </div>
                 </header>
                 <div class="card__body">
-          <div v-if="loading && !preview" aria-busy="true">
-            <div class="bone" />
-            <div class="bone bone--short" />
-          </div>
-          <template v-else-if="preview">
-            <AppBanner tone="warn">
-              <p class="verbatim">{{ preview.impactSummary || '暂未取得删除影响说明，请刷新后再确认。' }}</p>
-            </AppBanner>
-            <p class="fine">法定例外入口</p>
-            <p class="verbatim">{{ preview.legalExceptionNote || '暂未取得法定保留范围说明。' }}</p>
-            <p v-if="preview.statusHint" class="fine">{{ preview.statusHint }}</p>
-            <details v-if="preview.scope || preview.targetType || preview.targetId || extraPreview.length" class="technical-details">
-              <summary>查看技术回执</summary>
-              <p v-if="preview.scope || preview.targetType || preview.targetId" class="fine">范围：<code>{{ preview.scope || '—' }}</code> / <code>{{ preview.targetType || '—' }}</code> / <code>{{ preview.targetId || '—' }}</code></p>
-              <div v-if="extraPreview.length" class="rights-extras">
-                <pre v-for="row in extraPreview" :key="row.key" class="verbatim extras-block">{{ row.key }}：{{ row.value }}</pre>
-              </div>
-            </details>
-            <AppBanner v-if="!previewIsObjectScoped(preview)" tone="ink">当前显示账号整体的影响说明。删除单项数据请使用下方“高级数据删除”，系统确认范围后才允许提交。</AppBanner>
-          </template>
-          <p v-else class="empty">暂未取得影响预览，请刷新后再确认删除范围。</p>
+          <PageState :loading="previewState.loading.value" :error="previewState.error.value" :loaded="previewState.loaded.value" error-title="删除影响说明读取失败" compact @retry="previewState.load">
+            <template v-if="preview">
+              <AppBanner tone="warn">
+                <p class="verbatim">{{ preview.impactSummary || '暂未取得删除影响说明，请刷新后再确认。' }}</p>
+              </AppBanner>
+              <p class="fine">依法保留的数据</p>
+              <p class="verbatim">{{ preview.legalExceptionNote || '暂未取得法定保留范围说明。' }}</p>
+              <p v-if="preview.statusHint" class="fine">{{ preview.statusHint }}</p>
+              <AppBanner v-if="!previewIsObjectScoped(preview)" tone="ink">以上是注销整个账号的影响。只想删除某一条资料，请使用下方“删除单项数据”。</AppBanner>
+            </template>
+          </PageState>
                 </div>
               </section>
 
               <section id="career-history" class="settings-card">
                 <header class="card__head">
                   <div>
-                    <h3 class="card__title">历史求职流程归档</h3>
-                    <p class="card__sub">退役的投递、阶段、面试和复盘数据只读保留，可下载但不能恢复业务操作。</p>
+                    <h3 class="card__title">历史求职记录</h3>
+                    <p class="card__sub">已下线功能留下的投递、面试和复盘记录只读保留，可以下载备份，但不能再编辑。</p>
                   </div>
-                  <AppTag tone="gray">{{ careerHistory?.total ?? 0 }} 条</AppTag>
+                  <AppTag v-if="careerHistory" tone="gray">{{ careerHistory.total }} 条</AppTag>
                 </header>
-                <div class="card__body history-archive">
-                  <div v-if="careerHistory && careerHistory.total" class="history-counts">
-                    <div v-for="(count, type) in careerHistory.counts" :key="type"><span>{{ type }}</span><strong>{{ count }}</strong></div>
-                  </div>
-                  <AppBanner v-else tone="ink">当前账号没有需要保留的历史投递链数据。</AppBanner>
-                  <p v-if="careerHistory?.archivedAt" class="fine">最近归档：{{ formatWhen(careerHistory.archivedAt) }}</p>
-                  <div class="btn-row">
-                    <AppButton variant="ghost" :pending="pending === 'career-history-json'" @click="onDownloadCareerHistory('json')"><AppIcon name="download" :size="14" />下载 JSON</AppButton>
-                    <AppButton variant="ghost" :pending="pending === 'career-history-md'" @click="onDownloadCareerHistory('md')"><AppIcon name="download" :size="14" />下载 Markdown</AppButton>
-                  </div>
+                <div class="card__body">
+                  <PageState class="history-archive" :loading="historyState.loading.value" :error="historyState.error.value" :loaded="historyState.loaded.value" :empty="!careerHistory?.total" error-title="历史记录读取失败" compact @retry="historyState.load">
+                    <template #empty><AppBanner tone="ink">你的账号没有需要保留的历史求职记录。</AppBanner></template>
+                    <div v-if="careerHistory" class="history-counts">
+                      <div v-for="(count, type) in careerHistory.counts" :key="type"><span>{{ glossHistoryType(String(type)) }}</span><strong>{{ count }}</strong></div>
+                    </div>
+                    <p v-if="careerHistory?.archivedAt" class="fine">最近归档：{{ formatWhen(careerHistory.archivedAt) }}</p>
+                    <div class="btn-row">
+                      <AppButton variant="ghost" :pending="pending === 'career-history-json'" @click="onDownloadCareerHistory('json')"><AppIcon name="download" :size="14" />下载 JSON</AppButton>
+                      <AppButton variant="ghost" :pending="pending === 'career-history-md'" @click="onDownloadCareerHistory('md')"><AppIcon name="download" :size="14" />下载 Markdown</AppButton>
+                    </div>
+                  </PageState>
                 </div>
               </section>
 
@@ -685,7 +674,7 @@ onUnmounted(() => {
                 <header class="card__head">
                   <div>
                     <h3 class="card__title">导出我的数据</h3>
-                    <p class="card__sub">异步生成求职资料、简历及已退役功能的历史归档副本，成功后限时下载。</p>
+                    <p class="card__sub">生成一份包含求职资料、简历和历史求职记录的副本，完成后可限时下载。</p>
                   </div>
                   <AppTag v-if="exportView || exportTask" tone="blue">{{ glossTaskStatus(exportView?.taskStatus || exportTask?.status) }}</AppTag>
                 </header>
@@ -724,7 +713,7 @@ onUnmounted(() => {
               :pending="pending === 'export-retry'"
               @click="onRetryExport"
             >
-              手动重试
+              重新导出
             </AppButton>
             <AppButton
               variant="wax"
@@ -737,20 +726,13 @@ onUnmounted(() => {
           </div>
           <p v-if="downloadBlock" class="lock-note">{{ downloadBlock }}</p>
           <dl v-if="exportView || exportTask" class="rights-dl">
-            <div v-if="exportView">
-              <dt>导出 ID</dt>
-              <dd><code>{{ exportView.id }}</code></dd>
-            </div>
             <div>
-              <dt>任务</dt>
-              <dd>
-                <code>{{ exportView?.taskId || exportTask?.id || '—' }}</code>
-                · {{ glossTaskStatus(exportView?.taskStatus || exportTask?.status) }}
-              </dd>
+              <dt>状态</dt>
+              <dd>{{ glossTaskStatus(exportView?.taskStatus || exportTask?.status) }}</dd>
             </div>
-            <div v-if="exportView?.scope">
-              <dt>范围</dt>
-              <dd>{{ exportView.scope }}</dd>
+            <div v-if="exportView?.createdAt">
+              <dt>发起时间</dt>
+              <dd>{{ formatWhen(exportView.createdAt) }}</dd>
             </div>
             <div v-if="exportView?.downloadExpiresAt">
               <dt>下载截止</dt>
@@ -761,7 +743,7 @@ onUnmounted(() => {
               <dd>{{ exportTask?.failureReason || exportView?.failureReason }}</dd>
             </div>
           </dl>
-          <p v-else class="empty">还没有导出任务。确认上方说明后即可发起，任务完成时会开放限时下载。</p>
+          <p v-else class="empty">还没有导出记录。勾选上方说明后即可发起，完成后会开放限时下载。</p>
                 </div>
               </section>
 
@@ -781,6 +763,7 @@ onUnmounted(() => {
             <input v-model="accountAckIrreversible" type="checkbox" :disabled="pending !== '' || deletionBusy" />
             <span>我确认处理期间部分功能可能受限，并了解依法需要保留的数据不会提前删除。</span>
           </label>
+          <p v-if="!preview" class="lock-note">删除影响说明还没有读取成功，读取后才能提交注销申请。</p>
           <div class="btn-row">
             <AppButton
               variant="danger"
@@ -792,17 +775,17 @@ onUnmounted(() => {
                 pending === 'delete-account'
                   ? '正在提交…'
                   : accountConfirmOpen
-                    ? '第二次确认：提交账号删除申请'
-                    : '申请账号删除 / 注销'
+                    ? '再次确认：提交注销申请'
+                    : '申请注销账号'
               }}
             </AppButton>
             <AppButton
+              v-if="deletionView"
               variant="ghost"
-              :disabled="!deletionView"
               :pending="pending === 'delete-refresh'"
               @click="onRefreshDeletion"
             >
-              重新读取删除进度
+              刷新删除进度
             </AppButton>
           </div>
                 </div>
@@ -811,8 +794,8 @@ onUnmounted(() => {
               <section id="object" class="settings-card advanced-card">
                 <header class="card__head">
                   <div>
-                    <h3 class="card__title">高级数据删除</h3>
-                    <p class="card__sub">仅用于单独删除一条职业记录、资料文件或职业主档。</p>
+                    <h3 class="card__title">删除单项数据</h3>
+                    <p class="card__sub">永久删除一条经历、一个资料文件或整个职业主档。可以在求职资料库的“更多操作 → 永久删除”进入，编号会自动填好。</p>
                   </div>
                 </header>
                 <div class="card__body">
@@ -825,7 +808,7 @@ onUnmounted(() => {
                 <option value="CAREER_PROFILE">职业主档</option>
               </AppSelect>
             </AppField>
-            <AppField id="object-id" label="数据编号" hint="可以从对应资料详情页复制编号">
+            <AppField id="object-id" label="数据编号" hint="从求职资料库进入时会自动填写">
               <input
                 id="object-id"
                 v-model="objectForm.targetId"
@@ -842,17 +825,11 @@ onUnmounted(() => {
           <p v-if="objectBlocked" class="lock-note">{{ objectBlocked }}</p>
           <template v-if="objectPreview">
             <p class="fine">
-              删除范围回执：
-              <code>{{ objectPreview.scope || '—' }}</code>
-              /
-              <code>{{ objectPreview.targetType || '—' }}</code>
-              /
-              <code>{{ objectPreview.targetId || '—' }}</code>
-              · {{ objectPreview.canProceed === true ? '允许提交' : '暂不可提交' }}
+              {{ glossTargetType(objectPreview.targetType) }} · {{ objectPreview.canProceed === true ? '可以删除' : '暂时不能删除' }}
             </p>
-            <p class="verbatim">{{ objectPreview.impactSummary || '（对象预览未返回 impactSummary）' }}</p>
-            <AppBanner v-if="objectBlockerCodes.length || objectPreview.canProceed === false" tone="bad">
-              当前不能提交。阻断原因：{{ objectBlockerCodes.length ? objectBlockerCodes.join('；') : '服务端尚未确认该数据可以删除' }}
+            <p class="verbatim">{{ objectPreview.impactSummary || '暂未取得删除影响说明，请重新预览。' }}</p>
+            <AppBanner v-if="objectBlockers.length || objectPreview.canProceed === false" tone="bad">
+              暂时不能删除：{{ objectBlockers.length ? objectBlockers.join('；') : '系统尚未确认这项数据可以删除' }}
             </AppBanner>
             <ul v-if="objectImpacts.length" class="ledger">
               <li
@@ -866,18 +843,11 @@ onUnmounted(() => {
                 }"
               >
                 <header>
-                  <strong>{{ row.kind || '未命名' }}</strong>
+                  <strong>{{ row.label || glossTargetType(row.kind) }}</strong>
                   <span class="pill">{{ glossImpactRelation(row.relation) }}</span>
                 </header>
-                <p class="verbatim">{{ row.label || '（无 label）' }}</p>
-                <p class="fine">
-                  <code>{{ row.id || '—' }}</code>
-                  · {{ row.status || '—' }}
-                  · {{ row.relation || '—' }}
-                </p>
               </li>
             </ul>
-            <p v-else class="empty">对象预览 impacts 为空。空清单不是“已删除成功”。</p>
           </template>
           <label class="ack">
             <input
@@ -897,8 +867,8 @@ onUnmounted(() => {
               pending === 'delete-object'
                 ? '正在提交…'
                 : objectConfirmOpen
-                  ? '第二次确认：提交对象删除申请'
-                  : '提交单项数据删除申请'
+                  ? '再次确认：永久删除'
+                  : '永久删除所选数据'
             }}
           </AppButton>
                 </div>
@@ -908,7 +878,7 @@ onUnmounted(() => {
                 <header class="card__head">
                   <div>
                     <h3 class="card__title">删除申请进度</h3>
-                    <p class="card__sub">模块回执照录，处理结果同步到通知中心。</p>
+                    <p class="card__sub">各项数据的处理结果，也会通过通知中心告知你。</p>
                   </div>
                 </header>
                 <div class="card__body">
@@ -917,39 +887,33 @@ onUnmounted(() => {
           </AppBanner>
           <dl class="rights-dl">
             <div>
-              <dt>申请 ID</dt>
-              <dd><code>{{ deletionView.id }}</code></dd>
-            </div>
-            <div>
               <dt>状态</dt>
               <dd>{{ glossDeletionStatus(deletionView.status) }}</dd>
             </div>
             <div>
               <dt>范围</dt>
-              <dd>
-                {{ deletionView.scope || '—' }}
-                <template v-if="deletionView.targetType || deletionView.targetId">
-                  · {{ deletionView.targetType || '—' }} / {{ deletionView.targetId || '—' }}
-                </template>
-              </dd>
+              <dd>{{ deletionView.scope === 'OBJECT' ? glossTargetType(deletionView.targetType) : '整个账号' }}</dd>
             </div>
             <div>
               <dt>更新时间</dt>
               <dd>{{ formatWhen(deletionView.updatedAt) }}</dd>
             </div>
+            <div>
+              <dt>申请编号（联系客服时提供）</dt>
+              <dd><code>{{ deletionView.id }}</code></dd>
+            </div>
           </dl>
-          <p class="fine">申请回执中的影响原文</p>
-          <p class="verbatim">{{ deletionView.impactSummary || '（无 impactSummary）' }}</p>
+          <p v-if="deletionView.impactSummary" class="verbatim">{{ deletionView.impactSummary }}</p>
           <ul v-if="deletionView.receipts?.length" class="ledger">
             <li v-for="(row, index) in deletionView.receipts" :key="`${row.moduleCode}-${index}`" class="ledger__row">
               <header>
-                <strong>{{ row.moduleCode || '模块未命名' }}</strong>
-                <span class="pill">{{ row.status || '—' }}</span>
+                <strong>{{ glossReceiptModule(row.moduleCode) }}</strong>
+                <span class="pill">{{ glossReceiptStatus(row.status) }}</span>
               </header>
-              <p class="verbatim">{{ row.message || '（无 message）' }}</p>
+              <p v-if="row.message" class="verbatim fine">{{ row.message }}</p>
             </li>
           </ul>
-          <p v-else class="empty">还没有模块回执。提交当时通常仍是已提交。</p>
+          <p v-else class="empty">各项数据还在排队处理，结果出来后会显示在这里。</p>
                 </div>
               </section>
             </div>
@@ -964,12 +928,12 @@ onUnmounted(() => {
               <div class="card__body">
                 <a class="rail-row" href="#export">
                   <span class="rail-row__icon is-blue"><AppIcon name="download" :size="16" /></span>
-                  <div><strong>导出我的数据</strong><p>下载求职资料、简历及已退役功能的历史归档副本。</p></div>
+                  <div><strong>导出我的数据</strong><p>下载求职资料、简历和历史求职记录的副本。</p></div>
                   <AppIcon name="chevron-right" :size="14" />
                 </a>
                 <a class="rail-row" href="#object">
                   <span class="rail-row__icon is-orange"><AppIcon name="trash" :size="16" /></span>
-                  <div><strong>删除部分数据</strong><p>选择并删除不需要的职业记录、资料文件或职业主档。</p></div>
+                  <div><strong>删除单项数据</strong><p>永久删除不需要的经历、资料文件或职业主档。</p></div>
                   <AppIcon name="chevron-right" :size="14" />
                 </a>
                 <a class="rail-row" href="#deletion">
@@ -1096,22 +1060,6 @@ onUnmounted(() => {
 .advanced-card .card__sub {
   max-width: 680px;
 }
-.technical-details {
-  margin-top: 12px;
-  padding: 10px 12px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--surface-1);
-}
-.technical-details summary {
-  color: var(--text-secondary);
-  font-size: 12px;
-  font-weight: 600;
-}
-.technical-details[open] summary {
-  margin-bottom: 10px;
-  color: var(--color-primary);
-}
 .preview-card .banner {
   margin-bottom: 12px;
 }
@@ -1124,14 +1072,6 @@ onUnmounted(() => {
   word-break: break-word;
   font-size: 13px;
   line-height: 1.7;
-}
-.extras-block {
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 10px 12px;
-  margin-top: 8px;
-  font-family: inherit;
 }
 .ledger {
   list-style: none;

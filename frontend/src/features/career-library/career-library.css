@@ -740,9 +740,40 @@ textarea.career-input {
 }
 
 .missing-list button:hover,
-.record-tips button:hover,
+.record-tips button:hover:not(:disabled),
 .category-overview button:hover {
   background: var(--surface-2);
+}
+
+.record-tips button:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+/* Load states (X-1) and "加载更多" (X-9) for the records and files lists. */
+.career-list-state {
+  display: grid;
+  gap: 12px;
+}
+
+.career-grid-state {
+  display: contents;
+}
+
+.career-grid-state > .ui-error,
+.career-grid-state > .ui-banner,
+.career-grid-state > .career-load-more {
+  grid-column: 1 / -1;
+}
+
+.career-load-more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 4px 0;
+  color: var(--text-tertiary);
+  font-size: 12px;
 }
 
 .all-complete {
@@ -1095,6 +1126,10 @@ textarea.career-input {
   align-items: start;
   padding-left: 16px;
   border-left: 1px solid var(--border-subtle);
+}
+
+.record-actions .ai-optimize {
+  align-self: end;
 }
 
 .record-actions > div {
@@ -1664,19 +1699,19 @@ textarea.career-input {
   position: relative;
 }
 
-.storage-card > strong {
+.storage-card .page-state > strong {
   color: var(--text-primary);
   font-size: 20px;
   font-variant-numeric: tabular-nums;
 }
 
-.storage-card > strong small {
+.storage-card .page-state > strong small {
   color: var(--text-secondary);
   font-size: 12px;
   font-weight: 500;
 }
 
-.storage-card > span {
+.storage-card .page-state > span {
   position: absolute;
   top: 64px;
   right: 19px;
@@ -1699,7 +1734,7 @@ textarea.career-input {
   background: var(--career-primary);
 }
 
-.storage-card > p {
+.storage-card .page-state > p {
   display: flex;
   justify-content: space-between;
   margin-top: 8px;
@@ -1782,7 +1817,8 @@ textarea.career-input {
   line-height: 1.6;
 }
 
-.privacy-file-card button {
+.privacy-file-card__link {
+  width: fit-content;
   display: flex;
   align-items: center;
   gap: 6px;

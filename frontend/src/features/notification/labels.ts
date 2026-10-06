@@ -39,16 +39,16 @@ export function canMarkRead(item: NotificationView): boolean {
 
 export function markReadBlockedReason(item: NotificationView): string {
   if (item.status === 'SEND_FAILED') {
-    return '发送失败，不能标成已读来假装已送达。通知失败不回滚业务。'
+    return '这条通知发送失败，无需标记已读；相关业务结果以对应页面为准。'
   }
   if (item.status === 'PENDING') {
-    return '仍为待发送，不能假装已送达。'
+    return '这条通知还在发送中，送达后才能标记已读。'
   }
   if (item.status === 'READ') {
     return '已经是已读。'
   }
   if (item.status === 'EXPIRED') {
-    return '已过期提醒不再标已读。'
+    return '这条提醒已过期，无需处理。'
   }
   if (item.status === 'ARCHIVED') {
     return '已归档。'
@@ -56,8 +56,29 @@ export function markReadBlockedReason(item: NotificationView): string {
   return ''
 }
 
-export function isProtectedNotice(item: NotificationView): boolean {
-  return item.type === 'SECURITY' || item.type === 'DATA_RIGHTS'
+const TASK_TYPE_GLOSS: Record<string, string> = {
+  ACCOUNT_EXPORT: '导出个人数据',
+  ACCOUNT_DELETION: '账号删除',
+  RESUME_PDF_EXPORT: '导出简历 PDF',
+  RESUME_DOCX_EXPORT: '导出简历 Word',
+  CAREER_FILE_PROCESS: '资料文件安全检查与预览',
+  RESUME_IMPORT_PARSE: '简历导入',
+  JD_PARSE: '岗位描述解析',
+  JOB_MATCH: '岗位匹配分析',
+  MATCH_AI_ADVICE: '岗位匹配建议',
+  JOB_MATCH_EXPORT: '导出匹配报告',
+  CAREER_PLANNING_CANVAS: '职业规划生成',
+  CAREER_PLANNING_CANVAS_PROPOSAL: '职业规划调整建议',
+  CAREER_PLANNING_INTERVIEW: '职业规划访谈',
+  CAREER_PLANNING_RECOMMENDATIONS: '职业方向推荐',
+  CAREER_PLANNING_VALIDATION_BATCH: '职业规划校验',
+}
+
+export function glossTaskType(type?: string | null): string {
+  if (!type) {
+    return '后台任务'
+  }
+  return TASK_TYPE_GLOSS[type] ?? '后台任务'
 }
 
 export function dataRightsPathForNotice(item: NotificationView): string | null {

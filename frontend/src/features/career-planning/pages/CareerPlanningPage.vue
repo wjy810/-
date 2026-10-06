@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, h, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   ArrowLeft, ArrowRight, Bookmark, Bot, BrainCircuit, BriefcaseBusiness, CalendarCheck2, Check, CheckCircle2,
@@ -8,6 +8,9 @@ import {
 } from 'lucide-vue-next'
 import AppModal from '@/shared/ui/AppModal.vue'
 import AppSelect from '@/shared/ui/AppSelect.vue'
+import PageState from '@/shared/ui/PageState.vue'
+import UiErrorState from '@/shared/ui/UiErrorState.vue'
+import { useLoadState } from '@/shared/lib/useLoadState'
 import { useToastFeedback } from '@/shared/ui/toast'
 import JobTaxonomyPicker from '@/features/ai-resume/components/JobTaxonomyPicker.vue'
 import type { JobTaxonomySelection } from '@/features/ai-resume/types'
@@ -16,7 +19,6 @@ import { cancelTask, fetchTask, isOpenTask, taskStatusLabel } from '@/shared/api
 import type { TaskView } from '@/shared/api/task'
 import CareerSkillPicker from '../components/CareerSkillPicker.vue'
 import CareerProfilePreview from '../components/CareerProfilePreview.vue'
-import CareerPlanningWorkbench from '../components/CareerPlanningWorkbench.vue'
 import {
   answerCareerPlanningInterview,
   authorizeCareerPlanningEvidence,
@@ -46,14 +48,24 @@ import {
 } from '../utils/evidenceAuthorization'
 import type { EvidenceScope, EvidenceScopeSelections } from '../utils/evidenceAuthorization'
 import { shouldAcceptCareerPlanningSnapshot } from '../utils/sessionSnapshot'
-import { isCareerExecutionPhase } from '../utils/presentation'
+import {
+  careerEvidenceStrengthLabel, careerProfileSectionLabel, careerSourceRefLabels, isCareerExecutionPhase,
+} from '../utils/presentation'
 import '../career-planning.css'
+
+// The workbench pulls in the canvas renderer; load it only once a plan reaches the canvas.
+const CareerPlanningWorkbench = defineAsyncComponent({
+  loader: () => import('../components/CareerPlanningWorkbench.vue'),
+  delay: 120,
+  loadingComponent: { render: () => h('div', { class: 'cp-loading' }, [h(LoaderCircle, { class: 'cp-spin', size: 24 }), h('span', '正在载入能力画布')]) },
+  errorComponent: { render: () => h(UiErrorState, { title: '能力画布没有加载成功', onRetry: () => window.location.reload() }) },
+  onError: (_error, retry, fail, attempts) => (attempts < 3 ? retry() : fail()),
+})
 
 const route = useRoute()
 const router = useRouter()
 const overview = ref<CareerPlanningOverview | null>(null)
 const session = ref<CareerPlanningSession | null>(null)
-const loading = ref(true)
 const pending = ref('')
 const pageError = ref('')
 const notice = ref('')
@@ -71,7 +83,7 @@ const confirmationRecommendation = ref<CareerRecommendation | null>(null)
 const detailRecommendation = ref<CareerRecommendation | null>(null)
 const compareOpen = ref(false)
 const compareIds = ref<string[]>([])
-const aiConsent = ref(true)
+const aiConsent = ref(false)
 const confirmedItemIds = ref<string[]>([])
 const reviewDraftItems = ref<ProfileItem[]>([])
 const reviewEditingId = ref('')
@@ -280,23 +292,25 @@ function hydrateForm(value: CareerPlanningSession, interviewPosition?: number): 
   void nextTick(() => { hydratingProfile = false })
 }
 
-async function load(): Promise<void> {
-  loading.value = true
-  pageError.value = ''
-  try {
-    const routeId = typeof route.params.sessionId === 'string' ? route.params.sessionId : ''
-    overview.value = await fetchCareerPlanningOverview()
-    const value = routeId ? await fetchCareerPlanningSession(routeId) : null
+const routeSessionId = computed(() => typeof route.params.sessionId === 'string' ? route.params.sessionId : '')
+// A failed read is an error with retry, never the welcome page: that would invite a duplicate plan.
+const pageLoad = useLoadState(async (signal) => {
+  const routeId = routeSessionId.value
+  const overviewValue = await fetchCareerPlanningOverview()
+  const value = routeId ? await fetchCareerPlanningSession(routeId) : null
+  if (!signal.aborted) {
+    overview.value = overviewValue
     session.value = value
     forceProfileEdit.value = false
-    if (value) {
-      hydrateForm(value)
-    }
-  } catch (reason) {
-    pageError.value = errorMessage(reason, '职业规划读取失败')
-  } finally {
-    loading.value = false
+    if (value) hydrateForm(value)
   }
+  return value
+})
+const pageReady = computed(() => pageLoad.loaded.value
+  && (!routeSessionId.value || routeSessionId.value === session.value?.id))
+
+async function load(): Promise<void> {
+  await pageLoad.load()
 }
 
 async function start(mode: 'AI_DISCOVERY' | 'KNOWN_TARGET'): Promise<void> {
@@ -306,6 +320,10 @@ async function start(mode: 'AI_DISCOVERY' | 'KNOWN_TARGET'): Promise<void> {
   }
   if (mode === 'KNOWN_TARGET' && !selectedTargetName.value) {
     pageError.value = '请先从岗位分类中选择目标职业。'
+    return
+  }
+  if (!aiConsent.value) {
+    pageError.value = '请先勾选“允许本次规划调用 AI”。'
     return
   }
   pending.value = 'start'; pageError.value = ''
@@ -591,16 +609,26 @@ function toggleConfirmed(id: string): void {
 }
 
 function sourceRefLabel(source: ProfileItem['sourceRefs'][number]): string {
-  if (typeof source === 'string') return source
-  const type = typeof source.type === 'string' ? source.type : '资料来源'
-  const id = typeof source.id === 'string' ? source.id : ''
+  if (typeof source === 'string') return careerSourceRefLabels([source])[0] ?? '资料来源'
+  const type = typeof source.type === 'string' ? source.type : ''
   const version = typeof source.version === 'number' || typeof source.version === 'string'
     ? String(source.version)
     : typeof source.sourceVersion === 'number' || typeof source.sourceVersion === 'string'
       ? String(source.sourceVersion)
       : ''
   const labels: Record<string, string> = { INTERVIEW: 'AI 访谈回答', CAREER_RECORD: '求职资料库', PROFILE: '画像表单' }
-  return `${labels[type] ?? type}${id ? ` · ${id.slice(0, 8)}` : ''}${version ? ` · v${version}` : ''}`
+  return `${labels[type] ?? '资料来源'}${version ? ` · 第 ${version} 版` : ''}`
+}
+
+const profileItemTitles = computed(() => new Map((session.value?.profile.items ?? [])
+  .map(item => [`PROFILE_ITEM:${item.id}`, item.title] as [string, string])))
+
+function itemSourceLabels(item: ProfileItem): string[] {
+  return [...new Set(item.sourceRefs.map(sourceRefLabel))]
+}
+
+function recommendationSourceLabels(item: CareerRecommendation): string[] {
+  return careerSourceRefLabels(item.sourceRefs, profileItemTitles.value)
 }
 
 function reviewDetailKey(item: ProfileItem): 'answer' | 'description' | null {
@@ -894,9 +922,9 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-      <main class="cp-page">
-      <div v-if="loading" class="cp-loading"><LoaderCircle class="cp-spin" :size="24" /><span>正在恢复职业规划</span></div>
-      <template v-else>
+  <main class="cp-page">
+    <PageState :loading="pageLoad.loading.value" :error="pageLoad.error.value" :loaded="pageReady" error-title="职业规划没有读取成功" @retry="load">
+      <template #skeleton><div class="cp-loading"><LoaderCircle class="cp-spin" :size="24" /><span>正在恢复职业规划</span></div></template>
         <section v-if="!session" class="cp-welcome">
           <div class="cp-welcome__intro">
             <span class="cp-welcome__mark"><Sparkles :size="28" aria-hidden="true" /></span>
@@ -915,7 +943,8 @@ onBeforeUnmount(() => {
                 <li><span><Compass :size="17" aria-hidden="true" /></span><div><strong>比较职业方向</strong><small>生成 3–6 个可核对选项</small></div></li>
               </ol>
               <footer class="cp-entry__action">
-                <button class="cp-primary" type="button" :disabled="pending === 'start'" @click="start('AI_DISCOVERY')"><LoaderCircle v-if="pending === 'start'" class="cp-spin" :size="17" /><Compass v-else :size="17" />开始职业方向判定 <ArrowRight :size="16" aria-hidden="true" /></button>
+                <button class="cp-primary" type="button" :disabled="!aiConsent || pending === 'start'" :aria-describedby="aiConsent ? undefined : 'cp-consent-hint-discovery'" @click="start('AI_DISCOVERY')"><LoaderCircle v-if="pending === 'start'" class="cp-spin" :size="17" /><Compass v-else :size="17" />开始职业方向判定 <ArrowRight :size="16" aria-hidden="true" /></button>
+                <p v-if="!aiConsent" id="cp-consent-hint-discovery" class="cp-consent-hint"><LockKeyhole :size="14" aria-hidden="true" />需要先勾选下方“允许本次规划调用 AI”</p>
               </footer>
             </article>
             <article class="cp-entry cp-entry--known">
@@ -930,13 +959,14 @@ onBeforeUnmount(() => {
                   <button v-if="!knownTargetSetup" key="known-start" class="cp-secondary cp-known-target-start" type="button" @click="start('KNOWN_TARGET')"><Target :size="17" aria-hidden="true" />填写目标职业 <ArrowRight :size="16" aria-hidden="true" /></button>
                   <div v-else key="known-picker" class="cp-target-setup">
                     <JobTaxonomyPicker :selected-name="selectedTargetName" :selected-node-id="selectedTargetId" @select="selectTarget" />
-                    <button class="cp-primary" type="button" :disabled="!selectedTargetId || pending === 'start'" @click="start('KNOWN_TARGET')">确认并开始 <ArrowRight :size="16" aria-hidden="true" /></button>
+                    <button class="cp-primary" type="button" :disabled="!aiConsent || !selectedTargetId || pending === 'start'" :aria-describedby="aiConsent ? undefined : 'cp-consent-hint-target'" @click="start('KNOWN_TARGET')">确认并开始 <ArrowRight :size="16" aria-hidden="true" /></button>
+                    <p v-if="!aiConsent" id="cp-consent-hint-target" class="cp-consent-hint"><LockKeyhole :size="14" aria-hidden="true" />能力画布由 AI 生成，需要先勾选下方“允许本次规划调用 AI”</p>
                   </div>
                 </Transition>
               </div>
             </article>
           </div>
-          <label class="cp-consent"><input v-model="aiConsent" type="checkbox"><span><strong>允许本次规划调用 AI</strong><small>只发送你填写并确认的结构化资料，不发送原始文件或图片。</small></span><LockKeyhole :size="18" aria-hidden="true" /></label>
+          <label class="cp-consent"><input v-model="aiConsent" type="checkbox"><span><strong>允许本次规划调用 AI</strong><small>开始前需要你主动勾选。只发送你填写并确认的结构化资料，不发送原始文件或图片。</small></span><LockKeyhole :size="18" aria-hidden="true" /></label>
           <section class="cp-outcomes" aria-label="职业规划产出">
             <header><strong>你将得到</strong><small>每一步都可追溯、可确认</small></header>
             <div class="cp-outcome-list">
@@ -1009,7 +1039,7 @@ onBeforeUnmount(() => {
 
         <section v-else-if="phase === 'INTERVIEW' || activeInterviewTask" class="cp-interview-layout">
           <div class="cp-interview">
-            <header><span class="cp-ai-avatar"><Bot :size="24" /></span><div><strong>AI 补充访谈</strong><p>只追问当前画像中缺失或存在歧义的内容，可以跳过不想回答的问题。</p></div><em :class="{ disconnected: !streamConnected }">{{ streamConnected ? (openRound?.model || 'SYSTEM 通道') : '正在重新连接' }}</em></header>
+            <header><span class="cp-ai-avatar"><Bot :size="24" /></span><div><strong>AI 补充访谈</strong><p>只追问当前画像中缺失或存在歧义的内容，可以跳过不想回答的问题。</p></div><em :class="{ disconnected: !streamConnected }">{{ streamConnected ? '实时连接正常' : '正在重新连接' }}</em></header>
             <div ref="interviewScroll" class="cp-conversation-stream" role="log" aria-label="AI 补充访谈消息" aria-live="polite" tabindex="0">
               <article v-for="message in interviewMessages" :key="message.id" class="cp-chat-row" :class="message.role === 'USER' ? 'is-user' : 'is-assistant'">
                 <span class="cp-chat-avatar"><UserRound v-if="message.role === 'USER'" :size="17" /><Bot v-else :size="17" /></span>
@@ -1076,8 +1106,8 @@ onBeforeUnmount(() => {
                         <strong>{{ item.title }}</strong>
                         <p v-if="reviewItemSummary(item)" class="cp-confirm-summary">{{ reviewItemSummary(item) }}</p>
                       </template>
-                      <small>{{ item.section }} · {{ item.claimType === 'INFERENCE' ? 'AI 推断，需谨慎确认' : item.claimType === 'SELF_REPORTED' ? '用户自述事实' : '已确认事实' }}</small>
-                      <div v-if="item.sourceRefs.length" class="cp-confirm-sources"><Link2 :size="12" /><span v-for="source in item.sourceRefs" :key="sourceRefLabel(source)">{{ sourceRefLabel(source) }}</span></div>
+                      <small>{{ careerProfileSectionLabel(item.section) }} · {{ item.claimType === 'INFERENCE' ? 'AI 推断，需谨慎确认' : item.claimType === 'SELF_REPORTED' ? '用户自述事实' : '已确认事实' }}</small>
+                      <div v-if="item.sourceRefs.length" class="cp-confirm-sources"><Link2 :size="12" /><span v-for="label in itemSourceLabels(item)" :key="label">{{ label }}</span></div>
                       <div v-else class="cp-confirm-sources is-empty"><Link2 :size="12" /><span>当前表单直接填写</span></div>
                     </div>
                     <div class="cp-confirm-actions">
@@ -1101,7 +1131,7 @@ onBeforeUnmount(() => {
           <div class="cp-recommendations">
             <header><div><h1>职业方向推荐</h1><p>比较现有优势、能力缺口和证据来源后再做决定。</p></div><div v-if="recommendationSet?.status === 'READY'" class="cp-recommend-summary"><span>已收藏 {{ favoriteCount }}</span><button type="button" :disabled="comparedRecommendations.length < 2" @click="openComparison"><GitCompareArrows :size="15" />对比 {{ comparedRecommendations.length }}/3</button></div></header>
             <section v-if="!recommendationSet && activeRecommendationTask" class="cp-generate-card cp-generate-card--running"><span><LoaderCircle class="cp-spin" :size="30" /></span><h2>正在生成可比较的职业方向</h2><p>{{ taskStatusText }}。你可以离开本页，任务完成后会从服务端恢复。</p><div class="cp-task-progress"><i :style="{ width: `${taskProgress}%` }"></i></div><button class="cp-secondary" type="button" :disabled="pending === 'cancel-ai-task'" @click="cancelForegroundTask">取消生成</button></section>
-            <section v-else-if="!recommendationSet" class="cp-generate-card"><span><Sparkles :size="32" /></span><h2>生成真实职业方向</h2><p>将调用已配置的 SYSTEM AI 通道，成功后消耗 1 次额度。通道不可用时不会返回模拟数据。</p><button class="cp-primary" type="button" :disabled="pending === 'recommendations'" @click="generateRecommendations"><LoaderCircle v-if="pending === 'recommendations'" class="cp-spin" :size="17" /><Sparkles v-else :size="17" />生成职业方向 · 1 次</button></section>
+            <section v-else-if="!recommendationSet" class="cp-generate-card"><span><Sparkles :size="32" /></span><h2>生成真实职业方向</h2><p>由 AI 基于已确认的画像生成，成功后消耗 1 次额度。AI 暂不可用时会如实提示，不会给出模拟结果。</p><button class="cp-primary" type="button" :disabled="pending === 'recommendations'" @click="generateRecommendations"><LoaderCircle v-if="pending === 'recommendations'" class="cp-spin" :size="17" /><Sparkles v-else :size="17" />生成职业方向 · 1 次</button></section>
             <section v-else-if="recommendationSet.status === 'INSUFFICIENT'" class="cp-insufficient"><CircleAlert :size="30" /><h2>资料不足，暂不生成推荐</h2><p v-for="reason in recommendationSet.insufficientReasons" :key="reason">{{ reason }}</p><button class="cp-secondary" type="button" @click="editConfirmedProfile">返回补充画像</button></section>
             <div v-else class="cp-recommendation-list">
               <article v-for="(item, index) in recommendationSet.recommendations" :key="item.id" class="cp-recommendation">
@@ -1111,7 +1141,7 @@ onBeforeUnmount(() => {
               </article>
             </div>
           </div>
-          <aside class="cp-recommend-meta"><h2>推荐说明</h2><dl><div><dt>基于画像</dt><dd>职业画像 v{{ session.profile.snapshotVersion }}</dd></div><div><dt>使用资料</dt><dd>{{ activePermissions.length }} 项</dd></div><div><dt>生成模型</dt><dd>{{ recommendationSet?.model || '等待生成' }}</dd></div><div><dt>AI 额度</dt><dd>{{ quotaText }}</dd></div></dl><section><Database :size="20" /><p>补充项目经历、作品和证书，可帮助模型减少跨领域猜测。</p><button type="button" @click="openEvidence">调整资料授权</button></section><footer><LockKeyhole :size="15" />推荐仅供决策参考，系统不会替你确认目标。</footer></aside>
+          <aside class="cp-recommend-meta"><h2>推荐说明</h2><dl><div><dt>基于画像</dt><dd>职业画像 v{{ session.profile.snapshotVersion }}</dd></div><div><dt>使用资料</dt><dd>{{ activePermissions.length }} 项</dd></div><div><dt>生成方式</dt><dd>{{ recommendationSet ? 'AI 辅助生成' : '等待生成' }}</dd></div><div><dt>AI 额度</dt><dd>{{ quotaText }}</dd></div></dl><section><Database :size="20" /><p>补充项目经历、作品和证书，可帮助模型减少跨领域猜测。</p><button type="button" @click="openEvidence">调整资料授权</button></section><footer><LockKeyhole :size="15" />推荐仅供决策参考，系统不会替你确认目标。</footer></aside>
         </section>
 
         <CareerPlanningWorkbench
@@ -1121,14 +1151,12 @@ onBeforeUnmount(() => {
           @error="showCanvasError"
           @notice="showCanvasNotice"
         />
-      </template>
-    </main>
+    </PageState>
+  </main>
 
-    <nav v-if="session && !isCareerExecutionPhase(phase)" class="cp-mobile-nav" aria-label="职业规划移动导航">
-      <button type="button" :class="{ active: !phase.includes('RECOMMEND') || forceProfileEdit }" @click="openMobileProfile"><MessageCircle :size="20" /><span>对话</span></button>
-      <button type="button" :class="{ active: phase.includes('RECOMMEND') && !forceProfileEdit }" :disabled="!recommendationSet" @click="openMobileDirection"><Compass :size="20" /><span>规划</span></button>
-      <button type="button" disabled><CalendarCheck2 :size="20" /><span>任务</span></button>
-      <button type="button" disabled><UserRound :size="20" /><span>我的</span></button>
+    <nav v-if="pageReady && session && !isCareerExecutionPhase(phase)" class="cp-mobile-nav" aria-label="职业规划移动导航">
+      <button type="button" :class="{ active: !phase.includes('RECOMMEND') || forceProfileEdit }" @click="openMobileProfile"><UserRound :size="20" /><span>画像</span></button>
+      <button type="button" :class="{ active: phase.includes('RECOMMEND') && !forceProfileEdit }" :disabled="!recommendationSet" @click="openMobileDirection"><Compass :size="20" /><span>方向</span></button>
     </nav>
 
     <AppModal :open="evidenceOpen" title="选择本次规划可使用的资料" :width="760" mobile-sheet @close="evidenceOpen = false">
@@ -1141,7 +1169,7 @@ onBeforeUnmount(() => {
             <header>
               <span><Check v-if="(evidenceScopeSelections[option.sourceId]?.length ?? 0) > 0" :size="15" /></span>
               <p><strong>{{ option.title }}</strong><small>{{ option.subtitle || option.excerpt }}</small></p>
-              <em>{{ option.strength }}</em>
+              <em v-if="careerEvidenceStrengthLabel(option.strength)">{{ careerEvidenceStrengthLabel(option.strength) }}</em>
             </header>
             <fieldset>
               <legend>允许用于</legend>
@@ -1161,7 +1189,7 @@ onBeforeUnmount(() => {
     </AppModal>
 
     <AppModal :open="Boolean(detailRecommendation)" title="职业方向详情" :width="620" mobile-sheet @close="detailRecommendation = null">
-      <article v-if="detailRecommendation" class="cp-detail-dialog"><header><span><BriefcaseBusiness :size="23" /></span><div><h2>{{ detailRecommendation.title }}</h2><p>{{ detailRecommendation.fitSummary }}</p></div></header><section><h3>推荐依据</h3><ul><li v-for="value in detailRecommendation.rationale" :key="value">{{ value }}</li></ul></section><section><h3>能力缺口</h3><ul v-if="detailRecommendation.gaps.length"><li v-for="value in detailRecommendation.gaps" :key="value">{{ value }}</li></ul><p v-else>暂无明确能力缺口。</p></section><section><h3>事实引用</h3><div class="cp-ref-list"><span v-for="value in detailRecommendation.sourceRefs" :key="value">{{ value }}</span></div></section></article>
+      <article v-if="detailRecommendation" class="cp-detail-dialog"><header><span><BriefcaseBusiness :size="23" /></span><div><h2>{{ detailRecommendation.title }}</h2><p>{{ detailRecommendation.fitSummary }}</p></div></header><section><h3>推荐依据</h3><ul><li v-for="value in detailRecommendation.rationale" :key="value">{{ value }}</li></ul></section><section><h3>能力缺口</h3><ul v-if="detailRecommendation.gaps.length"><li v-for="value in detailRecommendation.gaps" :key="value">{{ value }}</li></ul><p v-else>暂无明确能力缺口。</p></section><section><h3>事实引用</h3><div class="cp-ref-list"><span v-for="value in recommendationSourceLabels(detailRecommendation)" :key="value">{{ value }}</span><small v-if="!detailRecommendation.sourceRefs.length">没有可展示的来源引用</small></div></section></article>
       <template #footer><button class="cp-secondary" type="button" @click="detailRecommendation = null">关闭</button><button v-if="detailRecommendation" class="cp-primary" type="button" @click="prepareGoal(detailRecommendation); detailRecommendation = null">设为目标 <ChevronRight :size="16" /></button></template>
     </AppModal>
 
@@ -1174,7 +1202,7 @@ onBeforeUnmount(() => {
             <p>{{ item.fitSummary }}</p>
             <section><h3>推荐依据</h3><ul><li v-for="value in item.rationale" :key="value">{{ value }}</li></ul></section>
             <section><h3>能力缺口</h3><ul v-if="item.gaps.length"><li v-for="value in item.gaps" :key="value">{{ value }}</li></ul><p v-else>暂无明确能力缺口</p></section>
-            <section><h3>事实来源</h3><div class="cp-ref-list"><span v-for="value in item.sourceRefs" :key="value">{{ value }}</span><small v-if="!item.sourceRefs.length">没有可展示的来源引用</small></div></section>
+            <section><h3>事实来源</h3><div class="cp-ref-list"><span v-for="value in recommendationSourceLabels(item)" :key="value">{{ value }}</span><small v-if="!item.sourceRefs.length">没有可展示的来源引用</small></div></section>
             <footer><button type="button" @click="detailRecommendation = item">查看完整详情</button><button type="button" @click="prepareGoal(item); compareOpen = false">设为目标 <ChevronRight :size="15" /></button></footer>
           </article>
           <p v-if="!comparedRecommendations.length" class="cp-compare-empty">对比清单为空，请从推荐列表选择 2–3 个方向。</p>

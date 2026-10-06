@@ -56,8 +56,8 @@ export function taskNotCancellableMessage(error: unknown): string {
   const detail =
     isApiClientError(error) && error.message?.trim()
       ? error.message.trim()
-      : '成功、失败或已取消任务不可再取消，请开新任务'
-  return `${detail}（409 TASK_NOT_CANCELLABLE。这不是系统故障。）`
+      : '已结束的任务不能取消，如需重新处理请发起新任务'
+  return detail
 }
 
 export function isManualRetryTask(status?: string | null): boolean {

@@ -7,6 +7,7 @@ import {
   decideCareerCanvasProposal, discardCareerCanvasProposal, generateCareerCanvasProposal,
 } from '../services/careerPlanningApi'
 import type { CareerCanvas, CareerCanvasProposal, CareerProposalApplyResult } from '../types'
+import { careerSourceRefLabels } from '../utils/presentation'
 
 const props = defineProps<{
   open: boolean
@@ -141,7 +142,7 @@ async function discard(): Promise<void> {
           <article v-for="item in proposal.items" :key="item.id" :class="`is-${decisions[item.id]?.decision.toLowerCase() || 'pending'}`">
             <header><span>{{ operationLabel(item.operation) }}</span><strong>{{ afterTitle(item) }}</strong><small>{{ item.reason }}</small></header>
             <div class="proposal-diff"><p><em>调整前</em>{{ beforeTitle(item) }}</p><span>→</span><p><em>调整后</em>{{ afterTitle(item) }}</p></div>
-            <div v-if="item.sourceRefs.length" class="proposal-refs"><span v-for="source in item.sourceRefs" :key="source">{{ source }}</span></div>
+            <div v-if="item.sourceRefs.length" class="proposal-refs"><span v-for="source in careerSourceRefLabels(item.sourceRefs)" :key="source">{{ source }}</span></div>
             <footer><button type="button" :class="{ active: decisions[item.id]?.decision === 'ACCEPTED' }" @click="decisions[item.id] = { decision: 'ACCEPTED', reason: '' }"><Check :size="15" />接受</button><button type="button" :class="{ active: decisions[item.id]?.decision === 'REJECTED' }" @click="decisions[item.id] = { decision: 'REJECTED', reason: decisions[item.id]?.reason || '' }"><X :size="15" />拒绝</button></footer>
             <textarea v-if="decisions[item.id]?.decision === 'REJECTED'" v-model="decisions[item.id].reason" rows="2" maxlength="1000" placeholder="填写拒绝原因，便于保留审计记录"></textarea>
           </article>

@@ -96,12 +96,15 @@ describe('CareerValidationWorkspace', () => {
     expect(wrapper.emitted('batchUpdated')?.[0]).toEqual([values, true])
     expect(wrapper.findAll('.batch-results article')).toHaveLength(2)
     expect(wrapper.text()).toContain('AI 结果不会自动修改掌握状态')
+    expect(wrapper.text()).toContain('AI 辅助评估')
+    expect(wrapper.text()).not.toContain('mock-model')
+    expect(wrapper.text()).not.toContain('SYSTEM')
   })
 
-  it('shows the failed checkpoint and retries the original batch task', async () => {
+  it('explains the failed stage in plain words and retries the original batch task', async () => {
     const failed = {
       id: 'task-failed', status: 'FAILED', progressPercent: 88,
-      errorCode: 'CP_PROPOSAL_REFERENCE_INVALID', checkpointCode: 'VALIDATING_SEMANTICS',
+      errorCode: 'CP_PROPOSAL_REFERENCE_INVALID', checkpointCode: 'VALIDATING_RESPONSE',
       failureReason: '节点引用无效，画布未修改',
     }
     api.startCareerValidationBatch.mockResolvedValue({ id: 'task-failed', status: 'PENDING', progressPercent: 0 })
@@ -120,8 +123,11 @@ describe('CareerValidationWorkspace', () => {
     await wrapper.get('.evaluate-button').trigger('click')
     await flushPromises()
 
-    expect(wrapper.get('.batch-task-state').text()).toContain('CP_PROPOSAL_REFERENCE_INVALID')
-    expect(wrapper.get('.batch-task-state').text()).toContain('VALIDATING_SEMANTICS')
+    const state = wrapper.get('.batch-task-state').text()
+    expect(state).toContain('节点引用无效，画布未修改')
+    expect(state).toContain('正在校验评估结果')
+    expect(state).not.toContain('CP_PROPOSAL_REFERENCE_INVALID')
+    expect(state).not.toContain('VALIDATING_RESPONSE')
     await wrapper.get('.batch-task-state button').trigger('click')
     await flushPromises()
     expect(tasks.retryTask).toHaveBeenCalledWith('task-failed')

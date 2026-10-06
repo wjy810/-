@@ -14,7 +14,7 @@ import CareerProposalReview from './CareerProposalReview.vue'
 import CareerValidationWorkspace from './CareerValidationWorkspace.vue'
 import CareerVersionHistory from './CareerVersionHistory.vue'
 import { fetchCareerExecution, fetchCareerPlanningSession } from '../services/careerPlanningApi'
-import { hasActionablePlanNodes, hasCanvasContent, initialCareerWorkbenchView } from '../utils/presentation'
+import { careerPlanStatusLabel, hasActionablePlanNodes, hasCanvasContent, initialCareerWorkbenchView } from '../utils/presentation'
 import {
   CAREER_WORKBENCH_VIEWS, careerWorkbenchDirection, careerWorkbenchQueryValue,
   careerWorkbenchViewFromQuery, resolveCareerWorkbenchKey,
@@ -291,7 +291,7 @@ async function restored(value: CareerCanvas): Promise<void> {
           >
             <JobProofIcon :name="tab.icon" :size="17" />
             <span>{{ tab.label }}</span>
-            <em v-if="tab.value === 'PLAN' && plan">{{ plan.status === 'ACTIVE' ? '进行中' : plan.status }}</em>
+            <em v-if="tab.value === 'PLAN' && plan && careerPlanStatusLabel(plan.status)">{{ careerPlanStatusLabel(plan.status) }}</em>
             <em v-if="tab.value === 'VALIDATION' && validationCount">{{ validationCount }}</em>
           </button>
           <i class="workbench-tab-indicator" aria-hidden="true" />

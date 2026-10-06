@@ -94,7 +94,7 @@ describe('CareerAbilityCanvas', () => {
     component.selectedNodeIds = new Set(['skill-oop'])
     await wrapper.vm.$nextTick()
     expect(component.flowEdges.every(edge => !edge.animated)).toBe(true)
-    expect(component.flowEdges.find(edge => edge.id === 'r2')?.style.stroke).toBe('#2563eb')
+    expect(component.flowEdges.find(edge => edge.id === 'r2')?.style.stroke).toBe('var(--color-primary)')
     expect(component.flowEdges.find(edge => edge.id === 'r3')?.style.opacity).toBe(.46)
     expect(canvas.nodes.find(node => node.logicalNodeId === 'skill-oop')?.status).toBe('PENDING_VALIDATION')
   })

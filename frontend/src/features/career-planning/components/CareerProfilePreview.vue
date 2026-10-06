@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { CheckCircle2, CircleAlert, Database, Sparkles } from 'lucide-vue-next'
 import type { CareerPlanningProfile, EvidencePermission } from '../types'
+import { careerProfileSectionLabel } from '../utils/presentation'
 
 const props = defineProps<{ profile: CareerPlanningProfile; permissions: EvidencePermission[] }>()
 const basics = computed(() => props.profile.basics)
@@ -26,7 +27,7 @@ const sourceCount = computed(() => props.permissions.filter(item => item.status 
         <div v-if="basics.education"><dt>最高学历</dt><dd>{{ basics.education }}</dd><small>用户填写</small></div>
         <div v-if="basics.major"><dt>所学专业</dt><dd>{{ basics.major }}</dd><small>用户填写</small></div>
         <div v-if="basics.experienceYears"><dt>工作年限</dt><dd>{{ basics.experienceYears }}</dd><small>用户填写</small></div>
-        <div v-for="item in facts" :key="item.id"><dt>{{ item.section }}</dt><dd>{{ item.title }}</dd><small>{{ item.confirmed ? '已确认' : '待确认' }}</small></div>
+        <div v-for="item in facts" :key="item.id"><dt>{{ careerProfileSectionLabel(item.section) }}</dt><dd>{{ item.title }}</dd><small>{{ item.confirmed ? '已确认' : '待确认' }}</small></div>
       </dl>
       <p v-if="!facts.length && !Object.keys(basics).length" class="cp-preview__empty">填写后，这里会实时形成结构化画像。</p>
     </section>
