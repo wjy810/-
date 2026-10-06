@@ -257,12 +257,12 @@ onUnmounted(() => {
   align-items: center;
   gap: 6px;
   margin-bottom: 18px;
-  color: var(--text-3);
+  color: var(--text-tertiary);
   font-size: 12px;
 }
 
 .asset-breadcrumb a {
-  color: var(--primary);
+  color: var(--color-primary);
 }
 
 .asset-layout,
@@ -277,7 +277,7 @@ onUnmounted(() => {
   min-height: 660px;
   padding: 24px;
   border: 1px solid var(--border);
-  background: #e8ebef;
+  background: var(--surface-3);
 }
 
 .asset-preview__head {
@@ -296,8 +296,8 @@ onUnmounted(() => {
 .asset-preview__head span,
 .preview-page figcaption,
 .preview-state span {
-  color: var(--text-3);
-  font-size: 11px;
+  color: var(--text-tertiary);
+  font-size: 12px;
 }
 
 .preview-pages {
@@ -317,8 +317,8 @@ onUnmounted(() => {
   width: 100%;
   height: auto;
   display: block;
-  border: 1px solid #d5dbe4;
-  background: #fff;
+  border: 1px solid var(--border-default);
+  background: var(--surface-1);
   box-shadow: 0 8px 24px rgba(24, 35, 54, 0.14);
 }
 
@@ -362,7 +362,7 @@ onUnmounted(() => {
 .asset-info__head p,
 .asset-actions p,
 .source-block p {
-  color: var(--text-2);
+  color: var(--text-secondary);
   font-size: 13px;
   line-height: 1.65;
 }
@@ -389,8 +389,8 @@ onUnmounted(() => {
 
 .asset-facts dt,
 .source-block dt {
-  color: var(--text-3);
-  font-size: 11px;
+  color: var(--text-tertiary);
+  font-size: 12px;
 }
 
 .asset-facts dd,
@@ -410,9 +410,9 @@ onUnmounted(() => {
 .asset-tags span {
   padding: 4px 8px;
   border-radius: 4px;
-  background: var(--primary-soft);
-  color: var(--primary);
-  font-size: 11px;
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+  font-size: 12px;
 }
 
 .asset-actions {
@@ -454,7 +454,7 @@ onUnmounted(() => {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  color: var(--primary);
+  color: var(--color-primary);
   font-size: 12px;
 }
 

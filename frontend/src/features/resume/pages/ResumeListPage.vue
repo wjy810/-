@@ -878,24 +878,23 @@ onBeforeUnmount(() => {
   min-width: 0;
   padding: 12px 8px;
   font-size: 13px;
-  color: var(--text-2);
+  color: var(--text-secondary);
   background: none;
   border: none;
   margin-bottom: -1px;
   white-space: nowrap;
-  transition:
-    color var(--motion-base) ease,
+  transition:color var(--motion-base) ease,
     background-color var(--motion-fast) ease,
     transform var(--motion-fast) var(--motion-ease);
 }
 
 .tabs__item:hover {
-  color: var(--primary);
-  background: #f7f9fd;
+  color: var(--color-primary);
+  background: var(--surface-2);
 }
 
 .tabs__item.is-on {
-  color: var(--primary);
+  color: var(--color-primary);
   font-weight: 600;
 }
 
@@ -911,8 +910,8 @@ onBeforeUnmount(() => {
   width: calc((100% - 48px) / 5);
   height: 3px;
   border-radius: 3px 3px 0 0;
-  background: var(--primary);
-  box-shadow: 0 -2px 7px rgba(37, 99, 235, 0.18);
+  background: var(--color-primary);
+  box-shadow: 0 -2px 7px color-mix(in srgb, var(--color-primary) 18%, transparent);
   pointer-events: none;
   transform: translateX(calc(var(--tab-index) * (100% + 4px)));
   transition: transform var(--motion-slow) var(--motion-ease);
@@ -967,18 +966,18 @@ onBeforeUnmount(() => {
 }
 
 .rtype--blue {
-  background: var(--primary-soft);
-  color: var(--primary);
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
 }
 
 .rtype--green {
   background: var(--success-soft);
-  color: var(--success);
+  color: var(--color-success);
 }
 
 .rtype--orange {
   background: var(--warning-soft);
-  color: var(--warning);
+  color: var(--color-warning);
 }
 
 .rname__body {
@@ -1007,7 +1006,7 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 4px;
   font-size: 12px;
-  color: var(--danger);
+  color: var(--color-danger);
 }
 
 .rcell {
@@ -1031,27 +1030,27 @@ onBeforeUnmount(() => {
 }
 
 .dot--green {
-  background: var(--success);
+  background: var(--color-success);
 }
 
 .dot--orange {
-  background: var(--warning);
+  background: var(--color-warning);
 }
 
 .dot--red {
-  background: var(--danger);
+  background: var(--color-danger);
 }
 
 .dot--gray {
-  background: var(--text-3);
+  background: var(--text-tertiary);
 }
 
 .dot--blue {
-  background: var(--primary);
+  background: var(--color-primary);
 }
 
 .bound-text {
-  color: var(--primary);
+  color: var(--color-primary);
   font-size: 13px;
 }
 
@@ -1067,11 +1066,11 @@ onBeforeUnmount(() => {
 }
 
 .text-link--danger {
-  color: var(--danger);
+  color: var(--color-danger);
 }
 
 .text-link--danger:hover {
-  color: var(--danger);
+  color: var(--color-danger);
 }
 
 .text-link:disabled {
@@ -1095,7 +1094,7 @@ onBeforeUnmount(() => {
   padding: 0;
 }
 
-.pager__size :deep(.app-select__trigger) { height: 34px; }
+.pager__size:deep(.app-select__trigger) { height: 34px; }
 
 .form-stack {
   display: grid;
@@ -1130,7 +1129,7 @@ onBeforeUnmount(() => {
 }
 
 .delete-dialog__target span:not(.delete-dialog__icon) {
-  color: var(--text-3);
+  color: var(--text-tertiary);
   font-size: 12px;
 }
 
@@ -1141,12 +1140,12 @@ onBeforeUnmount(() => {
   place-items: center;
   flex: 0 0 auto;
   border-radius: 8px;
-  color: var(--danger);
+  color: var(--color-danger);
   background: var(--danger-soft);
 }
 
 .delete-dialog__summary {
-  color: var(--text-2);
+  color: var(--text-secondary);
   font-size: 13px;
   line-height: 1.7;
 }
@@ -1168,13 +1167,13 @@ onBeforeUnmount(() => {
   padding: 8px 10px;
   border: 1px solid var(--border);
   border-radius: var(--radius-s);
-  color: var(--text-2);
+  color: var(--text-secondary);
   font-size: 12px;
 }
 
 .delete-impact svg {
   flex: 0 0 auto;
-  color: var(--danger);
+  color: var(--color-danger);
 }
 
 @media (max-width: 560px) {
@@ -1207,7 +1206,7 @@ onBeforeUnmount(() => {
     gap: 8px;
   }
 
-  .page-head__actions :deep(.btn),
+  .page-head__actions:deep(.btn),
   .page-head__actions > .btn {
     width: 100%;
     min-width: 0;
@@ -1313,8 +1312,8 @@ onBeforeUnmount(() => {
 
   .tbl td::before {
     content: attr(data-label);
-    color: var(--text-3);
-    font-size: 11px;
+    color: var(--text-tertiary);
+    font-size: 12px;
     line-height: 1.4;
   }
 
@@ -1401,13 +1400,13 @@ onBeforeUnmount(() => {
   border: none;
   border-radius: var(--radius-s);
   background: transparent;
-  color: var(--text-2);
+  color: var(--text-secondary);
   transition: color var(--motion-base) ease, transform var(--motion-fast) var(--motion-ease);
 }
 
 .seg__btn.is-on {
   background: transparent;
-  color: var(--primary);
+  color: var(--color-primary);
   font-weight: 600;
   box-shadow: none;
 }

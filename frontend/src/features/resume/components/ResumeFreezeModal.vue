@@ -229,7 +229,7 @@ function onWaive(item: KeyOutcome): void {
   height: 36px;
   border-radius: 9px;
   background: var(--success-soft);
-  color: var(--success);
+  color: var(--color-success);
   display: grid;
   place-items: center;
   flex-shrink: 0;
@@ -270,20 +270,20 @@ function onWaive(item: KeyOutcome): void {
 }
 
 .check__icon--ok {
-  color: var(--success);
+  color: var(--color-success);
 }
 
 .check__icon--warn {
-  color: var(--warning);
+  color: var(--color-warning);
 }
 
 .check__icon--bad {
-  color: var(--danger);
+  color: var(--color-danger);
 }
 
 .check__label {
   flex: 1;
-  color: var(--text-2);
+  color: var(--text-secondary);
 }
 
 .check__value {
@@ -291,7 +291,7 @@ function onWaive(item: KeyOutcome): void {
 }
 
 .check__value.is-warn {
-  color: var(--warning);
+  color: var(--color-warning);
 }
 
 .waive-list {
@@ -300,7 +300,7 @@ function onWaive(item: KeyOutcome): void {
 }
 
 .waive {
-  border: 1px solid #f5ddb0;
+  border: 1px solid color-mix(in srgb, var(--color-warning) 35%, var(--border-subtle));
   background: var(--warning-soft);
   border-radius: var(--radius);
   padding: 10px 12px;
@@ -319,7 +319,7 @@ function onWaive(item: KeyOutcome): void {
   align-items: center;
   gap: 8px;
   font-size: 12px;
-  color: var(--text-2);
+  color: var(--text-secondary);
   cursor: pointer;
 }
 
@@ -352,18 +352,18 @@ function onWaive(item: KeyOutcome): void {
 }
 
 .impact__icon--blue {
-  background: var(--primary-soft);
-  color: var(--primary);
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
 }
 
 .impact__icon--green {
   background: var(--success-soft);
-  color: var(--success);
+  color: var(--color-success);
 }
 
 .impact__icon--orange {
   background: var(--warning-soft);
-  color: var(--warning);
+  color: var(--color-warning);
 }
 
 .impact__name {
@@ -373,7 +373,7 @@ function onWaive(item: KeyOutcome): void {
 
 .impact__desc {
   font-size: 12px;
-  color: var(--text-3);
+  color: var(--text-tertiary);
   line-height: 1.5;
 }
 

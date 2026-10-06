@@ -156,15 +156,6 @@ onBeforeUnmount(() => window.clearTimeout(searchTimer))
 <template>
 
     <div class="career-library-page">
-      <div class="library-global-search">
-        <Search :size="18" />
-        <input :value="globalSearch" placeholder="搜索资料库中的经历、文件或文件夹…" aria-label="搜索求职资料库" @focus="globalSearch && (searchOpen = true)" @input="handleGlobalSearch(($event.target as HTMLInputElement).value)" />
-        <div v-if="searchOpen" class="global-search-results">
-          <p v-if="searchPending">正在搜索...</p>
-          <button v-for="result in searchResults" v-else :key="`${result.type}-${result.id}`" type="button" @click="selectSearchResult(result)"><Search :size="15" /><span><strong>{{ result.title }}</strong><small>{{ result.subtitle }}</small></span></button>
-          <p v-if="!searchPending && !searchResults.length">没有匹配的资料或操作</p>
-        </div>
-      </div>
       <header class="career-page-head">
         <div><h1>求职资料库</h1><p>维护长期职业档案、结构化经历和私有文件，供简历与经你授权的 AI 使用。</p><small v-if="view === 'profile'"><ShieldCheck :size="14" />仅在 AI 对话中经你授权后使用；不采集年龄、性别、婚育和民族等敏感字段。</small></div>
         <div class="career-head-actions">
@@ -183,7 +174,18 @@ onBeforeUnmount(() => window.clearTimeout(searchTimer))
         </div>
       </header>
 
-      <CareerLibraryTabs :model-value="view" @update:model-value="changeView" />
+      <div class="career-toolbar">
+        <CareerLibraryTabs :model-value="view" @update:model-value="changeView" />
+        <div class="library-global-search">
+          <Search :size="18" />
+          <input :value="globalSearch" placeholder="搜索资料库中的经历、文件或文件夹…" aria-label="搜索求职资料库" @focus="globalSearch && (searchOpen = true)" @input="handleGlobalSearch(($event.target as HTMLInputElement).value)" />
+          <div v-if="searchOpen" class="global-search-results">
+            <p v-if="searchPending">正在搜索...</p>
+            <button v-for="result in searchResults" v-else :key="`${result.type}-${result.id}`" type="button" @click="selectSearchResult(result)"><Search :size="15" /><span><strong>{{ result.title }}</strong><small>{{ result.subtitle }}</small></span></button>
+            <p v-if="!searchPending && !searchResults.length">没有匹配的资料或操作</p>
+          </div>
+        </div>
+      </div>
 
       <Transition name="career-view" mode="out-in">
         <div :key="loading || !profile || !overview ? 'loading' : view" class="career-view-panel">

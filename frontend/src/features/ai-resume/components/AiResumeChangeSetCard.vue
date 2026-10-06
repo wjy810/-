@@ -101,7 +101,7 @@ function statusLabel(status: string): string {
 .change-set { width: calc(100% - 41px); margin-left: 41px; overflow: hidden; border: 1px solid var(--border-default); border-left: 3px solid var(--color-primary); border-radius: 7px; background: var(--surface-1); box-shadow: 0 8px 24px rgba(15, 23, 42, .06); }
 .change-set > header { min-height: 46px; padding: 10px 12px; display: flex; align-items: center; justify-content: space-between; gap: 12px; background: var(--surface-2); border-bottom: 1px solid var(--border-subtle); }
 .change-set > header div { display: inline-flex; align-items: center; gap: 7px; color: var(--color-primary-text); }
-.change-set > header span { color: var(--color-primary-text); font-size: 12px; }
+.change-set > header span { color: var(--text-secondary); font-size: 12px; }
 .change-list { display: grid; }
 .change-item { padding: 13px; display: grid; gap: 10px; border-bottom: 1px solid var(--border-subtle); }
 .change-item:last-child { border-bottom: 0; }
@@ -112,7 +112,7 @@ function statusLabel(status: string): string {
 .change-item__head span { font-size: 12px; font-weight: 700; }
 .change-item__head small { padding: 2px 6px; color: var(--color-primary-text); background: var(--surface-2); border-radius: 4px; font-size: 11px; }
 .change-actions { flex: none; }
-.change-actions button, .undo { min-width: 30px; height: 30px; padding: 0 8px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; color: var(--color-primary-text); background: var(--surface-1); border: 1px solid var(--border-default); border-radius: 5px; }
+.change-actions button, .undo { min-width: 30px; height: 30px; padding: 0 8px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; color: var(--text-secondary); background: var(--surface-1); border: 1px solid var(--border-default); border-radius: 5px; }
 .change-actions .accept { color: var(--text-on-primary); background: var(--color-success); border-color: var(--color-success); }
 .change-actions .reject { color: var(--color-danger-text); }
 .change-actions button:hover:not(:disabled), .undo:hover:not(:disabled) { border-color: var(--color-primary); }
@@ -120,11 +120,11 @@ function statusLabel(status: string): string {
 .change-compare { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) 18px minmax(0, 1fr); align-items: stretch; gap: 7px; }
 .change-compare > div { min-width: 0; padding: 9px; background: var(--surface-2); border: 1px solid var(--border-subtle); }
 .change-compare > div:last-child { background: var(--surface-2); border-color: var(--border-default); }
-.change-compare > svg { align-self: center; color: var(--color-primary); }
-.change-compare span { color: var(--color-primary-text); font-size: 11px; }
+.change-compare > svg { align-self: center; color: var(--text-secondary); }
+.change-compare span { color: var(--text-secondary); font-size: 11px; }
 .change-compare p { margin: 5px 0 0; color: var(--text-primary); font-size: 12px; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
-.change-reason { margin: 0; color: var(--color-primary-text); font-size: 11.5px; }
-.change-item details { color: var(--color-primary-text); font-size: 11px; }
+.change-reason { margin: 0; color: var(--text-secondary); font-size: 11.5px; }
+.change-item details { color: var(--text-secondary); font-size: 11px; }
 .change-item details summary { width: max-content; cursor: pointer; }
 .change-item details p { margin: 5px 0 0; display: grid; grid-template-columns: minmax(80px, .35fr) 1fr; gap: 7px; line-height: 1.5; }
 .change-item details p span { color: var(--color-primary-text); overflow-wrap: anywhere; }

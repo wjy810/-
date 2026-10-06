@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import AppButton from '@/shared/ui/AppButton.vue'
 import AppEmpty from '@/shared/ui/AppEmpty.vue'
 import AppIcon from '@/shared/ui/AppIcon.vue'
@@ -7,9 +8,9 @@ import JobProofIcon from '@/shared/ui/JobProofIcon.vue'
 import AppSelect from '@/shared/ui/AppSelect.vue'
 import AppTag from '@/shared/ui/AppTag.vue'
 import { useToastFeedback } from '@/shared/ui/toast'
-import constructionIllustration from '@/assets/template-smart-editing-construction.png'
 import { errorMessage } from '@/shared/api/types'
 import { listTemplateCatalog, listTemplateCatalogFacets } from '../services/resumeApi'
+import SmartTemplateGallery from '../components/SmartTemplateGallery.vue'
 import type {
   TemplateCatalogAssetKind,
   TemplateCatalogCapability,
@@ -17,6 +18,10 @@ import type {
   TemplateCatalogItem,
 } from '../types'
 
+const route = useRoute()
+const router = useRouter()
+const TAB_QUERY: Record<string, TemplateCatalogCapability | ''> = { smart: 'SMART_EDITABLE', word: 'DOCX_DOWNLOAD', all: '' }
+const initialTab = TAB_QUERY[String(route.query.tab ?? 'smart')] ?? 'SMART_EDITABLE'
 const loading = ref(true)
 const facetsLoading = ref(true)
 const error = ref('')
@@ -30,7 +35,7 @@ const failedThumbnails = ref<Set<string>>(new Set())
 
 const filters = reactive({
   keyword: '',
-  capability: '' as TemplateCatalogCapability | '',
+  capability: initialTab as TemplateCatalogCapability | '',
   assetKind: 'RESUME' as TemplateCatalogAssetKind,
   occupation: '',
   jobTag: '',
@@ -41,10 +46,10 @@ const filters = reactive({
   careerStage: '',
 })
 
-const capabilityTabs: Array<{ value: TemplateCatalogCapability | ''; label: string }> = [
-  { value: '', label: '全部' },
-  { value: 'SMART_EDITABLE', label: '智能编辑' },
-  { value: 'DOCX_DOWNLOAD', label: 'Word 下载' },
+const capabilityTabs: Array<{ value: TemplateCatalogCapability | ''; label: string; query: string }> = [
+  { value: 'SMART_EDITABLE', label: '智能模板', query: 'smart' },
+  { value: 'DOCX_DOWNLOAD', label: 'Word 模板', query: 'word' },
+  { value: '', label: '全部目录', query: 'all' },
 ]
 
 const assetChannels: Array<{ value: TemplateCatalogAssetKind; label: string }> = [
@@ -96,7 +101,8 @@ const photoOptions = [
 
 const pageCount = computed(() => Math.max(1, Math.ceil(total.value / size)))
 const capabilityIndex = computed(() => Math.max(0, capabilityTabs.findIndex((tab) => tab.value === filters.capability)))
-const smartEditingPending = computed(() => filters.capability === 'SMART_EDITABLE')
+/** The smart tab lists the live layout templates; the catalog filters below only apply to Word assets. */
+const smartTab = computed(() => filters.capability === 'SMART_EDITABLE')
 const activeFilterCount = computed(() =>
   [
     filters.occupation,
@@ -192,10 +198,9 @@ async function load(nextPage = page.value): Promise<void> {
 function selectCapability(value: TemplateCatalogCapability | ''): void {
   if (filters.capability === value) return
   filters.capability = value
+  const tab = capabilityTabs.find(item => item.value === value)?.query ?? 'smart'
+  void router.replace({ query: { ...route.query, tab } })
   if (value === 'SMART_EDITABLE') {
-    items.value = []
-    total.value = 0
-    page.value = 0
     error.value = ''
     loading.value = false
     return
@@ -227,7 +232,9 @@ function resetDetails(): void {
 }
 
 onMounted(() => {
-  void Promise.all([loadFacets(), load(0)])
+  void loadFacets()
+  if (smartTab.value) loading.value = false
+  else void load(0)
 })
 </script>
 
@@ -236,7 +243,7 @@ onMounted(() => {
       <header class="page-head catalog-head">
         <div>
           <h1 class="page-head__title">简历模板中心</h1>
-          <p class="page-head__sub">公共模板可检索、预览和下载；智能编辑功能正在建设中。</p>
+          <p class="page-head__sub">12 款智能模板可在线编辑、与 AI 协作并一键换版；另有开源 Word 模板可检索、预览和下载。</p>
         </div>
         <RouterLink class="btn btn--ghost" to="/resumes">
           <JobProofIcon name="resume-all-resumes" :size="15" />
@@ -244,7 +251,7 @@ onMounted(() => {
         </RouterLink>
       </header>
 
-      <div class="catalog-toolbar" :class="{ 'catalog-toolbar--pending': smartEditingPending }">
+      <div class="catalog-toolbar" :class="{ 'catalog-toolbar--pending': smartTab }">
         <div class="capability-tabs" role="tablist" aria-label="模板能力" :style="{ '--capability-index': capabilityIndex }">
           <button
             v-for="tab in capabilityTabs"
@@ -258,11 +265,10 @@ onMounted(() => {
             @click="selectCapability(tab.value)"
           >
             <span>{{ tab.label }}</span>
-            <small v-if="tab.value === 'SMART_EDITABLE'" class="capability-tabs__status">建设中</small>
           </button>
         </div>
 
-        <form v-if="!smartEditingPending" class="catalog-search" role="search" @submit.prevent="search">
+        <form v-if="!smartTab" class="catalog-search" role="search" @submit.prevent="search">
           <AppIcon name="search" :size="17" />
           <input
             v-model.trim="filters.keyword"
@@ -274,7 +280,7 @@ onMounted(() => {
         </form>
       </div>
 
-      <div v-if="!smartEditingPending" class="channel-row">
+      <div v-if="!smartTab" class="channel-row">
         <div class="channel-control">
           <span>素材频道</span>
           <AppSelect
@@ -287,7 +293,7 @@ onMounted(() => {
         <p>当前共 {{ total.toLocaleString('zh-CN') }} 项</p>
       </div>
 
-      <form v-if="!smartEditingPending" class="filter-band" @submit.prevent="search">
+      <form v-if="!smartTab" class="filter-band" @submit.prevent="search">
         <AppSelect v-model="filters.occupation" ariaLabel="职业大类" :options="occupationOptions" />
         <AppSelect
           v-model="filters.jobTag"
@@ -329,50 +335,7 @@ onMounted(() => {
         </div>
       </form>
 
-      <section
-        v-if="smartEditingPending"
-        id="capability-panel-SMART_EDITABLE"
-        class="construction-state"
-        role="tabpanel"
-        aria-labelledby="capability-tab-SMART_EDITABLE construction-title"
-        tabindex="0"
-      >
-        <div class="construction-state__copy">
-          <span class="construction-state__eyebrow">
-            <JobProofIcon name="template-construction" :size="15" />
-            建设中
-          </span>
-          <h2 id="construction-title">智能编辑正在施工</h2>
-          <p>
-            智能编辑暂未开放。你可以先比较模板样式、查看预览，并下载可用的 Word 模板。
-          </p>
-        </div>
-
-        <figure class="construction-visual" aria-hidden="true">
-          <img
-            :src="constructionIllustration"
-            alt=""
-            width="1420"
-            height="793"
-            decoding="async"
-          />
-        </figure>
-
-        <div class="construction-state__actions">
-          <AppButton type="button" @click="selectCapability('DOCX_DOWNLOAD')">
-            <AppIcon name="download" :size="15" />
-            浏览 Word 模板
-          </AppButton>
-          <AppButton variant="ghost" type="button" @click="selectCapability('')">查看全部模板</AppButton>
-        </div>
-
-        <div class="construction-state__progress" aria-label="智能编辑建设进度">
-          <span><AppIcon name="check" :size="14" />结构化内容模型</span>
-          <span><AppIcon name="loader" :size="14" />在线编辑体验</span>
-          <span><AppIcon name="clock" :size="14" />开放时间待定</span>
-        </div>
-
-      </section>
+      <SmartTemplateGallery v-if="smartTab" />
 
       <div v-else-if="loading && !items.length" class="catalog-grid" aria-busy="true">
         <div v-for="index in 8" :key="index" class="catalog-card catalog-card--loading">
@@ -441,7 +404,7 @@ onMounted(() => {
         <AppButton variant="ghost" @click="resetDetails">清除筛选</AppButton>
       </AppEmpty>
 
-      <nav v-if="!smartEditingPending && total > size" class="pager catalog-pager" aria-label="模板分页">
+      <nav v-if="!smartTab && total > size" class="pager catalog-pager" aria-label="模板分页">
         <button class="pager__page" :disabled="page <= 0 || loading" @click="load(page - 1)">
           <AppIcon name="chevron-left" :size="15" />
         </button>
@@ -451,7 +414,7 @@ onMounted(() => {
         </button>
       </nav>
 
-      <footer v-if="!smartEditingPending" class="catalog-license">
+      <footer v-if="!smartTab" class="catalog-license">
         <AppIcon name="shield" :size="17" />
         <p>
           HICV 公共资产仅用于本平台永久非商业免费服务，下载文件保留来源前缀。
@@ -493,7 +456,7 @@ onMounted(() => {
   width: max-content;
   padding: 3px;
   border-radius: var(--radius);
-  background: #e9edf3;
+  background: var(--surface-3);
 }
 
 .capability-tabs::before {
@@ -519,24 +482,24 @@ onMounted(() => {
   border: 0;
   border-radius: 6px;
   background: transparent;
-  color: var(--text-2);
+  color: var(--text-secondary);
   font-size: 13px;
   transition: color 220ms ease, transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 .capability-tabs__status {
   padding: 1px 4px;
-  border: 1px solid #d9a43b;
+  border: 1px solid var(--color-warning);
   border-radius: 3px;
-  background: #fff8e8;
-  color: #8a5a08;
+  background: var(--surface-2);
+  color: var(--color-warning-text);
   font-size: 12px;
   font-weight: 600;
   line-height: 1.4;
 }
 
 .capability-tabs button:hover:not(.active) {
-  color: var(--primary);
+  color: var(--color-primary);
   transform: none;
 }
 
@@ -552,7 +515,7 @@ onMounted(() => {
 }
 
 .capability-tabs button:focus-visible {
-  outline: 2px solid rgba(37, 99, 235, 0.35);
+  outline: 2px solid color-mix(in srgb, var(--color-primary) 35%, transparent);
   outline-offset: -3px;
 }
 
@@ -569,8 +532,8 @@ onMounted(() => {
 }
 
 .catalog-search:focus-within {
-  border-color: var(--primary);
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 12%, transparent);
 }
 
 .catalog-search input {
@@ -601,7 +564,7 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 10px;
-  color: var(--text-3);
+  color: var(--text-tertiary);
   font-size: 12px;
 }
 
@@ -610,7 +573,7 @@ onMounted(() => {
 }
 
 .channel-row p {
-  color: var(--text-3);
+  color: var(--text-tertiary);
   font-size: 12px;
 }
 
@@ -629,142 +592,6 @@ onMounted(() => {
   align-items: center;
   gap: 4px;
 }
-
-.construction-state {
-  min-height: 500px;
-  display: grid;
-  grid-template-columns: minmax(0, .9fr) minmax(480px, 1.1fr);
-  grid-template-areas:
-    "copy visual"
-    "actions visual"
-    "progress visual";
-  grid-template-rows: auto auto;
-  align-items: start;
-  align-content: center;
-  column-gap: clamp(28px, 4.5vw, 72px);
-  row-gap: 22px;
-  margin-top: 18px;
-  padding: clamp(38px, 5vw, 68px);
-  overflow: hidden;
-  border-top: 1px solid #dfe6ef;
-  border-bottom: 1px solid #dfe6ef;
-  border-left: 0;
-  border-right: 0;
-  border-radius: 0;
-  outline: 0;
-  background: #f5f8fc;
-  animation: construction-content-enter 220ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
-}
-
-.construction-state:focus-visible {
-  outline: 2px solid rgba(37, 99, 235, 0.38);
-  outline-offset: -2px;
-}
-
-.construction-state__copy {
-  grid-area: copy;
-  max-width: 540px;
-}
-
-.construction-state__eyebrow {
-  width: max-content;
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  padding: 5px 9px 5px 8px;
-  border-left: 3px solid #e4a11b;
-  background: #fff8e8;
-  color: #76500b;
-  font-size: 12px;
-  font-weight: 650;
-}
-
-.construction-state h2 {
-  margin-top: 17px;
-  color: #142238;
-  font-size: clamp(32px, 2.7vw, 36px);
-  line-height: 1.25;
-  letter-spacing: 0;
-}
-
-.construction-state__copy > p {
-  max-width: 520px;
-  margin-top: 13px;
-  color: #57677d;
-  font-size: 14px;
-  line-height: 1.8;
-}
-
-.construction-state__actions {
-  grid-area: actions;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
-.construction-state__progress {
-  grid-area: progress;
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0;
-  padding-top: 17px;
-  border-top: 1px solid #dfe6ef;
-}
-
-.construction-state__progress span {
-  min-width: 0;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding-right: 13px;
-  color: #738198;
-  font-size: 11px;
-  line-height: 1.45;
-}
-
-.construction-state__progress span + span {
-  padding-left: 13px;
-  border-left: 1px solid #dfe6ef;
-}
-
-.construction-state__progress span:first-child { color: #16805c; }
-.construction-state__progress span:nth-child(2) { color: #2563eb; }
-.construction-state__progress span:nth-child(2) :deep(.app-icon) { animation: progress-spin 2.4s linear infinite; }
-
-.construction-state__actions .btn {
-  min-height: 44px;
-}
-
-.construction-visual {
-  grid-area: visual;
-  min-width: 0;
-  margin: 0;
-  display: grid;
-  place-items: center;
-  align-self: center;
-  animation: construction-visual-enter 240ms 40ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
-}
-
-.construction-visual img {
-  display: block;
-  width: 100%;
-  height: auto;
-  width: min(100%, 680px);
-  max-height: 420px;
-  object-fit: contain;
-}
-
-@keyframes construction-content-enter {
-  from { opacity: 0; transform: translateY(6px); }
-  to { opacity: 1; transform: none; }
-}
-
-@keyframes construction-visual-enter {
-  from { opacity: 0; transform: translateX(6px); }
-  to { opacity: 1; transform: none; }
-}
-
-@keyframes progress-spin { to { transform: rotate(360deg); } }
 
 
 .catalog-grid {
@@ -785,7 +612,7 @@ onMounted(() => {
 }
 
 .catalog-card:hover {
-  border-color: #aebdd2;
+  border-color: var(--border-strong);
   box-shadow: 0 8px 24px rgba(20, 32, 55, 0.1);
   transform: translateY(-2px);
 }
@@ -797,7 +624,7 @@ onMounted(() => {
   place-items: center;
   overflow: hidden;
   border-bottom: 1px solid var(--border);
-  background: #e8ebef;
+  background: var(--surface-3);
 }
 
 .catalog-card__preview > img {
@@ -823,20 +650,20 @@ onMounted(() => {
   align-content: start;
   gap: 5px;
   padding: 15% 12%;
-  background: #fff;
-  border: 1px solid #d6dbe3;
+  background: var(--surface-1);
+  border: 1px solid var(--border-default);
   box-shadow: 0 4px 12px rgba(28, 39, 57, 0.12);
 }
 
 .paper-preview span {
   display: block;
-  background: #cfd6df;
+  background: var(--border-strong);
 }
 
 .paper-preview__name {
   width: 42%;
   height: 8px;
-  background: #253247 !important;
+  background: var(--text-primary) !important;
 }
 
 .paper-preview__meta {
@@ -848,7 +675,7 @@ onMounted(() => {
   width: 100%;
   height: 2px;
   margin: 4px 0;
-  background: #3b82f6 !important;
+  background: var(--color-primary) !important;
 }
 
 .paper-preview__line {
@@ -893,7 +720,7 @@ onMounted(() => {
   min-height: 36px;
   display: -webkit-box;
   overflow: hidden;
-  color: var(--text-2);
+  color: var(--text-secondary);
   font-size: 12px;
   line-height: 1.5;
   -webkit-box-orient: vertical;
@@ -913,22 +740,22 @@ onMounted(() => {
   padding: 2px 6px;
   overflow: hidden;
   border-radius: 4px;
-  background: #eef1f5;
-  color: var(--text-2);
+  background: var(--surface-2);
+  color: var(--text-secondary);
   font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .catalog-card__tags span {
-  background: var(--primary-soft);
-  color: var(--primary);
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
 }
 
 .catalog-card small {
   margin-top: auto;
   overflow: hidden;
-  color: var(--text-3);
+  color: var(--text-tertiary);
   font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -952,24 +779,19 @@ onMounted(() => {
   gap: 10px;
   padding: 16px 0;
   border-top: 1px solid var(--border);
-  color: var(--text-3);
+  color: var(--text-tertiary);
   font-size: 12px;
   line-height: 1.6;
 }
 
 .catalog-license a {
-  color: var(--primary);
+  color: var(--color-primary);
 }
 
 @media (prefers-reduced-motion: reduce) {
   .capability-tabs::before,
   .capability-tabs button {
     transition: none;
-  }
-
-  .construction-state,
-  .construction-visual {
-    animation: none !important;
   }
 }
 
@@ -984,18 +806,6 @@ onMounted(() => {
 }
 
 @media (max-width: 1120px) {
-  .construction-state {
-    grid-template-columns: minmax(0, 1fr) 180px;
-    column-gap: 24px;
-  }
-
-  .construction-state__copy {
-    max-width: 680px;
-  }
-
-  .construction-visual img {
-    max-height: 140px;
-  }
 
   .catalog-grid {
     grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -1048,40 +858,6 @@ onMounted(() => {
     padding-inline: 3px;
     font-size: 12px;
   }
-
-  .construction-state {
-    min-height: 0;
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-areas: 'copy' 'visual' 'actions' 'progress';
-    gap: 30px;
-    margin-top: 16px;
-    padding: 34px 18px 24px;
-  }
-
-  .construction-state h2 {
-    margin-top: 16px;
-    font-size: 29px;
-  }
-
-  .construction-state__copy > p {
-    font-size: 14px;
-    line-height: 1.75;
-  }
-
-  .construction-state__actions {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .construction-state__actions .btn {
-    width: 100%;
-  }
-
-  .construction-visual { display: grid; }
-  .construction-visual img { max-height: 240px; }
-  .construction-state__progress { grid-template-columns: minmax(0, 1fr); gap: 10px; }
-  .construction-state__progress span { min-height: 28px; padding: 0; }
-  .construction-state__progress span + span { padding-left: 0; border-left: 0; }
 
   .catalog-search {
     grid-template-columns: auto minmax(0, 1fr);
@@ -1142,15 +918,9 @@ onMounted(() => {
 }
 
 /* Keep the published interaction details without changing catalog behaviour. */
-.capability-tabs__status { font-size: 9px; }
+.capability-tabs__status { font-size: 11px; }
 .capability-tabs button:hover:not(.active) { transform: translateY(-1px); }
 .capability-tabs button:active { transform: scale(.98); }
-.catalog-card small { font-size: 10px; }
-@media (prefers-reduced-motion: reduce) {
-  .construction-state,
-  .construction-visual,
-  .capability-tabs button,
-  .catalog-card { animation: none !important; transition: none !important; }
-}
+.catalog-card small { font-size: 11.5px; }
 
 </style>

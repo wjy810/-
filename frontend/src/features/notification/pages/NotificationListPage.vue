@@ -559,14 +559,14 @@ onMounted(() => {
   border: 1px solid transparent;
   background: transparent;
   font-size: 13px;
-  color: var(--text-2);
+  color: var(--text-secondary);
   cursor: pointer;
   transition: background 0.15s, color 0.15s;
 }
 
 .seg__item.is-active {
-  background: var(--primary);
-  color: #fff;
+  background: var(--color-primary);
+  color: var(--text-on-primary);
 }
 
 .n-block {
@@ -576,7 +576,7 @@ onMounted(() => {
 
 .n-group {
   font-size: 12px;
-  color: var(--text-3);
+  color: var(--text-tertiary);
 }
 
 .n-list {
@@ -606,8 +606,8 @@ onMounted(() => {
 .n-row:last-child { border-bottom: 0; }
 
 .n-row.is-unread {
-  box-shadow: inset 3px 0 0 var(--primary);
-  background: #f8faff;
+  box-shadow: inset 3px 0 0 var(--color-primary);
+  background: var(--surface-1);
 }
 
 .n-row.is-clickable {
@@ -634,23 +634,23 @@ onMounted(() => {
 }
 
 .n-icon--blue {
-  background: var(--primary-soft);
-  color: var(--primary);
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
 }
 
 .n-icon--green {
   background: var(--success-soft);
-  color: var(--success);
+  color: var(--color-success);
 }
 
 .n-icon--red {
   background: var(--danger-soft);
-  color: var(--danger);
+  color: var(--color-danger);
 }
 
 .n-icon--orange {
   background: var(--warning-soft);
-  color: var(--warning);
+  color: var(--color-warning);
 }
 
 .n-icon--purple {
@@ -659,8 +659,8 @@ onMounted(() => {
 }
 
 .n-icon--ink {
-  background: #f3f4f6;
-  color: var(--text-2);
+  background: var(--surface-2);
+  color: var(--text-secondary);
 }
 
 .n-main {
@@ -683,14 +683,14 @@ onMounted(() => {
 
 .n-body {
   font-size: 14px;
-  color: var(--text-2);
+  color: var(--text-secondary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .n-lock {
-  color: var(--warning);
+  color: var(--color-warning);
 }
 
 .n-side {
@@ -704,11 +704,11 @@ onMounted(() => {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--primary);
+  background: var(--color-primary);
 }
 
 .n-hint {
-  color: var(--text-3);
+  color: var(--text-tertiary);
 }
 
 .d-status {
@@ -730,7 +730,7 @@ onMounted(() => {
 
 .d-sec__title {
   font-size: 13px;
-  color: var(--text-2);
+  color: var(--text-secondary);
 }
 
 .kv {
@@ -742,7 +742,7 @@ onMounted(() => {
 }
 
 .kv dt {
-  color: var(--text-3);
+  color: var(--text-tertiary);
 }
 
 .kv dd {
@@ -762,7 +762,7 @@ onMounted(() => {
   padding: 0;
   list-style: none;
   font-size: 13px;
-  color: var(--text-2);
+  color: var(--text-secondary);
 }
 
 .d-timeline li {
@@ -775,13 +775,13 @@ onMounted(() => {
   width: 9px;
   height: 9px;
   border-radius: 50%;
-  background: var(--primary);
-  box-shadow: 0 0 0 4px var(--primary-soft);
+  background: var(--color-primary);
+  box-shadow: 0 0 0 4px var(--color-primary-soft);
 }
 
 .d-body {
   font-size: 13px;
-  color: var(--text-2);
+  color: var(--text-secondary);
   line-height: 1.7;
   word-break: break-word;
 }
@@ -800,20 +800,20 @@ onMounted(() => {
 /* Match the released notification surface: each item is its own card. */
 .n-toolbar { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; }
 .seg { position: relative; isolation: isolate; display: inline-flex; gap: 4px; padding: 3px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); }
-.seg::before { position: absolute; z-index: 0; inset: 3px auto 3px 3px; width: calc((100% - 10px) / 2); border-radius: inherit; background: var(--primary); box-shadow: 0 5px 12px rgba(37,99,235,.18); content: ''; pointer-events: none; transform: translateX(calc(var(--seg-index) * (100% + 4px))); transition: transform var(--motion-slow) var(--motion-ease), box-shadow var(--motion-base) var(--motion-ease); }
-.seg__item { position: relative; z-index: 1; padding: 5px 16px; border: 1px solid transparent; border-radius: 999px; color: var(--text-2); background: transparent; font-size: 13px; cursor: pointer; transition: color var(--motion-base) ease, transform var(--motion-fast) var(--motion-ease); }
-.seg__item.is-active { color: #fff; background: transparent; }
+.seg::before { position: absolute; z-index: 0; inset: 3px auto 3px 3px; width: calc((100% - 10px) / 2); border-radius: inherit; background: var(--color-primary); box-shadow: 0 5px 12px color-mix(in srgb, var(--color-primary) 18%, transparent); content: ''; pointer-events: none; transform: translateX(calc(var(--seg-index) * (100% + 4px))); transition: transform var(--motion-slow) var(--motion-ease), box-shadow var(--motion-base) var(--motion-ease); }
+.seg__item { position: relative; z-index: 1; padding: 5px 16px; border: 1px solid transparent; border-radius: 999px; color: var(--text-secondary); background: transparent; font-size: 13px; cursor: pointer; transition: color var(--motion-base) ease, transform var(--motion-fast) var(--motion-ease); }
+.seg__item.is-active { color: var(--text-on-primary); background: transparent; }
 .seg__item:active { transform: scale(.97); }
 .n-block { animation: notification-block-in var(--motion-base) var(--motion-ease-out) both; }
 @keyframes notification-block-in { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
 .n-list { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
 .n-row { display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px; border: 1px solid var(--border); border-radius: var(--radius-l); background: var(--surface); box-shadow: var(--shadow-s); }
-.n-row.is-unread { border-left: 3px solid var(--primary); }
+.n-row.is-unread { border-left: 3px solid var(--color-primary); }
 .n-row.is-clickable { cursor: pointer; transition: border-color .15s, box-shadow .15s; }
-.n-row.is-clickable:hover { border-color: var(--primary); box-shadow: var(--shadow-l); }
+.n-row.is-clickable:hover { border-color: var(--color-primary); box-shadow: var(--shadow-l); }
 .n-icon { width: 40px; height: 40px; flex-shrink: 0; display: grid; place-items: center; border-radius: 10px; }
 .n-main { min-width: 0; flex: 1; display: grid; gap: 4px; }
-.n-body { color: var(--text-2); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.n-body { color: var(--text-secondary); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 @media (max-width: 640px) {
   .seg { width: auto; border-radius: 999px; }
   .seg__item { min-height: 40px; padding-inline: 12px; }

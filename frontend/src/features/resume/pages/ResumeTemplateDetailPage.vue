@@ -341,7 +341,7 @@ onMounted(() => {
 .preview-pane {
   min-width: 0;
   padding: 28px;
-  background: #eef1f5;
+  background: var(--surface-2);
 }
 
 .control-pane {
@@ -373,7 +373,7 @@ onMounted(() => {
 }
 
 .control-label {
-  color: var(--text-2);
+  color: var(--text-secondary);
   font-size: 12px;
 }
 
@@ -392,29 +392,29 @@ onMounted(() => {
   border: 1px solid var(--border-strong);
   border-radius: var(--radius);
   background: var(--surface);
-  color: var(--text-2);
+  color: var(--text-secondary);
   font-size: 13px;
 }
 
 .variant-control__item.is-on {
-  border-color: var(--primary);
-  color: var(--primary);
-  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.1);
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary) 10%, transparent);
 }
 
 .swatch {
   width: 15px;
   height: 15px;
-  border: 1px solid #cfd4dc;
+  border: 1px solid var(--border-default);
   border-radius: 50%;
 }
 
 .swatch--blue {
-  background: #175cd3;
+  background: var(--color-primary);
 }
 
 .swatch--mono {
-  background: #202939;
+  background: var(--text-primary);
 }
 
 .overflow-list {
@@ -426,7 +426,7 @@ onMounted(() => {
   display: flex;
   align-items: flex-start;
   gap: 7px;
-  color: var(--danger);
+  color: var(--color-danger);
   font-size: 12px;
 }
 
@@ -444,7 +444,7 @@ onMounted(() => {
 }
 
 .template-facts dt {
-  color: var(--text-3);
+  color: var(--text-tertiary);
 }
 
 .template-facts dd {

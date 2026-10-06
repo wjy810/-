@@ -495,6 +495,7 @@
 /* ---------- Forms ---------- */
 .field {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 6px;
   align-content: start;
 }
@@ -517,7 +518,9 @@
 
 .input,
 .textarea,
-.select {
+.select,
+.field > input:not([type='checkbox']):not([type='radio']):not([type='file']),
+.field > textarea {
   width: 100%;
   min-height: var(--control-md);
   border: 1px solid var(--border-default);
@@ -534,13 +537,17 @@
 
 .input:hover:not(:disabled),
 .textarea:hover:not(:disabled),
-.select:hover:not(:disabled) {
+.select:hover:not(:disabled),
+.field > input:hover:not(:disabled),
+.field > textarea:hover:not(:disabled) {
   border-color: var(--border-strong);
 }
 
 .input:focus,
 .textarea:focus,
-.select:focus {
+.select:focus,
+.field > input:focus,
+.field > textarea:focus {
   outline: none;
   border-color: var(--color-primary);
   box-shadow: var(--focus-ring);
@@ -548,6 +555,8 @@
 
 .input:disabled,
 .textarea:disabled,
+.field > input:disabled,
+.field > textarea:disabled,
 .select:disabled {
   background: var(--surface-3);
   color: var(--text-disabled);

@@ -288,7 +288,7 @@ onBeforeUnmount(() => controller?.abort())
 .skill-ai__header > div > span { min-width: 0; display: flex; align-items: baseline; gap: 7px; }
 .skill-ai__header strong { color: var(--text); font-size: 12px; }
 .skill-ai__header small { color: var(--text-tertiary); font-size: 11px; font-weight: 500; }
-.skill-ai__toggle, .skill-ai__primary { min-height: 28px; padding: 0 8px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; border: 1px solid var(--color-primary); border-radius: 4px; background: var(--surface-2); color: var(--color-primary-text); font-size: 11.5px; font-weight: 700; }
+.skill-ai__toggle, .skill-ai__primary { min-height: 28px; padding: 0 8px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; border: 1px solid var(--color-primary-border); border-radius: 4px; background: var(--surface-2); color: var(--color-primary-text); font-size: 11.5px; font-weight: 700; }
 .skill-ai__toggle:hover:not(:disabled), .skill-ai__primary:hover:not(:disabled) { background: var(--surface-2); border-color: var(--color-primary); }
 .skill-ai button:disabled { cursor: not-allowed; opacity: .55; }
 .skill-ai__body { padding: 10px; display: grid; gap: 10px; border-top: 1px solid var(--border-subtle); background: var(--surface-1); }
@@ -313,18 +313,18 @@ onBeforeUnmount(() => controller?.abort())
 .skill-ai__names-head button { border: 0; background: transparent; color: var(--color-primary); font-size: 11px; }
 .skill-candidate-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
 .skill-candidate { min-width: 0; min-height: 68px; padding: 8px; display: grid; grid-template-columns: 15px minmax(0, 1fr) auto; align-items: start; gap: 7px; border: 1px solid var(--border-default); border-radius: 5px; background: var(--surface-1); cursor: pointer; }
-.skill-candidate:hover { border-color: var(--color-primary); }.skill-candidate.is-selected { border-color: var(--color-primary); background: var(--surface-2); }
+.skill-candidate:hover { border-color: var(--color-primary-border); }.skill-candidate.is-selected { border-color: var(--color-primary); background: var(--surface-2); }
 .skill-candidate > input { width: 14px; height: 14px; margin: 2px 0 0; accent-color: var(--color-primary); }
 .skill-candidate__main { min-width: 0; display: grid; gap: 2px; }
 .skill-candidate__main strong { color: var(--text); font-size: 12px; overflow-wrap: anywhere; }
 .skill-candidate__main small { color: var(--text-tertiary); font-size: 11px; }
 .skill-candidate__main em { color: var(--text-secondary); font-size: 11px; font-style: normal; line-height: 1.45; }
 .skill-candidate__meta { max-width: 76px; display: grid; justify-items: end; gap: 3px; text-align: right; }
-.skill-candidate__meta b { padding: 2px 4px; border-radius: 3px; color: var(--color-success-text); background: var(--surface-3); font-size: 8px; }
+.skill-candidate__meta b { padding: 2px 4px; border-radius: 3px; color: var(--text-primary); background: var(--surface-3); font-size: 8px; }
 .skill-candidate.is-needs_confirmation .skill-candidate__meta b { color: var(--color-warning-text); background: var(--surface-3); }
 .skill-candidate.is-gap .skill-candidate__meta b { color: var(--color-danger-text); background: var(--surface-2); }
 .skill-candidate__meta small { color: var(--text-tertiary); font-size: 8px; line-height: 1.3; }
-.skill-ai__confirmation { padding: 7px 8px; display: flex; align-items: flex-start; gap: 7px; border-left: 2px solid var(--color-warning); background: var(--surface-2); color: var(--color-warning-text); font-size: 11px; line-height: 1.5; cursor: pointer; }
+.skill-ai__confirmation { padding: 7px 8px; display: flex; align-items: flex-start; gap: 7px; border-left: 2px solid var(--color-warning); background: var(--surface-2); color: var(--text-primary); font-size: 11px; line-height: 1.5; cursor: pointer; }
 .skill-ai__confirmation input { width: 14px; height: 14px; flex: none; margin: 0; accent-color: var(--color-primary); }
 .skill-ai__actions { display: flex; align-items: center; justify-content: flex-end; gap: 7px; }
 .skill-ai__actions > span { margin-right: auto; color: var(--text-tertiary); font-size: 11px; }

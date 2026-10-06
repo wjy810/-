@@ -108,30 +108,30 @@ onMounted(load)
 .quota-overview { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(330px, 1fr); }
 .quota-overview__main { display: grid; align-content: center; gap: 22px; padding: 24px; border-right: 1px solid var(--border); }
 .quota-overview__title { display: flex; align-items: center; gap: 13px; }
-.quota-overview__title > span { width: 44px; height: 44px; display: grid; place-items: center; flex: 0 0 auto; border-radius: 10px; background: var(--primary); color: #fff; box-shadow: 0 7px 16px rgba(37, 99, 235, 0.2); }
+.quota-overview__title > span { width: 44px; height: 44px; display: grid; place-items: center; flex: 0 0 auto; border-radius: 10px; background: var(--color-primary); color: var(--text-on-primary); box-shadow: 0 7px 16px color-mix(in srgb, var(--color-primary) 20%, transparent); }
 .quota-overview__title > div { display: grid; flex: 1; }
-.quota-overview__title small { color: var(--text-3); font-size: 11.5px; }
+.quota-overview__title small { color: var(--text-tertiary); font-size: 12.5px; }
 .quota-overview__title strong { margin-top: 1px; font-size: 26px; letter-spacing: 0; }
 .quota-progress { display: grid; gap: 7px; }
-.quota-progress > span { height: 7px; overflow: hidden; border-radius: 999px; background: #edf1f6; }
-.quota-progress i { display: block; height: 100%; border-radius: inherit; background: var(--primary); transition: width 380ms cubic-bezier(0.2, 0.8, 0.2, 1); }
-.quota-progress small { color: var(--text-3); font-size: 11px; }
-.quota-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: center; padding: 22px 18px; background: #fafbfd; }
+.quota-progress > span { height: 7px; overflow: hidden; border-radius: 999px; background: var(--surface-2); }
+.quota-progress i { display: block; height: 100%; border-radius: inherit; background: var(--color-primary); transition: width 380ms cubic-bezier(0.2, 0.8, 0.2, 1); }
+.quota-progress small { color: var(--text-tertiary); font-size: 12px; }
+.quota-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: center; padding: 22px 18px; background: var(--surface-1); }
 .quota-metrics > div { min-width: 0; display: grid; justify-items: center; gap: 1px; padding: 12px; border-right: 1px solid var(--border); }
 .quota-metrics > div:last-child { border-right: 0; }
-.quota-metrics small, .quota-metrics span { color: var(--text-3); font-size: 10.5px; }
+.quota-metrics small, .quota-metrics span { color: var(--text-tertiary); font-size: 12px; }
 .quota-metrics strong { font-size: 20px; }
 .usage-grid { display: grid; grid-template-columns: minmax(0, 1.08fr) minmax(320px, 0.92fr); gap: 18px; align-items: start; }
 .policy-list { display: grid; gap: 3px; }
 .policy-list article { display: flex; align-items: flex-start; gap: 11px; padding: 13px 0; border-bottom: 1px solid var(--border); }
 .policy-list article:last-child { border-bottom: 0; }
-.policy-list article > span { width: 34px; height: 34px; display: grid; place-items: center; flex: 0 0 auto; border-radius: 8px; background: #f1f5fb; color: var(--primary); }
+.policy-list article > span { width: 34px; height: 34px; display: grid; place-items: center; flex: 0 0 auto; border-radius: 8px; background: var(--surface-2); color: var(--color-primary); }
 .policy-list strong { font-size: 13px; }
-.policy-list p { margin-top: 3px; color: var(--text-2); font-size: 12px; line-height: 1.65; }
-.boundary-card__badge { display: inline-flex; align-items: center; gap: 5px; padding: 4px 8px; border-radius: 999px; background: var(--success-soft); color: var(--success); font-size: 11px; font-weight: 600; }
+.policy-list p { margin-top: 3px; color: var(--text-secondary); font-size: 12px; line-height: 1.65; }
+.boundary-card__badge { display: inline-flex; align-items: center; gap: 5px; padding: 4px 8px; border-radius: 999px; background: var(--success-soft); color: var(--color-success); font-size: 12px; font-weight: 600; }
 .boundary-card ul { display: grid; gap: 11px; margin: 0 0 20px; padding: 0; list-style: none; }
-.boundary-card li { display: flex; align-items: flex-start; gap: 8px; color: var(--text-2); font-size: 12px; line-height: 1.6; }
-.boundary-card li .app-icon { margin-top: 3px; flex: 0 0 auto; color: var(--success); }
+.boundary-card li { display: flex; align-items: flex-start; gap: 8px; color: var(--text-secondary); font-size: 12px; line-height: 1.6; }
+.boundary-card li .app-icon { margin-top: 3px; flex: 0 0 auto; color: var(--color-success); }
 .usage-entry { width: 100%; justify-content: center; }
 @media (max-width: 1120px) { .quota-overview, .usage-grid { grid-template-columns: 1fr; } .quota-overview__main { border-right: 0; border-bottom: 1px solid var(--border); } }
 @media (max-width: 620px) { .quota-overview__main { padding: 20px 16px; } .quota-overview__title { align-items: flex-start; flex-wrap: wrap; } .quota-overview__title > div { min-width: calc(100% - 60px); } .quota-overview__title strong { font-size: 22px; } .quota-metrics { padding: 12px 6px; } .quota-metrics > div { padding-inline: 6px; } }

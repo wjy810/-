@@ -227,8 +227,8 @@ onMounted(() => void loadSessions())
   width: 36px;
   height: 36px;
   border-radius: 9px;
-  background: var(--primary-soft);
-  color: var(--primary);
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
   display: grid;
   place-items: center;
   flex-shrink: 0;
@@ -236,7 +236,7 @@ onMounted(() => void loadSessions())
 
 .info-row__label {
   font-size: 12px;
-  color: var(--text-3);
+  color: var(--text-tertiary);
 }
 
 .info-row__value {
@@ -257,9 +257,9 @@ onMounted(() => void loadSessions())
   align-items: center;
   gap: 11px;
   padding: 14px 16px;
-  border: 1px solid #e2e7ef;
+  border: 1px solid var(--border-subtle);
   border-radius: 10px;
-  background: #fff;
+  background: var(--surface-1);
 }
 
 .security-summary article > span:first-child {
@@ -269,8 +269,8 @@ onMounted(() => void loadSessions())
   place-items: center;
   flex: 0 0 auto;
   border-radius: 9px;
-  background: #eef4ff;
-  color: var(--primary);
+  background: var(--surface-2);
+  color: var(--color-primary);
 }
 
 .security-summary article > div {
@@ -280,8 +280,8 @@ onMounted(() => void loadSessions())
 }
 
 .security-summary small {
-  color: var(--text-3);
-  font-size: 11px;
+  color: var(--text-tertiary);
+  font-size: 12px;
 }
 
 .security-summary strong {
@@ -307,8 +307,8 @@ onMounted(() => void loadSessions())
   display: flex;
   align-items: center;
   gap: 6px;
-  color: var(--text-3);
-  font-size: 11.5px;
+  color: var(--text-tertiary);
+  font-size: 12.5px;
 }
 
 .security-password-form {
@@ -342,7 +342,7 @@ onMounted(() => void loadSessions())
   margin: 0 -6px;
   padding-inline: 8px;
   border-radius: 9px;
-  background: #f7fbf8;
+  background: var(--surface-2);
 }
 
 .session-row__icon {
@@ -352,13 +352,13 @@ onMounted(() => void loadSessions())
   place-items: center;
   flex: 0 0 auto;
   border-radius: 8px;
-  background: #f1f4f8;
-  color: var(--text-2);
+  background: var(--surface-2);
+  color: var(--text-secondary);
 }
 
 .session-row.is-current .session-row__icon {
   background: var(--success-soft);
-  color: var(--success);
+  color: var(--color-success);
 }
 
 .session-row > div {
@@ -371,8 +371,8 @@ onMounted(() => void loadSessions())
 
 .session-row small,
 .device-empty small {
-  color: var(--text-3);
-  font-size: 11.5px;
+  color: var(--text-tertiary);
+  font-size: 12.5px;
 }
 
 .device-empty {
@@ -380,7 +380,7 @@ onMounted(() => void loadSessions())
   align-items: flex-start;
   gap: 9px;
   padding: 14px 2px 2px;
-  color: var(--success);
+  color: var(--color-success);
 }
 
 .device-empty span {
@@ -410,7 +410,7 @@ onMounted(() => void loadSessions())
 }
 
 .table-wrap th {
-  color: var(--text-3);
+  color: var(--text-tertiary);
   font-weight: 500;
 }
 

@@ -1207,14 +1207,14 @@ onUnmounted(() => {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  border: 1px solid #d8e2ef;
-  border-left: 3px solid #2563eb;
-  background: #f8fafc;
+  border: 1px solid var(--border-subtle);
+  border-left: 3px solid var(--color-primary);
+  background: var(--surface-2);
 }
 
 .ai-workbench-entry > div, .ai-workbench-entry span { display: flex; align-items: center; gap: 9px; }
 .ai-workbench-entry span { align-items: flex-start; flex-direction: column; gap: 2px; }
-.ai-workbench-entry small { color: var(--text-3); }
+.ai-workbench-entry small { color: var(--text-tertiary); }
 
 .rail {
   display: grid;
@@ -1282,11 +1282,11 @@ onUnmounted(() => {
 }
 
 .link-danger {
-  color: var(--danger);
+  color: var(--color-danger);
 }
 
 .link-danger:hover:not(:disabled) {
-  color: var(--danger);
+  color: var(--color-danger);
 }
 
 .facts {
@@ -1304,7 +1304,7 @@ onUnmounted(() => {
 }
 
 .facts__row dt {
-  color: var(--text-3);
+  color: var(--text-tertiary);
 }
 
 .facts__row dd {
@@ -1342,7 +1342,7 @@ onUnmounted(() => {
   display: flex;
   align-items: flex-start;
   gap: 6px;
-  color: var(--danger);
+  color: var(--color-danger);
   font-size: 12px;
 }
 
@@ -1354,7 +1354,7 @@ onUnmounted(() => {
 .cover__num {
   font-size: 24px;
   font-weight: 600;
-  color: var(--primary);
+  color: var(--color-primary);
 }
 
 .ver-list {
@@ -1371,8 +1371,8 @@ onUnmounted(() => {
 }
 
 .ver.is-focus {
-  border-color: var(--primary);
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 12%, transparent);
 }
 
 .ver__icon {
@@ -1385,23 +1385,23 @@ onUnmounted(() => {
 }
 
 .ver__icon--blue {
-  background: var(--primary-soft);
-  color: var(--primary);
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
 }
 
 .ver__icon--green {
   background: var(--success-soft);
-  color: var(--success);
+  color: var(--color-success);
 }
 
 .ver__icon--orange {
   background: var(--warning-soft);
-  color: var(--warning);
+  color: var(--color-warning);
 }
 
 .ver__icon--gray {
-  background: #f3f4f6;
-  color: var(--text-3);
+  background: var(--surface-2);
+  color: var(--text-tertiary);
 }
 
 .ver__body {

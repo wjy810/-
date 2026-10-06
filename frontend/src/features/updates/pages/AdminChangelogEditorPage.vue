@@ -152,16 +152,16 @@ onMounted(load); onUnmounted(() => window.clearTimeout(saveTimer))
 </template>
 
 <style scoped>
-.editor-upload { position: relative; min-height: 82px; display: flex; align-items: center; justify-content: center; gap: 9px; padding: 14px; border: 1px dashed #adc2e3; border-radius: 10px; background: #f7faff; color: #2f6bff; cursor: pointer; transition: border-color .2s ease, background-color .2s ease, transform .2s ease; }
-.editor-upload:hover { border-color: #2f6bff; background: #eff5ff; transform: translateY(-1px); }
+.editor-upload { position: relative; min-height: 82px; display: flex; align-items: center; justify-content: center; gap: 9px; padding: 14px; border: 1px dashed var(--color-primary-border); border-radius: 10px; background: var(--surface-2); color: var(--color-primary); cursor: pointer; transition: border-color .2s ease, background-color .2s ease, transform .2s ease; }
+.editor-upload:hover { border-color: var(--color-primary); background: var(--surface-2); transform: translateY(-1px); }
 .editor-upload.is-busy { cursor: wait; opacity: .72; }
 .editor-upload input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 .editor-image { display: grid; gap: 10px; }
-.editor-image > img { width: 100%; max-height: 260px; object-fit: contain; border: 1px solid #d9e2ef; border-radius: 9px; background: #fff; }
+.editor-image > img { width: 100%; max-height: 260px; object-fit: contain; border: 1px solid var(--border-subtle); border-radius: 9px; background: var(--surface-1); }
 .editor-image > label { display: grid; gap: 6px; }
 .editor-image > .btn { justify-self: start; }
 .editor-dialog { display: grid; gap: 16px; }
-.editor-dialog > p { margin: 0; color: #5d6e88; line-height: 1.7; }
+.editor-dialog > p { margin: 0; color: var(--text-secondary); line-height: 1.7; }
 .admin-editor__grid { animation: editor-workspace-in var(--motion-base) var(--motion-ease-out) both; }
 .editor-section-list { position: relative; display: grid; gap: 12px; }
 .editor-section-enter-active,
@@ -178,7 +178,7 @@ onMounted(load); onUnmounted(() => window.clearTimeout(saveTimer))
   inset: 3px auto 3px 3px;
   width: calc((100% - 6px) / 2);
   border-radius: 7px;
-  background: #fff;
+  background: var(--surface-1);
   box-shadow: 0 2px 8px rgba(25,49,89,.08);
   content: '';
   transition: transform var(--motion-slow) var(--motion-ease);
@@ -198,7 +198,7 @@ onMounted(load); onUnmounted(() => window.clearTimeout(saveTimer))
   .editor-section .icon-btn,
   .preview-switch button,
   .editor-module,
-  .admin-editor :deep(.app-select__trigger),
+  .admin-editor:deep(.app-select__trigger),
   .admin-editor :deep(.app-date-picker__trigger) {
     min-height: 44px;
   }

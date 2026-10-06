@@ -288,8 +288,8 @@ watch(
   align-self: center;
   padding: 2px 10px;
   border-radius: 999px;
-  background: var(--primary-soft);
-  color: var(--primary);
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
   font-size: 12px;
   font-weight: 600;
 }
@@ -317,17 +317,17 @@ watch(
 
 .summary__item--add {
   background: var(--success-soft);
-  color: var(--success);
+  color: var(--color-success);
 }
 
 .summary__item--del {
   background: var(--danger-soft);
-  color: var(--danger);
+  color: var(--color-danger);
 }
 
 .summary__item--ev {
   background: var(--warning-soft);
-  color: var(--warning);
+  color: var(--color-warning);
 }
 
 .panes {
@@ -357,7 +357,7 @@ watch(
 
 .pane__field {
   padding: 10px 14px;
-  border-bottom: 1px solid #f0f2f5;
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .pane__field:last-child {
@@ -365,7 +365,7 @@ watch(
 }
 
 .pane__field.is-diff {
-  border-left: 3px solid var(--warning);
+  border-left: 3px solid var(--color-warning);
 }
 
 .pane__field-head {
@@ -397,12 +397,12 @@ watch(
 
 .pane__line--add {
   background: var(--success-soft);
-  color: #15803d;
+  color: var(--color-success-text);
 }
 
 .pane__line--del {
   background: var(--danger-soft);
-  color: #b91c1c;
+  color: var(--color-danger-text);
   text-decoration: line-through;
 }
 

@@ -1,14 +1,20 @@
 <script setup lang="ts">
 import { computed, nextTick, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { errorMessage } from '@/shared/api/types'
 import AppIcon from '@/shared/ui/AppIcon.vue'
-import { createAiResume } from '../services/aiResumeApi'
+import { createAiResume, selectAiResumeTemplate } from '../services/aiResumeApi'
 import type { AiIdentity } from '../types'
 
 type ResumeStart = 'NEW' | 'EXISTING'
 
 const router = useRouter()
+const route = useRoute()
+/** Started from the template center: apply that layout right after creating the resume. */
+const requestedTemplate = computed(() => {
+  const value = route.query.template
+  return typeof value === 'string' && /^[a-z0-9-]{3,80}$/.test(value) ? value : ''
+})
 const start = ref<ResumeStart | ''>('')
 const identity = ref<AiIdentity | ''>('')
 const pending = ref(false)
@@ -41,6 +47,10 @@ async function chooseIdentity(value: AiIdentity): Promise<void> {
   await nextTick(scrollLatest)
   try {
     const conversation = await createAiResume(value)
+    if (requestedTemplate.value && requestedTemplate.value !== conversation.layout?.templateId) {
+      // Best effort: the default layout still works, and the template can be switched in the workbench.
+      await selectAiResumeTemplate(conversation.id, requestedTemplate.value, conversation.layout?.version).catch(() => undefined)
+    }
     await router.replace({
       path: `/ai-resume/${conversation.id}`,
       query: { source: start.value === 'EXISTING' ? 'existing' : 'new' },
@@ -111,38 +121,38 @@ function scrollLatest(): void {
 </template>
 
 <style scoped>
-.onboarding-workbench { height: 100vh; display: grid; grid-template-rows: 56px 1fr; overflow: hidden; background: #f4f7fa; }
-.onboarding-bar { display: grid; grid-template-columns: 40px 1fr 1fr; align-items: center; padding: 0 16px; background: #fff; border-bottom: 1px solid var(--border); }
+.onboarding-workbench { height: 100vh; display: grid; grid-template-rows: 56px 1fr; overflow: hidden; background: var(--surface-2); }
+.onboarding-bar { display: grid; grid-template-columns: 40px 1fr 1fr; align-items: center; padding: 0 16px; background: var(--surface-1); border-bottom: 1px solid var(--border); }
 .onboarding-bar > strong { text-align: center; font-size: 14px; }
-.onboarding-bar > span { height: 100%; padding-left: 18px; display: flex; align-items: center; gap: 7px; color: var(--primary); border-left: 1px solid var(--border); font-size: 12px; font-weight: 600; }
+.onboarding-bar > span { height: 100%; padding-left: 18px; display: flex; align-items: center; gap: 7px; color: var(--color-primary); border-left: 1px solid var(--border); font-size: 12px; font-weight: 600; }
 .onboarding-grid { min-height: 0; display: grid; grid-template-columns: minmax(430px, 46%) minmax(0, 54%); }
 .onboarding-flow { min-height: 0; padding: 28px max(28px, 7vw) 60px; display: flex; flex-direction: column; gap: 18px; overflow-y: auto; border-right: 1px solid var(--border); scroll-behavior: smooth; }
-.flow-copy { max-width: 620px; display: grid; gap: 7px; color: #344054; }
-.flow-copy > span { color: var(--text-3); font-size: 11px; }
+.flow-copy { max-width: 620px; display: grid; gap: 7px; color: var(--text-primary); }
+.flow-copy > span { color: var(--text-tertiary); font-size: 12px; }
 .flow-copy p { line-height: 1.7; }
-.choice-card { width: min(620px, 100%); padding: 20px; display: grid; gap: 10px; background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; box-shadow: 0 8px 24px rgba(15, 23, 42, .05); }
+.choice-card { width: min(620px, 100%); padding: 20px; display: grid; gap: 10px; background: var(--surface-1); border: 1px solid var(--border-subtle); border-radius: 8px; box-shadow: 0 8px 24px rgba(15, 23, 42, .05); }
 .choice-card > div { margin-bottom: 4px; display: grid; gap: 5px; }
 .choice-card > div strong { font-size: 15px; }
-.choice-card > div span { color: var(--text-3); font-size: 12px; }
-.choice-card > button { width: fit-content; min-width: 190px; min-height: 44px; padding: 0 14px; display: flex; align-items: center; justify-content: space-between; gap: 10px; color: var(--text); background: #fff; border: 1px solid var(--border-strong); border-radius: 7px; font-weight: 600; }
-.choice-card > button:hover:not(:disabled) { color: var(--primary); border-color: #8aacec; background: #f7faff; }
+.choice-card > div span { color: var(--text-tertiary); font-size: 12px; }
+.choice-card > button { width: fit-content; min-width: 190px; min-height: 44px; padding: 0 14px; display: flex; align-items: center; justify-content: space-between; gap: 10px; color: var(--text); background: var(--surface-1); border: 1px solid var(--border-strong); border-radius: 7px; font-weight: 600; }
+.choice-card > button:hover:not(:disabled) { color: var(--color-primary); border-color: var(--color-primary-border); background: var(--surface-2); }
 .choice-card > button:disabled { opacity: .55; }
 .user-answer { max-width: 74%; align-self: flex-end; animation: enter .18s ease-out; }
-.user-answer p { padding: 12px 16px; color: #fff; background: var(--primary); border-radius: 8px; box-shadow: 0 7px 18px rgba(37, 99, 235, .16); }
+.user-answer p { padding: 12px 16px; color: var(--text-on-primary); background: var(--color-primary); border-radius: 8px; box-shadow: 0 7px 18px color-mix(in srgb, var(--color-primary) 16%, transparent); }
 .flow-copy--followup { animation: enter .2s ease-out; }
 .identity-card { animation: enter .22s ease-out; }
 .identity-card > button { width: min(360px, 100%); display: grid; grid-template-columns: 32px 1fr 16px; text-align: left; }
-.identity-card > button i { width: 30px; height: 30px; display: grid; place-items: center; color: var(--primary); background: var(--primary-soft); border-radius: 6px; }
+.identity-card > button i { width: 30px; height: 30px; display: grid; place-items: center; color: var(--color-primary); background: var(--color-primary-soft); border-radius: 6px; }
 .identity-card > button span { display: grid; }
-.identity-card > button small { color: var(--text-3); font-size: 10px; font-weight: 400; }
-.flow-copy--loading p { width: 52px; height: 38px; display: flex; align-items: center; justify-content: center; gap: 5px; background: #fff; border-radius: 7px; }
-.flow-copy--loading i { width: 6px; height: 6px; border-radius: 50%; background: #718096; animation: dot 1s ease-in-out infinite; }
+.identity-card > button small { color: var(--text-tertiary); font-size: 11.5px; font-weight: 400; }
+.flow-copy--loading p { width: 52px; height: 38px; display: flex; align-items: center; justify-content: center; gap: 5px; background: var(--surface-1); border-radius: 7px; }
+.flow-copy--loading i { width: 6px; height: 6px; border-radius: 50%; background: var(--text-primary); animation: dot 1s ease-in-out infinite; }
 .flow-copy--loading i:nth-child(2) { animation-delay: .14s; }.flow-copy--loading i:nth-child(3) { animation-delay: .28s; }
-.flow-error { width: min(620px, 100%); padding: 10px 12px; color: #991b1b; background: #fff1f2; border: 1px solid #fecdd3; border-radius: 6px; }
+.flow-error { width: min(620px, 100%); padding: 10px 12px; color: var(--color-danger-text); background: var(--surface-2); border: 1px solid color-mix(in srgb, var(--color-danger) 35%, var(--border-subtle)); border-radius: 6px; }
 .onboarding-preview { min-width: 0; display: grid; place-items: center; padding: 24px; }
-.onboarding-preview > div { max-width: 320px; display: grid; justify-items: center; gap: 9px; text-align: center; color: var(--text-2); }
-.onboarding-preview span { width: 52px; height: 52px; display: grid; place-items: center; color: var(--primary); background: #eaf2ff; border-radius: 8px; }
-.onboarding-preview p { color: var(--text-3); font-size: 12px; line-height: 1.6; }
+.onboarding-preview > div { max-width: 320px; display: grid; justify-items: center; gap: 9px; text-align: center; color: var(--text-secondary); }
+.onboarding-preview span { width: 52px; height: 52px; display: grid; place-items: center; color: var(--color-primary); background: var(--surface-2); border-radius: 8px; }
+.onboarding-preview p { color: var(--text-tertiary); font-size: 12px; line-height: 1.6; }
 @keyframes enter { from { opacity: 0; transform: translateY(7px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes dot { 0%, 60%, 100% { opacity: .35; transform: translateY(0); } 30% { opacity: 1; transform: translateY(-3px); } }
 @media (max-width: 800px) { .onboarding-bar { grid-template-columns: 40px 1fr auto; }.onboarding-bar > span { border-left: 0; font-size: 0; }.onboarding-grid { grid-template-columns: 1fr; }.onboarding-flow { padding: 20px 16px 44px; border-right: 0; }.onboarding-preview { display: none; }.choice-card { padding: 16px; }.choice-card > button { width: 100%; }.user-answer { max-width: 88%; } }

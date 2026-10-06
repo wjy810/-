@@ -196,7 +196,7 @@ watch(
 
 .current__label {
   font-size: 12px;
-  color: var(--text-3);
+  color: var(--text-tertiary);
   margin-bottom: 4px;
 }
 
@@ -214,12 +214,12 @@ watch(
   border-radius: var(--radius);
   background: var(--surface);
   padding: 8px 12px;
-  color: var(--text-3);
+  color: var(--text-tertiary);
 }
 
 .search-box:focus-within {
-  border-color: var(--primary);
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 15%, transparent);
 }
 
 .search-box__input {
@@ -258,12 +258,12 @@ watch(
 }
 
 .ev-card:hover {
-  border-color: var(--primary);
+  border-color: var(--color-primary);
 }
 
 .ev-card.is-on {
-  border-color: var(--primary);
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 12%, transparent);
 }
 
 .ev-card[aria-disabled='true'] {
@@ -281,20 +281,20 @@ watch(
   flex-shrink: 0;
   margin-top: 2px;
   background: var(--surface);
-  color: #fff;
+  color: var(--text-on-primary);
 }
 
 .ev-card.is-on .ev-card__check {
-  background: var(--primary);
-  border-color: var(--primary);
+  background: var(--color-primary);
+  border-color: var(--color-primary);
 }
 
 .ev-card__icon {
   width: 30px;
   height: 30px;
   border-radius: 8px;
-  background: var(--primary-soft);
-  color: var(--primary);
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
   display: grid;
   place-items: center;
   flex-shrink: 0;
@@ -319,7 +319,7 @@ watch(
 
 .ev-card__sub {
   font-size: 12px;
-  color: var(--text-3);
+  color: var(--text-tertiary);
 }
 
 .ev-card__url {

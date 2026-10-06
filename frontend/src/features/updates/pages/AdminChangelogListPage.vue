@@ -142,7 +142,7 @@ onMounted(load)
   to { opacity: 1; transform: translateY(0); }
 }
 .editor-dialog { display: grid; gap: 16px; }
-.editor-dialog > p { margin: 0; color: #5d6e88; line-height: 1.7; }
+.editor-dialog > p { margin: 0; color: var(--text-secondary); line-height: 1.7; }
 
 @media (max-width: 1050px) {
   .admin-stats {
@@ -163,7 +163,7 @@ onMounted(load)
   }
   .page-head__actions > .btn,
   .toolbar > .btn,
-  .toolbar :deep(.app-select__trigger) {
+  .toolbar:deep(.app-select__trigger) {
     min-height: 44px;
   }
   .page-head__actions > .btn {

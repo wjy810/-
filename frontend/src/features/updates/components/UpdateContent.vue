@@ -53,7 +53,7 @@ function icon(type: string) {
 
 <style scoped>
 .update-section__media { margin: 16px 0 0; }
-.update-section__media img { display: block; width: 100%; max-height: 540px; object-fit: contain; border: 1px solid #d9e2ef; border-radius: 8px; background: #f7f9fc; }
-.update-section__media figcaption { margin-top: 7px; color: #74849c; font-size: 12px; line-height: 1.5; }
+.update-section__media img { display: block; width: 100%; max-height: 540px; object-fit: contain; border: 1px solid var(--border-subtle); border-radius: 8px; background: var(--surface-2); }
+.update-section__media figcaption { margin-top: 7px; color: var(--text-secondary); font-size: 12px; line-height: 1.5; }
 .is-compact .update-section__media img { max-height: 260px; }
 </style>

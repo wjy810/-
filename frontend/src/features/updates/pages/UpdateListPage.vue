@@ -159,7 +159,7 @@ onUnmounted(() => restoreMetadata())
   width: 104px;
   border-radius: 999px;
   background: var(--updates-blue);
-  box-shadow: 0 6px 14px rgba(37, 99, 235, .18);
+  box-shadow: 0 6px 14px color-mix(in srgb, var(--color-primary) 18%, transparent);
   transform: translateX(calc(var(--chip-index) * 112px));
   transition: transform var(--motion-slow) var(--motion-ease), box-shadow var(--motion-base) var(--motion-ease);
 }
@@ -189,7 +189,7 @@ onUnmounted(() => restoreMetadata())
   .updates-chip,
   .updates-filter-button,
   .updates-filter-panel .btn,
-  .updates-filter-panel :deep(.app-select__trigger) {
+  .updates-filter-panel:deep(.app-select__trigger) {
     min-height: 44px;
   }
   .update-card__link,

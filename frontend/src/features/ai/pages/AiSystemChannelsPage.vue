@@ -74,7 +74,7 @@ onMounted(load)
 </template>
 
 <style scoped>
-.system-ai-page{max-width:1200px;margin:0 auto;display:grid;gap:16px}.channel-create{padding:18px;background:#fff;border:1px solid var(--border);border-radius:8px}.channel-create header{margin-bottom:14px;display:grid;gap:3px}.channel-create h2{font-size:15px}.channel-create p{color:var(--text-3);font-size:12px}.channel-create form{display:grid;grid-template-columns:1fr 1fr;gap:12px}.channel-create label{display:grid;gap:6px}.channel-create label span{font-size:11px;font-weight:600;color:var(--text-2)}.channel-create .wide{grid-column:1/-1}.channel-create form>.btn{width:fit-content}.channel-list{display:grid;gap:10px}.channel-list article{padding:16px;display:grid;gap:12px;background:#fff;border:1px solid var(--border);border-radius:8px}.channel-list article>header{display:flex;justify-content:space-between;gap:12px}.channel-list header>div{display:grid;gap:3px}.channel-list header span,.channel-list article>p,.channel-list article>small{color:var(--text-3);font-size:11px;overflow-wrap:anywhere}.test-controls{display:grid;grid-template-columns:1fr 180px auto auto;gap:8px}.channel-list dl{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}.channel-list dl div{padding:8px;background:#f6f8fb;text-align:center}.channel-list dt{color:var(--text-3);font-size:10px}.channel-list dd{color:var(--danger);font-size:11px;font-weight:600}.channel-list dd.pass{color:var(--success)}.empty-state{min-height:120px;display:grid;place-items:center;color:var(--text-3)}@media(max-width:800px){.channel-create form{grid-template-columns:1fr}.channel-create .wide{grid-column:auto}.test-controls{grid-template-columns:1fr}.channel-list dl{grid-template-columns:1fr 1fr}.channel-list article>header{align-items:flex-start;flex-direction:column}}
+.system-ai-page{max-width:1200px;margin:0 auto;display:grid;gap:16px}.channel-create{padding:18px;background:var(--surface-1);border:1px solid var(--border);border-radius:8px}.channel-create header{margin-bottom:14px;display:grid;gap:3px}.channel-create h2{font-size:15px}.channel-create p{color:var(--text-tertiary);font-size:12px}.channel-create form{display:grid;grid-template-columns:1fr 1fr;gap:12px}.channel-create label{display:grid;gap:6px}.channel-create label span{font-size:12px;font-weight:600;color:var(--text-secondary)}.channel-create .wide{grid-column:1/-1}.channel-create form>.btn{width:fit-content}.channel-list{display:grid;gap:10px}.channel-list article{padding:16px;display:grid;gap:12px;background:var(--surface-1);border:1px solid var(--border);border-radius:8px}.channel-list article>header{display:flex;justify-content:space-between;gap:12px}.channel-list header>div{display:grid;gap:3px}.channel-list header span,.channel-list article>p,.channel-list article>small{color:var(--text-tertiary);font-size:12px;overflow-wrap:anywhere}.test-controls{display:grid;grid-template-columns:1fr 180px auto auto;gap:8px}.channel-list dl{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}.channel-list dl div{padding:8px;background:var(--surface-2);text-align:center}.channel-list dt{color:var(--text-tertiary);font-size:11.5px}.channel-list dd{color:var(--color-danger);font-size:12px;font-weight:600}.channel-list dd.pass{color:var(--color-success)}.empty-state{min-height:120px;display:grid;place-items:center;color:var(--text-tertiary)}@media(max-width:800px){.channel-create form{grid-template-columns:1fr}.channel-create .wide{grid-column:auto}.test-controls{grid-template-columns:1fr}.channel-list dl{grid-template-columns:1fr 1fr}.channel-list article>header{align-items:flex-start;flex-direction:column}}
 
 .channel-create,
 .channel-list article,
@@ -85,7 +85,7 @@ onMounted(load)
   transition: border-color var(--motion-base) ease, box-shadow var(--motion-base) var(--motion-ease), transform var(--motion-fast) var(--motion-ease);
 }
 .channel-list article:hover {
-  border-color: #c3d2e8;
+  border-color: var(--border-default);
   box-shadow: 0 6px 18px rgba(16, 24, 40, .07);
   transform: translateY(-1px);
 }
@@ -93,7 +93,7 @@ onMounted(load)
   animation: channel-capability-in var(--motion-base) var(--motion-ease-out) both;
 }
 .channel-list dl div,
-.channel-list :deep(.tag) {
+.channel-list:deep(.tag) {
   transition: background-color var(--motion-base) ease, color var(--motion-base) ease, border-color var(--motion-base) ease;
 }
 @keyframes system-channel-in {
@@ -111,7 +111,7 @@ onMounted(load)
   .channel-list dl { animation: none; }
   .channel-list article,
   .channel-list dl div,
-  .channel-list :deep(.tag) { transition: none; }
+  .channel-list:deep(.tag) { transition: none; }
   .channel-list article:hover { transform: none; }
 }
 </style>

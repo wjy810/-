@@ -1013,9 +1013,9 @@ onUnmounted(() => {
   transition: border-color 180ms ease, background-color 180ms ease, transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 180ms ease;
 }
 .rail-row:hover {
-  border-color: var(--primary);
-  background: var(--primary-soft);
-  box-shadow: 0 5px 13px rgba(37, 99, 235, 0.08);
+  border-color: var(--color-primary);
+  background: var(--color-primary-soft);
+  box-shadow: 0 5px 13px color-mix(in srgb, var(--color-primary) 8%, transparent);
   transform: translateX(2px);
 }
 .rail-row + .rail-row {
@@ -1028,7 +1028,7 @@ onUnmounted(() => {
 .rail-row p {
   margin-top: 3px;
   font-size: 12px;
-  color: var(--text-2);
+  color: var(--text-secondary);
   line-height: 1.5;
 }
 .rail-row__icon {
@@ -1040,16 +1040,16 @@ onUnmounted(() => {
   flex-shrink: 0;
 }
 .rail-row__icon.is-blue {
-  background: var(--primary-soft);
-  color: var(--primary);
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
 }
 .rail-row__icon.is-orange {
   background: var(--warning-soft);
-  color: var(--warning);
+  color: var(--color-warning);
 }
 .rail-row__icon.is-red {
   background: var(--danger-soft);
-  color: var(--danger);
+  color: var(--color-danger);
 }
 .rights-dl {
   display: grid;
@@ -1059,7 +1059,7 @@ onUnmounted(() => {
 }
 .rights-dl dt {
   font-size: 12px;
-  color: var(--text-3);
+  color: var(--text-tertiary);
 }
 .rights-dl dd {
   margin-top: 3px;
@@ -1068,12 +1068,12 @@ onUnmounted(() => {
 .history-archive { display: grid; gap: 12px; }
 .history-counts { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; }
 .history-counts > div { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 7px; background: var(--bg); }
-.history-counts span { color: var(--text-3); font-size: 11px; }
+.history-counts span { color: var(--text-tertiary); font-size: 12px; }
 .history-counts strong { font-size: 15px; }
 .lock-note {
   margin-top: 10px;
   font-size: 12.5px;
-  color: var(--warning);
+  color: var(--color-warning);
 }
 .split-fields {
   display: grid;
@@ -1081,17 +1081,17 @@ onUnmounted(() => {
   gap: 0 14px;
 }
 .danger-card {
-  border-color: #f2c9cb;
-  box-shadow: 0 3px 14px rgba(220, 38, 38, 0.04);
+  border-color: var(--border-default);
+  box-shadow: 0 3px 14px color-mix(in srgb, var(--color-danger) 4%, transparent);
 }
 .danger-card .card__head {
   padding-bottom: 14px;
-  border-bottom: 1px solid #f8e3e4;
-  background: #fffafa;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--surface-1);
 }
 .advanced-card {
   border-style: dashed;
-  background: #fcfcfd;
+  background: var(--surface-1);
 }
 .advanced-card .card__sub {
   max-width: 680px;
@@ -1101,16 +1101,16 @@ onUnmounted(() => {
   padding: 10px 12px;
   border: 1px solid var(--border);
   border-radius: 8px;
-  background: #fafbfd;
+  background: var(--surface-1);
 }
 .technical-details summary {
-  color: var(--text-2);
+  color: var(--text-secondary);
   font-size: 12px;
   font-weight: 600;
 }
 .technical-details[open] summary {
   margin-bottom: 10px;
-  color: var(--primary);
+  color: var(--color-primary);
 }
 .preview-card .banner {
   margin-bottom: 12px;
@@ -1147,13 +1147,13 @@ onUnmounted(() => {
   padding: 12px 14px;
 }
 .ledger__row--wipe {
-  border-left-color: var(--danger);
+  border-left-color: var(--color-danger);
 }
 .ledger__row--keep {
-  border-left-color: var(--success);
+  border-left-color: var(--color-success);
 }
 .ledger__row--block {
-  border-left-color: var(--warning);
+  border-left-color: var(--color-warning);
 }
 .ledger__row header {
   display: flex;
@@ -1167,8 +1167,8 @@ onUnmounted(() => {
   border-radius: 999px;
   background: var(--bg);
   border: 1px solid var(--border);
-  font-size: 11.5px;
-  color: var(--text-2);
+  font-size: 12.5px;
+  color: var(--text-secondary);
 }
 @media (max-width: 1080px) {
   .rights-layout {
