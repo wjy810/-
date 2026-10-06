@@ -1,10 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { session } from '@/features/identity/session'
+import { useSessionStore } from '@/stores/session'
 import AppBanner from '@/shared/ui/AppBanner.vue'
 import AppButton from '@/shared/ui/AppButton.vue'
-import AppChrome from '@/shared/ui/AppChrome.vue'
 import AppEmpty from '@/shared/ui/AppEmpty.vue'
 import AppIcon from '@/shared/ui/AppIcon.vue'
 import AppTag from '@/shared/ui/AppTag.vue'
@@ -12,6 +11,7 @@ import { errorMessage, isUnauthenticated } from '@/shared/api/types'
 import { downloadTemplateCatalogDocx, fetchTemplateCatalogItem } from '../services/resumeApi'
 import type { TemplateCatalogItem } from '../types'
 
+const session = useSessionStore()
 const route = useRoute()
 const router = useRouter()
 const loading = ref(true)
@@ -97,7 +97,7 @@ function markPreviewPageFailed(pageNumber: number): void {
 
 async function download(): Promise<void> {
   downloadError.value = ''
-  if (!session.signedIn.value) {
+  if (!session.signedIn) {
     await router.push({
       name: 'home',
       query: { auth: 'login', next: route.fullPath, reason: 'unauthenticated' },
@@ -142,8 +142,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <AppChrome>
-    <section class="page asset-page">
+      <section class="page asset-page">
       <nav class="asset-breadcrumb" aria-label="面包屑">
         <RouterLink to="/resume-templates">模板中心</RouterLink>
         <AppIcon name="chevron-right" :size="14" />
@@ -220,8 +219,8 @@ onUnmounted(() => {
 
           <div class="asset-actions">
             <AppButton :pending="downloading" @click="download">
-              <AppIcon :name="session.signedIn.value ? 'download' : 'lock'" :size="15" />
-              {{ session.signedIn.value ? '下载 DOCX' : '登录后下载 DOCX' }}
+              <AppIcon :name="session.signedIn ? 'download' : 'lock'" :size="15" />
+              {{ session.signedIn ? '下载 DOCX' : '登录后下载 DOCX' }}
             </AppButton>
             <p>下载时服务端会再次核对病毒扫描结果与 SHA-256，文件名保留 HICV 来源前缀。</p>
           </div>
@@ -245,7 +244,6 @@ onUnmounted(() => {
         <RouterLink class="btn btn--ghost" to="/resume-templates">返回模板中心</RouterLink>
       </AppEmpty>
     </section>
-  </AppChrome>
 </template>
 
 <style scoped>

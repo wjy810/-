@@ -1,14 +1,12 @@
 <script setup lang="ts">
-withDefaults(
-  defineProps<{
-    tone?: 'ink' | 'ok' | 'warn' | 'bad'
-  }>(),
-  { tone: 'ink' },
-)
+/** @deprecated Use UiBanner. */
+import { computed } from 'vue'
+import UiBanner from './UiBanner.vue'
+
+const props = withDefaults(defineProps<{ tone?: 'ink' | 'ok' | 'warn' | 'bad' }>(), { tone: 'ink' })
+const tone = computed(() => ({ ink: 'info', ok: 'success', warn: 'warning', bad: 'danger' } as const)[props.tone])
 </script>
 
 <template>
-  <div class="banner" :class="`banner--${tone}`" role="status">
-    <slot />
-  </div>
+  <UiBanner :tone="tone"><slot /></UiBanner>
 </template>

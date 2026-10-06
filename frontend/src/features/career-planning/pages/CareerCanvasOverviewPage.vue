@@ -5,7 +5,6 @@ import {
   Bell, CheckCircle2, Eye, LoaderCircle, Network,
   Play, Search, Sparkles, Star, Target,
 } from 'lucide-vue-next'
-import AppChrome from '@/shared/ui/AppChrome.vue'
 import JobProofIcon from '@/shared/ui/JobProofIcon.vue'
 import AppModal from '@/shared/ui/AppModal.vue'
 import AppSelect from '@/shared/ui/AppSelect.vue'
@@ -171,8 +170,6 @@ onBeforeUnmount(() => window.clearTimeout(reloadTimer))
 </script>
 
 <template>
-  <AppChrome immersive-career>
-    <template #topbar><strong class="mobile-overview-title">能力画布总览</strong></template>
     <main class="canvas-overview-page">
       <header class="overview-heading">
         <div>
@@ -276,7 +273,6 @@ onBeforeUnmount(() => window.clearTimeout(reloadTimer))
         <button class="dialog-create" type="button" :disabled="!selectedTargetId || pending === 'create'" @click="createCanvas"><LoaderCircle v-if="pending === 'create'" class="spin" :size="16" /><JobProofIcon v-else :name="jobProofIconIds.newCanvas" :size="16" />创建目标画布</button>
       </template>
     </AppModal>
-  </AppChrome>
 </template>
 
 <style scoped>

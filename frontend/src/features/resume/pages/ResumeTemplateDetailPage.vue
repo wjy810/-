@@ -3,7 +3,6 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AppBanner from '@/shared/ui/AppBanner.vue'
 import AppButton from '@/shared/ui/AppButton.vue'
-import AppChrome from '@/shared/ui/AppChrome.vue'
 import AppEmpty from '@/shared/ui/AppEmpty.vue'
 import AppIcon from '@/shared/ui/AppIcon.vue'
 import AppSelect from '@/shared/ui/AppSelect.vue'
@@ -184,8 +183,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <AppChrome>
-    <ForbidState v-if="forbidden" :error="forbidden" />
+      <ForbidState v-if="forbidden" :error="forbidden" />
     <section v-else class="page detail-page">
       <header class="page-head detail-head">
         <div>
@@ -313,7 +311,6 @@ onMounted(() => {
         </aside>
       </div>
     </section>
-  </AppChrome>
 </template>
 
 <style scoped>

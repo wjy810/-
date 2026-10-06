@@ -1,0 +1,81 @@
+/* Layout primitives. Prefer these over ad-hoc flex/grid in page CSS. */
+
+.page-container {
+  width: 100%;
+  max-width: var(--content-max);
+  margin-inline: auto;
+  padding: var(--space-8) var(--space-10) var(--space-16);
+}
+
+.page-container--wide {
+  max-width: 1440px;
+}
+
+.page-container--narrow {
+  max-width: 820px;
+}
+
+@media (max-width: 1279px) {
+  .page-container {
+    padding: var(--space-6) var(--space-6) var(--space-12);
+  }
+}
+
+@media (max-width: 640px) {
+  .page-container {
+    padding: var(--space-5) var(--space-4) var(--space-12);
+  }
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--stack-gap, var(--space-4));
+}
+
+.stack--sm {
+  --stack-gap: var(--space-2);
+}
+
+.stack--lg {
+  --stack-gap: var(--space-6);
+}
+
+.stack--xl {
+  --stack-gap: var(--space-8);
+}
+
+.cluster {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--cluster-gap, var(--space-2));
+}
+
+.cluster--between {
+  justify-content: space-between;
+}
+
+.grid-auto {
+  display: grid;
+  gap: var(--grid-gap, var(--space-4));
+  grid-template-columns: repeat(auto-fill, minmax(var(--grid-min, 260px), 1fr));
+}
+
+.surface-card {
+  background: var(--surface-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+.dot-grid {
+  background-color: var(--bg-sunken);
+  background-image: radial-gradient(var(--dot-color) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+.scroll-fade {
+  --fade: 16px;
+  mask-image: linear-gradient(to bottom, transparent 0, #000 var(--fade), #000 calc(100% - var(--fade)), transparent 100%);
+}

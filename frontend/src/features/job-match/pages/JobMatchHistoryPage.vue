@@ -2,7 +2,6 @@
 import { onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ArrowLeft, ChevronLeft, ChevronRight, FileSearch, LoaderCircle, Search } from 'lucide-vue-next'
-import AppChrome from '@/shared/ui/AppChrome.vue'
 import AppSelect from '@/shared/ui/AppSelect.vue'
 import AppTag from '@/shared/ui/AppTag.vue'
 import { useToastFeedback } from '@/shared/ui/toast'
@@ -57,7 +56,7 @@ onMounted(load)
 </script>
 
 <template>
-  <AppChrome><main class="jm-page"><div class="jm-shell">
+  <main class="jm-page"><div class="jm-shell">
     <header class="jm-head"><div><button class="jm-text-btn" type="button" @click="router.push({ name: 'job-match-home' })"><ArrowLeft :size="16" />返回岗位匹配</button><h1>历史匹配记录</h1><p>查看已完成报告、继续未完成任务或恢复安全暂停的分析。</p></div></header>
     <section class="jm-card jm-history-toolbar"><label class="jm-search"><Search :size="16" /><input v-model="keyword" placeholder="搜索岗位、公司或简历名称"></label><AppSelect v-model="status"><option value="">全部状态</option><option value="COMPLETED">分析完成</option><option value="ANALYZING">分析中</option><option value="NEEDS_CLARIFICATION">需要确认</option><option value="ANALYSIS_PAUSED">分析已暂停</option><option value="EVIDENCE_AUTHORIZED">待开始分析</option></AppSelect><button class="jm-primary" type="button" @click="router.push({ name: 'job-match-new' })">创建新匹配</button></section>
     <section class="jm-card jm-history-table-wrap">
@@ -66,5 +65,5 @@ onMounted(load)
       <div v-else class="jm-empty"><div><span><FileSearch :size="30" /></span><h2>没有符合条件的匹配记录</h2><p>调整筛选条件或创建新的岗位匹配。</p></div></div>
       <footer v-if="!loading && totalPages > 1" class="jm-pagination"><span>共 {{ total }} 条</span><div><button class="jm-secondary" type="button" :disabled="page === 0" aria-label="上一页" @click="page -= 1"><ChevronLeft :size="16" /></button><strong>第 {{ page + 1 }} / {{ totalPages }} 页</strong><button class="jm-secondary" type="button" :disabled="page + 1 >= totalPages" aria-label="下一页" @click="page += 1"><ChevronRight :size="16" /></button></div></footer>
     </section>
-  </div></main></AppChrome>
+  </div></main>
 </template>

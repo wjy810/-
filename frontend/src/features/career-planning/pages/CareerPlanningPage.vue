@@ -6,7 +6,6 @@ import {
   ChevronRight, CircleAlert, Compass, Database, GitCompareArrows, Heart, Layers3, Link2,
   LoaderCircle, LockKeyhole, MessageCircle, Pencil, Save, Send, ShieldCheck, Sparkles, Target, Trash2, UserRound, X,
 } from 'lucide-vue-next'
-import AppChrome from '@/shared/ui/AppChrome.vue'
 import AppModal from '@/shared/ui/AppModal.vue'
 import AppSelect from '@/shared/ui/AppSelect.vue'
 import { useToastFeedback } from '@/shared/ui/toast'
@@ -895,8 +894,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <AppChrome>
-    <main class="cp-page">
+      <main class="cp-page">
       <div v-if="loading" class="cp-loading"><LoaderCircle class="cp-spin" :size="24" /><span>正在恢复职业规划</span></div>
       <template v-else>
         <section v-if="!session" class="cp-welcome">
@@ -1189,5 +1187,4 @@ onBeforeUnmount(() => {
       <div v-if="confirmationRecommendation" class="cp-goal-dialog"><span><Target :size="30" /></span><h2>{{ confirmationRecommendation.title }}</h2><p>确认后将为这个职业创建一张独立能力画布。推荐结果不会自动替你做决定。</p><section><CircleAlert :size="18" /><div><strong>这是一项明确的用户确认</strong><small>该画布会独立保存能力树、学习计划、能力验证和版本记录，其他画布不受影响。</small></div></section><label><input v-model="goalAcknowledged" type="checkbox"> 我已阅读推荐依据和能力缺口，确认将此职业设为本画布目标</label></div>
       <template #footer><button class="cp-secondary" type="button" @click="confirmation = null; confirmationRecommendation = null; goalAcknowledged = false">再比较一下</button><button class="cp-primary" type="button" :disabled="pending === 'commit-goal' || !goalAcknowledged" @click="commitGoal"><LoaderCircle v-if="pending === 'commit-goal'" class="cp-spin" :size="16" /><Target v-else :size="16" />确认目标并创建画布</button></template>
     </AppModal>
-  </AppChrome>
 </template>

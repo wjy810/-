@@ -2,7 +2,6 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ArrowLeft, ArrowRight, BriefcaseBusiness, Check, CheckCircle2, Circle, FileText, Gauge, Headphones, Info, Languages, LoaderCircle, Mic, MonitorCheck, Save, ShieldCheck, Upload, Volume2 } from 'lucide-vue-next'
-import AppChrome from '@/shared/ui/AppChrome.vue'
 import AppSelect from '@/shared/ui/AppSelect.vue'
 import JobTaxonomyPicker from '@/features/ai-resume/components/JobTaxonomyPicker.vue'
 import { listResumes } from '@/features/resume/services/resumeApi'
@@ -225,8 +224,7 @@ onBeforeUnmount(() => { testStream?.getTracks().forEach((track) => track.stop())
 </script>
 
 <template>
-  <AppChrome>
-    <main class="mi-create-page">
+      <main class="mi-create-page">
       <header class="mi-create-top"><strong>创建模拟面试</strong><span v-if="saving"><LoaderCircle class="mi-spin" :size="14" />正在保存</span><span v-else-if="savedNotice"><Check :size="14" />{{ savedNotice }}</span></header>
       <div class="mi-create-shell">
         <ol class="mi-stepper" aria-label="创建步骤">
@@ -287,7 +285,6 @@ onBeforeUnmount(() => { testStream?.getTracks().forEach((track) => track.stop())
       </div>
       <footer v-if="!loading" class="mi-create-footer"><button class="mi-secondary" type="button" @click="back"><ArrowLeft :size="17" />{{ step === 1 ? '返回' : '上一步' }}</button><div><button class="mi-secondary" type="button" :disabled="saving" @click="persist()"><Save :size="16" />保存草稿</button><button v-if="step < 5" class="mi-primary" type="button" @click="next">下一步：{{ steps[step]?.label }}<ArrowRight :size="17" /></button></div></footer>
     </main>
-  </AppChrome>
 </template>
 
 <script lang="ts">

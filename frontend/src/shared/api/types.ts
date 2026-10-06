@@ -11,6 +11,10 @@ export type ApiError = {
   category: string
   reason: string
   message: string
+  /** Server-side correlation id (X-Request-Id); shown to users for support. */
+  requestId?: string
+  /** Field-level validation messages keyed by request field name. */
+  fields?: Record<string, string>
 }
 
 export type ApiResponse<T> = {
@@ -23,14 +27,26 @@ export class ApiClientError extends Error {
   readonly category: string
   readonly reason: string
   readonly status: number
+  readonly requestId: string
+  readonly fields: Record<string, string>
 
-  constructor(error: ApiError, status: number) {
+  constructor(error: ApiError, status: number, requestId?: string) {
     super(error.message)
     this.name = 'ApiClientError'
     this.category = error.category
     this.reason = error.reason
     this.status = status
+    this.requestId = error.requestId ?? requestId ?? ''
+    this.fields = error.fields ?? {}
   }
+}
+
+export function isTimeout(error: unknown): boolean {
+  return isApiClientError(error) && error.reason === 'TIMEOUT'
+}
+
+export function fieldErrors(error: unknown): Record<string, string> {
+  return isApiClientError(error) ? error.fields : {}
 }
 
 export function isApiClientError(error: unknown): error is ApiClientError {

@@ -2,7 +2,6 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import AppBanner from '@/shared/ui/AppBanner.vue'
-import AppChrome from '@/shared/ui/AppChrome.vue'
 import AppDrawer from '@/shared/ui/AppDrawer.vue'
 import AppEmpty from '@/shared/ui/AppEmpty.vue'
 import AppIcon from '@/shared/ui/AppIcon.vue'
@@ -321,8 +320,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <AppChrome>
-    <ForbidState v-if="forbidden" :error="forbidden" />
+      <ForbidState v-if="forbidden" :error="forbidden" />
     <section v-else class="page">
       <header class="page-head">
         <div>
@@ -534,7 +532,6 @@ onMounted(() => {
         </template>
       </AppDrawer>
     </section>
-  </AppChrome>
 </template>
 
 <style scoped>

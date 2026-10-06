@@ -5,5 +5,9 @@ declare module 'vue-router' {
     requiresAuth?: boolean
     guestOnly?: boolean
     adminOnly?: boolean
+    /** Shown in the topbar and document title. */
+    title?: string
+    /** Lets the page use the full content width. */
+    wide?: boolean
   }
 }

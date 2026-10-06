@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import AppButton from '@/shared/ui/AppButton.vue'
-import AppChrome from '@/shared/ui/AppChrome.vue'
 import AppEmpty from '@/shared/ui/AppEmpty.vue'
 import AppIcon from '@/shared/ui/AppIcon.vue'
 import JobProofIcon from '@/shared/ui/JobProofIcon.vue'
@@ -233,8 +232,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <AppChrome>
-    <section class="page catalog-page">
+      <section class="page catalog-page">
       <header class="page-head catalog-head">
         <div>
           <h1 class="page-head__title">简历模板中心</h1>
@@ -461,7 +459,6 @@ onMounted(() => {
         </p>
       </footer>
     </section>
-  </AppChrome>
 </template>
 
 <style scoped>

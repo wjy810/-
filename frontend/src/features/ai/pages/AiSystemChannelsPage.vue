@@ -2,7 +2,6 @@
 import { onMounted, reactive, ref } from 'vue'
 import { errorMessage } from '@/shared/api/types'
 import AppButton from '@/shared/ui/AppButton.vue'
-import AppChrome from '@/shared/ui/AppChrome.vue'
 import AppIcon from '@/shared/ui/AppIcon.vue'
 import AppSelect from '@/shared/ui/AppSelect.vue'
 import AppTag from '@/shared/ui/AppTag.vue'
@@ -67,11 +66,11 @@ onMounted(load)
 </script>
 
 <template>
-  <AppChrome><main class="page system-ai-page">
+  <main class="page system-ai-page">
     <header class="page-head"><div><h1 class="page-head__title">SYSTEM AI 通道</h1><p class="page-head__sub">管理员录入、验收和启停平台通道；求职者不接触供应商 Key。</p></div><AppButton variant="ghost" :disabled="loading || !!pending" @click="load"><AppIcon name="refresh" :size="15" />刷新</AppButton></header>
     <section class="channel-create"><header><h2>新增系统通道</h2><p>必须使用已轮换的新 Key。通道先进入草稿，五项能力测试通过后才能启用。</p></header><form @submit.prevent="create"><label><span>名称</span><input v-model="form.name" class="input" maxlength="128" required /></label><label><span>供应商代码</span><input v-model="form.providerCode" class="input" maxlength="64" required /></label><label class="wide"><span>Base URL</span><input v-model="form.baseUrl" class="input" type="url" placeholder="https://provider.example.com" required /></label><label><span>协议</span><AppSelect v-model="form.protocol" ariaLabel="协议"><option value="OPENAI_CHAT">OpenAI Chat</option><option value="OPENAI_RESPONSES">OpenAI Responses</option><option value="ANTHROPIC_MESSAGES">Anthropic Messages</option></AppSelect></label><label class="wide"><span>新 API Key</span><input v-model="form.apiKey" class="input" type="password" autocomplete="new-password" required /></label><AppButton type="submit" :pending="pending === 'create'">保存为草稿</AppButton></form></section>
     <section class="channel-list"><div v-if="loading" class="empty-state">正在读取通道…</div><div v-else-if="!channels.length" class="empty-state">还没有系统通道。</div><article v-for="channel in channels" :key="channel.id"><header><div><strong>{{ channel.name }}</strong><span>{{ channel.providerCode }} · {{ channel.protocol }} · {{ channel.apiKeyMasked }}</span></div><AppTag :tone="channel.status === 'ACTIVE' ? 'green' : channel.healthStatus === 'UNHEALTHY' ? 'red' : 'gray'">{{ channel.status }} / {{ channel.healthStatus }}</AppTag></header><p>{{ channel.baseUrl }}</p><div class="test-controls"><input v-model="testModels[channel.id]" class="input" placeholder="供应商模型，留空自动选择" /><AppSelect v-model="platformModels[channel.id]" ariaLabel="平台模型"><option value="qwen-plus">映射 qwen-plus</option><option value="qwen-max">映射 qwen-max</option><option value="deepseek-chat">映射 deepseek-chat</option><option value="deepseek-reasoner">映射 deepseek-reasoner</option></AppSelect><AppButton variant="ghost" :pending="pending === `test-${channel.id}`" @click="test(channel)">能力测试</AppButton><AppButton :pending="pending === `toggle-${channel.id}`" @click="toggle(channel)">{{ channel.status === 'ACTIVE' ? '停用' : '启用' }}</AppButton></div><dl v-if="capabilities[channel.id]"><div v-for="item in ([['authenticated','鉴权'],['modelDiscovery','模型发现'],['plainResponse','普通响应'],['streamingResponse','流式响应'],['structuredResponse','结构化输出']] as const)" :key="item[0]"><dt>{{ item[1] }}</dt><dd :class="{ pass: capabilities[channel.id][item[0]] }">{{ passLabel(capabilities[channel.id][item[0]]) }}</dd></div></dl><small v-if="capabilities[channel.id]">{{ capabilities[channel.id].detail }}</small></article></section>
-  </main></AppChrome>
+  </main>
 </template>
 
 <style scoped>

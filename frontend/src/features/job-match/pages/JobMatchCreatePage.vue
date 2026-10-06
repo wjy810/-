@@ -2,7 +2,6 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Check, FileText, Globe2, LoaderCircle, ShieldCheck, TriangleAlert, Upload, UserRoundCheck } from 'lucide-vue-next'
-import AppChrome from '@/shared/ui/AppChrome.vue'
 import AppSelect from '@/shared/ui/AppSelect.vue'
 import { useToastFeedback } from '@/shared/ui/toast'
 import { errorMessage } from '@/shared/api/types'
@@ -240,7 +239,7 @@ onMounted(load)
 </script>
 
 <template>
-  <AppChrome><main class="jm-page"><div class="jm-shell">
+  <main class="jm-page"><div class="jm-shell">
     <header class="jm-head"><div><h1>创建岗位匹配</h1><p>四步确认分析输入，任何 AI 结论都能回到事实来源。</p></div><button class="jm-text-btn" type="button" @click="router.push({ name: 'job-match-home' })">保存并退出</button></header>
     <JobMatchStepper :current="currentStep" />
     <section v-if="pageError && stage === 'jd' && !match" class="jm-card jm-recovery" role="alert">
@@ -304,5 +303,5 @@ onMounted(load)
       </section>
       <JobMatchContext :match="match" :capabilities="capabilities" />
     </div>
-  </div></main></AppChrome>
+  </div></main>
 </template>

@@ -54,3 +54,11 @@ export function statusTone(status: JobMatchStatus): 'green' | 'orange' | 'red' |
   if (status === 'CANCELLED') return 'gray'
   return 'orange'
 }
+
+/** Where a match summary should open, based on its lifecycle status. */
+export function summaryRoute(item: { id: string; status: string }): { name: string; params?: { id: string }; query?: { id: string } } {
+  if (item.status === 'COMPLETED') return { name: 'job-match-report', params: { id: item.id } }
+  if (item.status === 'ANALYZING' || item.status === 'ANALYSIS_PAUSED' || item.status === 'CANCELLED') return { name: 'job-match-analyzing', params: { id: item.id } }
+  if (item.status === 'NEEDS_CLARIFICATION') return { name: 'job-match-clarifications', params: { id: item.id } }
+  return { name: 'job-match-new', query: { id: item.id } }
+}

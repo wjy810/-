@@ -2,14 +2,13 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ArrowRight, FileCheck2, LoaderCircle, Plus, ShieldCheck, Sparkles } from 'lucide-vue-next'
-import AppChrome from '@/shared/ui/AppChrome.vue'
 import AppTag from '@/shared/ui/AppTag.vue'
 import JobProofIcon from '@/shared/ui/JobProofIcon.vue'
 import { errorMessage } from '@/shared/api/types'
 import { useToastFeedback } from '@/shared/ui/toast'
 import { fetchMatchDashboard } from '../services/jobMatchApi'
 import type { JobMatchDashboard, JobMatchSummary } from '../types'
-import { statusLabel, statusTone } from '../utils/stage'
+import { statusLabel, statusTone, summaryRoute } from '../utils/stage'
 import '../job-match.css'
 
 const router = useRouter()
@@ -26,17 +25,13 @@ async function load() {
   finally { loading.value = false }
 }
 function open(item: JobMatchSummary) {
-  if (item.status === 'COMPLETED') void router.push({ name: 'job-match-report', params: { id: item.id } })
-  else if (item.status === 'ANALYZING' || item.status === 'ANALYSIS_PAUSED' || item.status === 'CANCELLED') void router.push({ name: 'job-match-analyzing', params: { id: item.id } })
-  else if (item.status === 'NEEDS_CLARIFICATION') void router.push({ name: 'job-match-clarifications', params: { id: item.id } })
-  else void router.push({ name: 'job-match-new', query: { id: item.id } })
+  void router.push(summaryRoute(item))
 }
 onMounted(load)
 </script>
 
 <template>
-  <AppChrome>
-    <main class="jm-page"><div class="jm-shell">
+      <main class="jm-page"><div class="jm-shell">
       <header class="jm-head"><div><h1>岗位匹配</h1><p>比较目标岗位 JD 与你的简历，获得有证据的匹配分析和提升建议。</p></div><button class="jm-primary" type="button" @click="router.push({ name: 'job-match-new' })"><Plus :size="17" /><span>创建新的匹配</span></button></header>
       <section v-if="loading" class="jm-card jm-loading"><span><LoaderCircle class="jm-spin" :size="20" /> 正在读取匹配记录</span></section>
       <template v-else>
@@ -63,5 +58,4 @@ onMounted(load)
         <section v-else class="jm-card jm-empty"><div><span><JobProofIcon name="matching-create-match" :size="32" /></span><h2>创建第一份岗位匹配</h2><p>导入一份真实 JD，选择投递简历，获得带事实来源的分析报告。</p><button class="jm-primary" type="button" @click="router.push({ name: 'job-match-new' })"><Plus :size="17" />创建岗位匹配</button></div></section>
       </template>
     </div></main>
-  </AppChrome>
 </template>

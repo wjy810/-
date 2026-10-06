@@ -2,7 +2,6 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Check, Circle, LoaderCircle, PauseCircle, ShieldCheck, TriangleAlert } from 'lucide-vue-next'
-import AppChrome from '@/shared/ui/AppChrome.vue'
 import AppTag from '@/shared/ui/AppTag.vue'
 import { useToastFeedback } from '@/shared/ui/toast'
 import { errorMessage } from '@/shared/api/types'
@@ -130,7 +129,7 @@ onMounted(async()=>{try{motionPreference=window.matchMedia('(prefers-reduced-mot
 onBeforeUnmount(()=>{window.clearInterval(pollTimer);window.clearInterval(motionTimer);motionPreference?.removeEventListener('change',handleMotionPreference);stream?.close()})
 </script>
 
-<template><AppChrome><main class="jm-page"><div class="jm-shell">
+<template><main class="jm-page"><div class="jm-shell">
   <header class="jm-head"><div><h1>正在分析岗位匹配</h1><p>{{ match?.title || '目标岗位' }}<template v-if="match?.company"> · {{ match.company }}</template></p></div><AppTag v-if="match" :tone="statusTone(match.status)">{{ statusLabel(match.status) }}</AppTag></header>
   <section v-if="loading" class="jm-card jm-loading"><LoaderCircle class="jm-spin" :size="20" /> 正在恢复分析任务</section>
   <div v-else class="jm-analysis-grid"><div>
@@ -144,4 +143,4 @@ onBeforeUnmount(()=>{window.clearInterval(pollTimer);window.clearInterval(motion
     <div class="jm-privacy"><ShieldCheck :size="18" /><p><strong>可安全离开此页</strong><span>任务在后台执行，刷新或重新登录后会从服务端检查点恢复。</span></p></div>
     <div class="jm-analysis-actions"><button v-if="match?.status==='ANALYSIS_PAUSED'" class="jm-primary" type="button" :disabled="pending" @click="resume"><LoaderCircle v-if="pending" class="jm-spin" :size="16" />恢复原分析</button><button v-else-if="match?.status==='ANALYZING'" class="jm-secondary" type="button" :disabled="pending" @click="cancel">取消分析</button><button v-else class="jm-secondary" type="button" @click="router.push({name:'job-match-home'})">返回岗位匹配</button></div>
   </div><JobMatchContext :match="match" :capabilities="capabilities" /></div>
-</div></main></AppChrome></template>
+</div></main></template>

@@ -33,10 +33,12 @@ beforeEach(() => {
 async function editRecord() {
   const wrapper = mount(CareerRecordsTab, {
     props: { overview, q: '', type: '', status: 'ACTIVE', sort: 'RECENT', layout: 'list' },
-    global: { stubs: { teleport: true } },
+    // Reka dialogs portal into document.body; keep the real Teleport so the form renders.
+    attachTo: document.body,
   })
   await flushPromises()
   await wrapper.get('button[title="编辑"]').trigger('click')
+  await flushPromises()
   return wrapper
 }
 
@@ -46,7 +48,7 @@ describe('career record dates', () => {
     const dates = wrapper.findAllComponents(AppDatePicker)
     expect(dates[0]!.props('modelValue')).toBe('2024-01')
     expect(dates[1]!.props('modelValue')).toBe('2025-12')
-    await wrapper.get('#career-record-form').trigger('submit')
+    document.querySelector<HTMLFormElement>('#career-record-form')!.dispatchEvent(new Event('submit', { cancelable: true }))
     await flushPromises()
     expect(api.update).toHaveBeenCalledWith(record.id, expect.objectContaining({
       startDate: '2024-01-12', endDate: '2025-12-08', expectedVersion: 3,
@@ -56,7 +58,7 @@ describe('career record dates', () => {
   it('saves a newly chosen month while retaining the untouched date', async () => {
     const wrapper = await editRecord()
     wrapper.findAllComponents(AppDatePicker)[0]!.vm.$emit('update:modelValue', '2024-03')
-    await wrapper.get('#career-record-form').trigger('submit')
+    document.querySelector<HTMLFormElement>('#career-record-form')!.dispatchEvent(new Event('submit', { cancelable: true }))
     await flushPromises()
     expect(api.update).toHaveBeenCalledWith(record.id, expect.objectContaining({
       startDate: '2024-03', endDate: '2025-12-08',

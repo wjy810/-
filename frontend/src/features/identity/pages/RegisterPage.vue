@@ -9,7 +9,7 @@ import { errorMessage } from '@/shared/api/types'
 import { normalizeEmail, PASSWORD_RULE_HINT, validatePassword } from '@/shared/lib/validation'
 import AuthStage from '../components/AuthStage.vue'
 import { loginAccount, registerAccount } from '../services/authApi'
-import { rememberAccount } from '../session'
+import { useSessionStore } from '@/stores/session'
 
 const router = useRouter()
 const form = reactive({ email: '', password: '', confirm: '' })
@@ -35,7 +35,7 @@ async function onSubmit(): Promise<void> {
     const email = normalizeEmail(form.email).value
     await registerAccount(email, form.password)
     const account = await loginAccount(email, form.password)
-    rememberAccount(account)
+    useSessionStore().remember(account)
     await router.replace('/onboarding')
   } catch (error) {
     formError.value = errorMessage(error, '注册未成功')

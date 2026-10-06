@@ -1,34 +1,31 @@
 <script setup lang="ts">
-import { computed } from 'vue'
 import { useRoute } from 'vue-router'
-import AppIcon from './AppIcon.vue'
-import type { IconName } from './icons'
+import { Database, Lock, Palette, Sparkles } from 'lucide-vue-next'
 
 const route = useRoute()
-
-const items: Array<{ to: string; label: string; icon: IconName }> = [
-  { to: '/account', label: '账号与安全', icon: 'lock' },
-  { to: '/account/ai', label: 'AI 配置', icon: 'sparkles' },
-  { to: '/account/data-rights', label: '授权与数据权利', icon: 'shield' },
+const items = [
+  { to: '/account', label: '账号与安全', icon: Lock },
+  { to: '/account/appearance', label: '外观', icon: Palette },
+  { to: '/account/ai', label: 'AI 用量', icon: Sparkles },
+  { to: '/account/data-rights', label: '数据与隐私', icon: Database },
 ]
 
 function isActive(to: string): boolean {
-  return route.path === to
+  return to === '/account' ? route.path === '/account' : route.path.startsWith(to)
 }
-
-const activeIndex = computed(() => Math.max(0, items.findIndex((item) => isActive(item.to))))
 </script>
 
 <template>
-  <nav class="settings-nav" aria-label="设置" :style="{ '--settings-index': activeIndex }">
+  <nav class="settings-nav" aria-label="设置">
     <RouterLink
       v-for="item in items"
       :key="item.to"
+      :to="item.to"
       class="settings-nav__item"
       :class="{ 'is-active': isActive(item.to) }"
-      :to="item.to"
+      :aria-current="isActive(item.to) ? 'page' : undefined"
     >
-      <AppIcon :name="item.icon" :size="16" />
+      <component :is="item.icon" :size="17" :stroke-width="1.9" />
       <span>{{ item.label }}</span>
     </RouterLink>
   </nav>
@@ -36,108 +33,49 @@ const activeIndex = computed(() => Math.max(0, items.findIndex((item) => isActiv
 
 <style scoped>
 .settings-nav {
-  position: relative;
-  isolation: isolate;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.settings-nav::before {
-  position: absolute;
-  inset: 0 0 auto;
-  z-index: -1;
-  height: 44px;
-  border-radius: 9px;
-  background: var(--primary-soft);
-  box-shadow: inset 3px 0 0 var(--primary);
-  content: '';
-  transform: translateY(calc(var(--settings-index) * 48px));
-  transition: transform 260ms cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 220ms ease;
+  display: grid;
+  gap: 2px;
 }
 
 .settings-nav__item {
-  min-height: 44px;
+  height: 38px;
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 12px;
-  border-radius: 9px;
-  font-size: 13.5px;
-  color: var(--text-2);
-  cursor: pointer;
-  transition: color 200ms ease, transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  padding: 0 12px;
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  font-size: var(--fs-body);
+  font-weight: 500;
+  transition: background-color var(--dur-fast), color var(--dur-fast);
 }
 
 .settings-nav__item:hover {
-  color: var(--primary);
-  transform: translateX(2px);
+  background: var(--surface-3);
+  color: var(--text-primary);
 }
 
 .settings-nav__item.is-active {
-  color: var(--primary);
+  background: var(--surface-1);
+  color: var(--text-primary);
   font-weight: 600;
+  box-shadow: var(--shadow-sm), inset 0 0 0 1px var(--border-subtle);
 }
 
-.settings-nav__item :deep(.app-icon) {
-  transition: transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+.settings-nav__item.is-active svg {
+  color: var(--color-primary);
 }
 
-.settings-nav__item:hover :deep(.app-icon),
-.settings-nav__item.is-active :deep(.app-icon) {
-  transform: scale(1.08);
-}
-
-.settings-nav__item:active {
-  transform: translateX(1px) scale(0.985);
-}
-
-.settings-nav__item:focus-visible {
-  outline: 2px solid rgba(37, 99, 235, 0.38);
-  outline-offset: -2px;
-}
-
-@media (max-width: 940px) {
+@media (max-width: 860px) {
   .settings-nav {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-
-  .settings-nav::before {
-    width: calc((100% - 8px) / 3);
-    height: 44px;
-    box-shadow: inset 0 -3px 0 var(--primary);
-    transform: translateX(calc(var(--settings-index) * (100% + 4px)));
+    display: flex;
+    overflow-x: auto;
+    gap: 4px;
+    scrollbar-width: none;
   }
 
   .settings-nav__item {
-    justify-content: center;
-    padding-inline: 8px;
-  }
-
-  .settings-nav__item:hover {
-    transform: translateY(-1px);
-  }
-}
-
-@media (max-width: 540px) {
-  .settings-nav__item {
-    gap: 6px;
-    font-size: 12px;
-  }
-}
-
-@media (max-width: 390px) {
-  .settings-nav__item :deep(.app-icon) {
-    display: none;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .settings-nav::before,
-  .settings-nav__item,
-  .settings-nav__item :deep(.app-icon) {
-    transition: none !important;
+    flex-shrink: 0;
   }
 }
 </style>

@@ -2,7 +2,6 @@
 import { onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AppBanner from '@/shared/ui/AppBanner.vue'
-import AppChrome from '@/shared/ui/AppChrome.vue'
 import AppIcon from '@/shared/ui/AppIcon.vue'
 import ForbidState from '@/shared/ui/ForbidState.vue'
 import { errorMessage, isForbidden } from '@/shared/api/types'
@@ -29,8 +28,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <AppChrome>
-    <ForbidState v-if="forbidden" :error="forbidden" />
+      <ForbidState v-if="forbidden" :error="forbidden" />
     <section v-else class="page">
       <div v-if="!pageError" class="card redirect-card" aria-busy="true">
         <span class="redirect-card__icon redirect-card__icon--spin"><AppIcon name="loader" :size="20" /></span>
@@ -51,7 +49,6 @@ onMounted(async () => {
         </RouterLink>
       </div>
     </section>
-  </AppChrome>
 </template>
 
 <style scoped>

@@ -3,7 +3,6 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import AppBanner from '@/shared/ui/AppBanner.vue'
 import AppButton from '@/shared/ui/AppButton.vue'
-import AppChrome from '@/shared/ui/AppChrome.vue'
 import AppField from '@/shared/ui/AppField.vue'
 import AppIcon from '@/shared/ui/AppIcon.vue'
 import AppSelect from '@/shared/ui/AppSelect.vue'
@@ -76,8 +75,7 @@ onMounted(() => void load())
 </script>
 
 <template>
-  <AppChrome>
-    <div class="onboarding-page">
+      <div class="onboarding-page">
       <ol class="steps" aria-label="求职资料引导进度">
         <li class="is-active"><span>1</span>求职方向</li>
         <li><span>2</span>基础信息</li>
@@ -130,7 +128,6 @@ onMounted(() => void load())
         </aside>
       </div>
     </div>
-  </AppChrome>
 </template>
 
 <style scoped>

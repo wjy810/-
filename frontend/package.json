@@ -1,34 +1,43 @@
 {
   "name": "jobproof-web",
   "private": true,
-  "version": "0.1.0-s3",
+  "version": "2.0.0",
   "type": "module",
   "packageManager": "npm@11.5.1",
-  "engines": { "node": ">=24.15.0 <25" },
+  "engines": {
+    "node": ">=22.12"
+  },
   "scripts": {
     "dev": "vite",
     "build": "node scripts/clean-dist.mjs && vue-tsc -b && vite build --emptyOutDir",
     "test": "npm run test:logic && npm run test:components",
-    "test:logic": "node --test src/app/router.test.ts src/features/identity/authLanding.test.ts src/shared/ui/datePicker.test.ts src/shared/ui/select.test.ts src/features/resume/components/resumePreviewPagination.test.ts src/features/resume/components/resumeStructuredEntries.test.ts src/features/resume/components/resumeContact.test.ts src/features/resume/utils/resumeLanding.test.ts src/features/ai-resume/utils/listEditing.test.ts src/features/ai-resume/utils/guidedFlow.test.ts src/features/ai-resume/utils/contactDetails.test.ts src/features/ai-resume/utils/descriptionSuggestion.test.ts src/features/ai-resume/utils/summarySuggestions.test.ts src/features/ai-resume/utils/skillSuggestions.test.ts src/features/ai-resume/utils/certificateSuggestions.test.ts src/features/ai-resume/utils/changeSetOverlay.test.ts src/features/ai-resume/utils/pdfPreflight.test.ts src/features/ai-resume/utils/pdfExportMode.test.ts src/features/ai-resume/utils/scrollSurface.test.ts src/features/landing/components/evidenceSceneMath.test.ts src/features/career-planning/utils/canvas.test.ts src/features/career-planning/utils/canvasMotion.test.ts src/features/career-planning/utils/comparison.test.ts src/features/career-planning/utils/evidenceAuthorization.test.ts src/features/career-planning/utils/presentation.test.ts src/features/career-planning/utils/sessionSnapshot.test.ts src/features/career-planning/utils/skillPicker.test.ts src/features/career-planning/utils/workbenchTransition.test.ts src/features/job-match/utils/stage.test.ts src/features/job-match/utils/analysisProgress.test.ts src/features/job-match/utils/reportPresentation.test.ts src/features/job-match/utils/uiPresentation.test.ts src/features/mock-interview/utils/voiceInteraction.test.ts src/features/updates/filters.test.ts src/features/updates/metadata.test.ts",
+    "test:logic": "node scripts/run-logic-tests.mjs",
     "test:components": "vitest run --config vitest.config.ts",
     "test:e2e:career-planning": "playwright test e2e/career-planning.spec.ts",
     "test:pagination": "node --test src/features/resume/components/resumePreviewPagination.test.ts",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "typecheck": "vue-tsc -b --noEmit"
   },
   "dependencies": {
+    "@fontsource-variable/inter": "^5.3.0",
+    "@tanstack/vue-query": "^5.104.1",
     "@vue-flow/background": "^1.3.2",
     "@vue-flow/controls": "^1.1.3",
     "@vue-flow/core": "^1.48.2",
     "@vue-flow/minimap": "^1.5.4",
+    "@vueuse/core": "^15.0.0",
     "lucide-vue-next": "^0.468.0",
-    "three": "0.185.1",
+    "pinia": "^4.0.3",
+    "pinyin-pro": "^3.29.4",
+    "reka-ui": "^2.11.0",
     "vue": "^3.5.40",
-    "vue-router": "^5.2.0"
+    "vue-draggable-plus": "^0.6.1",
+    "vue-router": "^5.2.0",
+    "vue-sonner": "^2.0.9"
   },
   "devDependencies": {
     "@playwright/test": "^1.62.1",
     "@types/node": "^24.13.3",
-    "@types/three": "0.185.4",
     "@vitejs/plugin-vue": "^6.0.8",
     "@vue/test-utils": "^2.5.0",
     "@vue/tsconfig": "^0.9.1",

@@ -2,7 +2,6 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { AlertTriangle, ArrowLeft, BarChart3, CheckCircle2, ChevronRight, Download, FileText, LoaderCircle, RefreshCw, Share2, ShieldCheck, Sparkles, Target, TrendingUp } from 'lucide-vue-next'
-import AppChrome from '@/shared/ui/AppChrome.vue'
 import { formatWhen } from '@/shared/lib/datetime'
 import { errorMessage } from '@/shared/api/types'
 import { useToastFeedback } from '@/shared/ui/toast'
@@ -77,8 +76,7 @@ onMounted(load)
 </script>
 
 <template>
-  <AppChrome>
-    <main class="mi-page mi-report-page">
+      <main class="mi-page mi-report-page">
       <div class="mi-shell">
         <section v-if="loading" class="mi-card mi-loading"><span><LoaderCircle class="mi-spin" :size="20" />正在生成可追溯报告</span></section>
         <template v-else-if="report">
@@ -110,7 +108,6 @@ onMounted(load)
         </template>
       </div>
     </main>
-  </AppChrome>
 </template>
 
 <style scoped>

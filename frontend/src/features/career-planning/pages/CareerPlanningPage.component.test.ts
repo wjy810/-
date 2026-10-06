@@ -1,6 +1,5 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import AppToastViewport from '@/shared/ui/AppToastViewport.vue'
 import { clearToasts } from '@/shared/ui/toast'
 import { makeSession } from '../../../../tests/careerPlanningFixtures'
 
@@ -9,6 +8,16 @@ const api = vi.hoisted(() => ({
   fetchCareerPlanningSession: vi.fn(),
   startCareerPlanning: vi.fn(),
 }))
+const sonner = vi.hoisted(() => ({
+  success: vi.fn(() => 'toast-id'),
+  error: vi.fn(() => 'toast-id'),
+  warning: vi.fn(() => 'toast-id'),
+  info: vi.fn(() => 'toast-id'),
+  loading: vi.fn(() => 'toast-id'),
+  promise: vi.fn(),
+  dismiss: vi.fn(),
+}))
+vi.mock('vue-sonner', () => ({ toast: sonner, Toaster: { template: '<div />' } }))
 const route = vi.hoisted(() => ({ params: { sessionId: 'session-1' }, query: {} }))
 const router = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn() }))
 
@@ -64,17 +73,14 @@ describe('CareerPlanningPage notifications', () => {
     })
     await flushPromises()
 
-    const viewport = mount(AppToastViewport)
     await wrapper.get('.emit-notice').trigger('click')
     await flushPromises()
+    // The notice is rendered by the global toaster, never inline in the page layout.
     expect(wrapper.find('[role="status"]').exists()).toBe(false)
-    expect(viewport.get('[role="status"]').text()).toContain('完整能力树已生成')
-
-    await vi.advanceTimersByTimeAsync(3999)
-    expect(viewport.find('[role="status"]').exists()).toBe(true)
-    await vi.advanceTimersByTimeAsync(1)
-    expect(viewport.find('[role="status"]').exists()).toBe(false)
-    viewport.unmount()
+    expect(sonner.success).toHaveBeenCalledWith(
+      expect.stringContaining('完整能力树已生成'),
+      expect.objectContaining({ duration: 4000 }),
+    )
   })
 })
 

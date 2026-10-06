@@ -4,7 +4,6 @@ import { useRoute } from 'vue-router'
 import AppBanner from '@/shared/ui/AppBanner.vue'
 import AppButton from '@/shared/ui/AppButton.vue'
 import AppCard from '@/shared/ui/AppCard.vue'
-import AppChrome from '@/shared/ui/AppChrome.vue'
 import AppEmpty from '@/shared/ui/AppEmpty.vue'
 import AppField from '@/shared/ui/AppField.vue'
 import AppIcon from '@/shared/ui/AppIcon.vue'
@@ -692,8 +691,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <AppChrome>
-    <ForbidState v-if="forbidden" :error="forbidden" />
+      <ForbidState v-if="forbidden" :error="forbidden" />
     <section v-else class="page">
       <header class="page-head">
         <div class="page-head__left">
@@ -1167,7 +1165,6 @@ onUnmounted(() => {
         <AppButton variant="danger" :pending="Boolean(pending)" @click="onConfirmArchive">确认归档</AppButton>
       </template>
     </AppModal>
-  </AppChrome>
 </template>
 
 <style scoped>

@@ -11,10 +11,11 @@ import { errorMessage } from '@/shared/api/types'
 import { formatWhen } from '@/shared/lib/datetime'
 import { PASSWORD_RULE_HINT, validatePassword } from '@/shared/lib/validation'
 import { changePassword, fetchSessions, revokeOtherSessions, revokeSession } from '../services/authApi'
-import { clearSession, session } from '../session'
+import { useSessionStore } from '@/stores/session'
 import type { SessionView } from '../types'
 
 const router = useRouter()
+const session = useSessionStore()
 const form = reactive({ currentPassword: '', newPassword: '', confirm: '' })
 const fieldError = reactive({ currentPassword: '', newPassword: '', confirm: '' })
 const acknowledged = ref(false)
@@ -43,7 +44,7 @@ async function loadSessions(): Promise<void> {
 
 function validate(): boolean {
   fieldError.currentPassword = form.currentPassword ? '' : '当前密码不能为空'
-  fieldError.newPassword = validatePassword(form.newPassword, session.account.value?.email ?? undefined) ?? ''
+  fieldError.newPassword = validatePassword(form.newPassword, session.account?.email ?? undefined) ?? ''
   fieldError.confirm = form.confirm === form.newPassword ? '' : '两次密码不一致'
   if (!acknowledged.value) {
     formError.value = '请先确认：改密后全部会话立即失效。'
@@ -60,7 +61,7 @@ async function onSubmit(): Promise<void> {
   pending.value = 'password'
   try {
     await changePassword(form.currentPassword, form.newPassword)
-    clearSession()
+    session.clear()
     await router.replace({ name: 'home', query: { auth: 'login', reason: 'password_changed' } })
   } catch (error) {
     formError.value = errorMessage(error, '改密未成功')
@@ -115,7 +116,7 @@ onMounted(() => void loadSessions())
     <section class="security-summary" aria-label="账号安全概览">
       <article>
         <span><AppIcon name="mail" :size="17" /></span>
-        <div><small>主登录标识</small><strong>{{ session.account.value?.displayIdentifier || '—' }}</strong></div>
+        <div><small>主登录标识</small><strong>{{ session.account?.displayIdentifier || '—' }}</strong></div>
         <AppTag tone="green">已验证</AppTag>
       </article>
       <article>
@@ -144,7 +145,7 @@ onMounted(() => void loadSessions())
               <span class="info-row__icon"><AppIcon name="mail" :size="17" /></span>
               <div>
                 <p class="info-row__label">登录标识</p>
-                <p class="info-row__value">{{ session.account.value?.displayIdentifier || '—' }}</p>
+                <p class="info-row__value">{{ session.account?.displayIdentifier || '—' }}</p>
               </div>
               <AppTag tone="green">已验证</AppTag>
             </div>

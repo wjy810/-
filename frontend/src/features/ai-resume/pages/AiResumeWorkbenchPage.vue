@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import '../workbench-studio.css'
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import ResumeTemplatePreview from '@/features/resume/components/ResumeTemplatePreview.vue'

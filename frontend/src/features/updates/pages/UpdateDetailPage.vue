@@ -2,8 +2,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { ArrowLeft, CalendarDays, ExternalLink } from 'lucide-vue-next'
 import { useRoute } from 'vue-router'
-import AppChrome from '@/shared/ui/AppChrome.vue'
-import { session } from '@/features/identity/session'
+import { useSessionStore } from '@/stores/session'
 import { errorMessage } from '@/shared/api/types'
 import UpdateContent from '../components/UpdateContent.vue'
 import { moduleLabel, sectionLabel, statusLabel, typeLabel } from '../labels'
@@ -12,6 +11,7 @@ import { applyUpdateMetadata, buildUpdateMetadata } from '../metadata'
 import type { ReleaseDetail } from '../types'
 import '../updates.css'
 
+const session = useSessionStore()
 const route = useRoute()
 const loading = ref(true)
 const error = ref('')
@@ -28,7 +28,7 @@ onMounted(async () => {
     detail.value = await fetchUpdate(String(route.params.version))
     restoreMetadata()
     restoreMetadata = applyUpdateMetadata(buildUpdateMetadata(detail.value.release))
-    if (session.signedIn.value) void markUpdateRead(detail.value.release.id)
+    if (session.signedIn) void markUpdateRead(detail.value.release.id)
   } catch (reason) {
     error.value = errorMessage(reason, '版本详情读取失败')
   } finally { loading.value = false }
@@ -37,8 +37,7 @@ onUnmounted(() => restoreMetadata())
 </script>
 
 <template>
-  <AppChrome>
-    <main class="updates-page">
+      <main class="updates-page">
       <div class="updates-wrap">
         <div v-if="loading" class="updates-empty" aria-busy="true">正在读取版本详情…</div>
         <p v-else-if="error" class="banner banner--bad" role="alert">{{ error }}</p>
@@ -60,7 +59,6 @@ onUnmounted(() => restoreMetadata())
         </div>
       </div>
     </main>
-  </AppChrome>
 </template>
 
 <style scoped>

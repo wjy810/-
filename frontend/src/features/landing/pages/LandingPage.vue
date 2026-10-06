@@ -21,13 +21,15 @@ import {
 } from 'lucide-vue-next'
 import { useRoute, useRouter } from 'vue-router'
 import { authLandingMode } from '@/features/identity/authLanding'
-import { session } from '@/features/identity/session'
+import { useSessionStore } from '@/stores/session'
 import brandLogo from '@/assets/jobproof-ai-logo.png'
 import JobProofIcon from '@/shared/ui/JobProofIcon.vue'
 import type { JobProofIconName } from '@/shared/ui/jobProofIcons'
 import LandingLoginDialog from '../components/LandingLoginDialog.vue'
 import ProductPreview from '../components/ProductPreview.vue'
 import '../landing.css'
+
+const session = useSessionStore()
 
 type MenuName = 'product' | 'resources' | null
 
@@ -37,11 +39,11 @@ const navScrolled = ref(false)
 const navRef = ref<HTMLElement | null>(null)
 const route = useRoute()
 const router = useRouter()
-const primaryPath = computed(() => session.signedIn.value
+const primaryPath = computed(() => session.signedIn
   ? { name: 'career-library' }
   : { name: 'home', query: { auth: 'register' } })
-const primaryLabel = computed(() => session.signedIn.value ? '进入我的工作区' : '免费开始')
-const authMode = computed(() => !session.signedIn.value ? authLandingMode(route.query.auth) : null)
+const primaryLabel = computed(() => session.signedIn ? '进入我的工作区' : '免费开始')
+const authMode = computed(() => !session.signedIn ? authLandingMode(route.query.auth) : null)
 const loginReason = computed(() => typeof route.query.reason === 'string' ? route.query.reason : undefined)
 const loginNext = computed(() => typeof route.query.next === 'string' ? route.query.next : undefined)
 const overlayOpen = computed(() => mobileOpen.value || authMode.value != null)
@@ -159,7 +161,7 @@ onBeforeUnmount(() => {
         </nav>
 
         <div class="landing-nav__actions">
-          <RouterLink v-if="!session.signedIn.value" class="landing-btn landing-btn--outline landing-btn--nav" :to="{ name: 'home', query: { auth: 'login' } }">登录</RouterLink>
+          <RouterLink v-if="!session.signedIn" class="landing-btn landing-btn--outline landing-btn--nav" :to="{ name: 'home', query: { auth: 'login' } }">登录</RouterLink>
           <RouterLink class="landing-btn landing-btn--primary landing-btn--nav" :to="primaryPath">{{ primaryLabel }}</RouterLink>
         </div>
 
@@ -218,7 +220,7 @@ onBeforeUnmount(() => {
           <RouterLink to="/career-library" @click="closeNavigation">求职资料库 <ArrowRight :size="19" /></RouterLink>
         </nav>
         <div class="landing-mobile-nav__actions">
-          <RouterLink v-if="!session.signedIn.value" class="landing-btn landing-btn--outline" :to="{ name: 'home', query: { auth: 'login' } }" @click="closeNavigation">登录</RouterLink>
+          <RouterLink v-if="!session.signedIn" class="landing-btn landing-btn--outline" :to="{ name: 'home', query: { auth: 'login' } }" @click="closeNavigation">登录</RouterLink>
           <RouterLink class="landing-btn landing-btn--primary" :to="primaryPath" @click="closeNavigation">{{ primaryLabel }} <ArrowRight :size="18" /></RouterLink>
         </div>
       </div>

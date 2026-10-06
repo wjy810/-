@@ -3,7 +3,6 @@ import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { errorMessage } from '@/shared/api/types'
 import { formatWhen } from '@/shared/lib/datetime'
 import AppButton from '@/shared/ui/AppButton.vue'
-import AppChrome from '@/shared/ui/AppChrome.vue'
 import AppEmpty from '@/shared/ui/AppEmpty.vue'
 import AppField from '@/shared/ui/AppField.vue'
 import AppIcon from '@/shared/ui/AppIcon.vue'
@@ -613,8 +612,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <AppChrome>
-    <section class="page admin-page">
+      <section class="page admin-page">
       <header class="page-head">
         <div>
           <h1 class="page-head__title">模板运营台</h1>
@@ -948,7 +946,6 @@ onUnmounted(() => {
         </AppButton>
       </template>
     </AppModal>
-  </AppChrome>
 </template>
 
 <style scoped>

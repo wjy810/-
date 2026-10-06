@@ -2,7 +2,6 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ChevronRight, LoaderCircle, Plus, Search } from 'lucide-vue-next'
-import AppChrome from '@/shared/ui/AppChrome.vue'
 import AppSelect from '@/shared/ui/AppSelect.vue'
 import JobProofIcon from '@/shared/ui/JobProofIcon.vue'
 import { formatWhen } from '@/shared/lib/datetime'
@@ -68,8 +67,7 @@ onMounted(load)
 </script>
 
 <template>
-  <AppChrome>
-    <main class="mi-page">
+      <main class="mi-page">
       <div class="mi-shell">
         <header class="mi-head">
           <div><h1>模拟面试</h1><p>基于简历、岗位与求职资料，进行可复盘的 AI 面试训练</p></div>
@@ -127,7 +125,6 @@ onMounted(load)
         </template>
       </div>
     </main>
-  </AppChrome>
 </template>
 
 <style scoped>

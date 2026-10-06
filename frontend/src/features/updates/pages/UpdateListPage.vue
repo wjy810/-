@@ -2,7 +2,6 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { ArrowRight, Filter, Search, SlidersHorizontal } from 'lucide-vue-next'
 import { useRoute, useRouter } from 'vue-router'
-import AppChrome from '@/shared/ui/AppChrome.vue'
 import AppSelect from '@/shared/ui/AppSelect.vue'
 import { useToastFeedback } from '@/shared/ui/toast'
 import { errorMessage } from '@/shared/api/types'
@@ -98,8 +97,7 @@ onUnmounted(() => restoreMetadata())
 </script>
 
 <template>
-  <AppChrome>
-    <main class="updates-page">
+      <main class="updates-page">
       <div class="updates-wrap">
         <header class="updates-hero">
           <div><h1>系统更新日志</h1><p>记录每一次进步，让求职准备更清晰、更可信。</p></div>
@@ -143,7 +141,6 @@ onUnmounted(() => restoreMetadata())
         </div>
       </div>
     </main>
-  </AppChrome>
 </template>
 
 <style scoped>

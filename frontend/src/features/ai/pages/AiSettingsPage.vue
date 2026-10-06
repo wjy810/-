@@ -7,7 +7,6 @@ import AppButton from '@/shared/ui/AppButton.vue'
 import AppEmpty from '@/shared/ui/AppEmpty.vue'
 import AppIcon from '@/shared/ui/AppIcon.vue'
 import AppTag from '@/shared/ui/AppTag.vue'
-import AppChrome from '@/shared/ui/AppChrome.vue'
 import SettingsNav from '@/shared/ui/SettingsNav.vue'
 import { useToastFeedback } from '@/shared/ui/toast'
 import ChannelEditor from '../components/ChannelEditor.vue'
@@ -108,7 +107,7 @@ onMounted(async () => { await Promise.all([loadOverview(), loadTab('ledger')]) }
 </script>
 
 <template>
-  <AppChrome><div class="page ai-page">
+  <div class="page ai-page">
     <header class="page-head"><div><h1 class="page-head__title">AI 配置</h1><p class="page-head__sub">管理系统与个人 AI 通道、订阅权益和用量账单。</p></div><AppButton variant="ghost" :disabled="loading || !!pending" @click="loadOverview"><AppIcon name="refresh" :size="15" />刷新</AppButton></header>
     <div class="settings-layout"><aside class="card settings-layout__nav"><SettingsNav /></aside><div class="settings-layout__content">
       <div v-if="loading" class="grid-stats" aria-busy="true"><div v-for="item in 3" :key="item" class="stat"><div class="bone" /><div class="bone bone--short" /></div></div>
@@ -122,7 +121,7 @@ onMounted(async () => { await Promise.all([loadOverview(), loadTab('ledger')]) }
     </div></div>
     <ChannelEditor :open="editorOpen" :channel="editing" :pending="pending === 'editor'" :error="editorError" @close="editorOpen = false" @submit="saveChannel" />
     <div v-if="confirmArchive" class="confirm-mask" @click.self="confirmArchive = null"><section class="confirm card" role="alertdialog" aria-modal="true"><span class="confirm__icon"><AppIcon name="archive" /></span><h2>归档「{{ confirmArchive.name }}」？</h2><p>归档后通道不可恢复，已保存的密钥将失效；历史用量和账单保留。</p><div><AppButton variant="ghost" :disabled="!!pending" @click="confirmArchive = null">取消</AppButton><AppButton variant="danger" :pending="pending === `archive-${confirmArchive.id}`" @click="archiveConfirmed">确认归档</AppButton></div></section></div>
-  </div></AppChrome>
+  </div>
 </template>
 
 <style scoped>

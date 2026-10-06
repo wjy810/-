@@ -25,7 +25,7 @@ import {
   registerAccount,
   requestContactVerification,
 } from '@/features/identity/services/authApi'
-import { rememberAccount } from '@/features/identity/session'
+import { useSessionStore } from '@/stores/session'
 import type {
   VerificationCapabilities,
   VerificationChallenge,
@@ -217,7 +217,7 @@ async function onLogin() {
   pending.value = 'login'
   try {
     const account = await loginAccount(form.identifier.trim(), form.password, rememberMe.value)
-    rememberAccount(account)
+    useSessionStore().remember(account)
     await router.replace(safeNextPath(props.next))
   } catch (error) {
     formError.value = errorMessage(error, '邮箱、手机号或密码不正确')
@@ -243,7 +243,7 @@ async function onRegister() {
       acceptedTerms: true,
       acceptedPrivacy: true,
     })
-    rememberAccount(account)
+    useSessionStore().remember(account)
     await router.replace(props.next ? safeNextPath(props.next) : '/onboarding')
   } catch (error) {
     formError.value = errorMessage(error, '账号创建失败')

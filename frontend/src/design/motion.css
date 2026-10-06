@@ -1,0 +1,219 @@
+/* Motion catalogue (docs/04 §8). Durations collapse when reduced motion is on. */
+
+@keyframes jp-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes jp-rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+@keyframes jp-pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.97);
+  }
+}
+
+@keyframes jp-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes jp-shimmer {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes jp-float {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) rotate(var(--float-rotate, 0deg));
+  }
+  50% {
+    transform: translate3d(0, var(--float-distance, -10px), 0) rotate(calc(var(--float-rotate, 0deg) + 2deg));
+  }
+}
+
+@keyframes jp-ai-flow {
+  from {
+    background-position: 0% 50%;
+  }
+  to {
+    background-position: 200% 50%;
+  }
+}
+
+@keyframes jp-dot-bounce {
+  0%,
+  80%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.4;
+  }
+  40% {
+    transform: translateY(-4px);
+    opacity: 1;
+  }
+}
+
+@keyframes jp-highlight {
+  0% {
+    background-color: var(--color-accent-soft);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
+@keyframes jp-ring-flash {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+  40% {
+    box-shadow: 0 0 0 4px rgba(94, 89, 232, 0.35);
+  }
+}
+
+.animate-rise {
+  animation: jp-rise-in var(--dur-slow) var(--ease-out) both;
+}
+
+.animate-fade {
+  animation: jp-fade-in var(--dur-base) var(--ease-standard) both;
+}
+
+/* Staggered entrance: set --i on children. */
+.stagger > * {
+  animation: jp-rise-in var(--dur-slow) var(--ease-out) both;
+  animation-delay: calc(min(var(--i, 0), 8) * 30ms);
+}
+
+/* Vue <Transition name="fade"> */
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity var(--dur-base) var(--ease-standard);
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+
+/* Vue <Transition name="rise"> */
+.rise-enter-active {
+  transition: opacity var(--dur-slow) var(--ease-out), transform var(--dur-slow) var(--ease-out);
+}
+
+.rise-leave-active {
+  transition: opacity var(--dur-fast) var(--ease-in), transform var(--dur-fast) var(--ease-in);
+}
+
+.rise-enter-from {
+  opacity: 0;
+  transform: translateY(8px);
+}
+
+.rise-leave-to {
+  opacity: 0;
+  transform: translateY(-4px);
+}
+
+/* Vue <TransitionGroup name="list"> with FLIP moves */
+.list-move,
+.list-enter-active,
+.list-leave-active {
+  transition: opacity var(--dur-base) var(--ease-standard), transform var(--dur-base) var(--ease-standard);
+}
+
+.list-enter-from {
+  opacity: 0;
+  transform: translateY(8px) scale(0.98);
+}
+
+.list-leave-to {
+  opacity: 0;
+  transform: scale(0.96);
+}
+
+.list-leave-active {
+  position: absolute;
+}
+
+/* Route view transitions (View Transitions API). */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: var(--dur-base);
+  animation-timing-function: var(--ease-standard);
+}
+
+::view-transition-old(page) {
+  animation: var(--dur-fast) var(--ease-in) both jp-page-out;
+}
+
+::view-transition-new(page) {
+  animation: var(--dur-slow) var(--ease-out) both jp-page-in;
+}
+
+@keyframes jp-page-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes jp-page-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+:root[data-motion="reduce"] *,
+:root[data-motion="reduce"] *::before,
+:root[data-motion="reduce"] *::after {
+  animation-duration: 1ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 1ms !important;
+  scroll-behavior: auto !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root:not([data-motion="full"]) *,
+  :root:not([data-motion="full"]) *::before,
+  :root:not([data-motion="full"]) *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Shared overlay keyframes (dialogs, drawers, sheets). */
+@keyframes ui-dialog-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes ui-sheet-in {
+  from {
+    transform: translateY(100%);
+  }
+}
+
+@keyframes ui-sheet-out {
+  to {
+    transform: translateY(100%);
+  }
+}
