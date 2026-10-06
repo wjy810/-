@@ -182,8 +182,8 @@ function visible(value: string | null | undefined): string {
       <div class="resume-sheet__columns" :style="{ gridTemplateColumns: pageColumns.map((column) => `${column.widthPercent}fr`).join(' ') }">
         <div v-for="column in pageColumns" :key="column.id" class="resume-sheet__column" :class="`resume-sheet__column--${(column.tone || 'plain').toLowerCase()}`">
           <section v-for="section in column.sections" v-show="visible(section.value) || !resume" :key="section.key"
-            class="resume-sheet__section" :class="`resume-sheet__section--${section.headingStyle}`"
-            :role="interactive ? 'button' : undefined" :tabindex="interactive ? 0 : undefined"
+            class="resume-sheet__section" :class="`resume-sheet__section--${section.headingStyle}`" :data-section="section.key"
+            :role="interactive ? 'button' : undefined" :tabindex="interactive ? 0 : undefined" :aria-label="interactive ? `编辑${section.label}` : undefined"
             @click="interactive && emit('sectionClick', section.key)" @keydown.enter="interactive && emit('sectionClick', section.key)">
             <h3>{{ section.label }}</h3>
             <div v-if="section.entries?.length" class="resume-sheet__entries">

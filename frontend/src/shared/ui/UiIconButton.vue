@@ -4,6 +4,9 @@ import { RouterLink, type RouteLocationRaw } from 'vue-router'
 import UiSpinner from './UiSpinner.vue'
 import UiTooltip from './UiTooltip.vue'
 
+// The root is a tooltip wrapper; listeners and attributes belong on the real button.
+defineOptions({ inheritAttrs: false })
+
 const props = withDefaults(
   defineProps<{
     label: string
@@ -31,6 +34,7 @@ const tag = computed(() => (props.to ? RouterLink : 'button'))
   <UiTooltip :content="label" :shortcut="shortcut" :side="tooltipSide" :disabled="!tooltip">
     <component
       :is="tag"
+      v-bind="$attrs"
       class="ui-icon-btn"
       :class="[`ui-icon-btn--${size}`, `ui-icon-btn--${variant}`, { 'is-active': active }]"
       :type="tag === 'button' ? type : undefined"

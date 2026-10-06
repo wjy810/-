@@ -50,7 +50,8 @@ watch(
           <p class="boot__text">{{ session.bootError }}</p>
           <UiButton :icon="RotateCcw" @click="session.retryBoot()">重试</UiButton>
         </div>
-        <RouterView v-else key="app" />
+        <!-- Vue Router no longer allows <RouterView> as a direct <Transition> child. -->
+        <div v-else key="app" class="app-view"><RouterView /></div>
       </Transition>
       <UiToaster />
       <UiConfirmHost />
@@ -61,6 +62,10 @@ watch(
 </template>
 
 <style scoped>
+.app-view {
+  display: contents;
+}
+
 .boot__mark {
   animation: boot-pulse 1.6s var(--ease-standard) infinite;
 }

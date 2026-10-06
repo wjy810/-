@@ -79,3 +79,37 @@
   --fade: 16px;
   mask-image: linear-gradient(to bottom, transparent 0, #000 var(--fade), #000 calc(100% - var(--fade)), transparent 100%);
 }
+
+/* Scroll edge hints: put on a position:relative wrapper of a scroll container and toggle
+   .can-scroll-up / .can-scroll-down (see shared/composables/useScrollSurface). */
+.scroll-edges {
+  --edge-shade: color-mix(in srgb, var(--ink-950) 6%, transparent);
+  position: relative;
+}
+
+.scroll-edges::before,
+.scroll-edges::after {
+  content: '';
+  position: absolute;
+  inset-inline: 0;
+  z-index: 2;
+  height: 12px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--dur-base) var(--ease-standard);
+}
+
+.scroll-edges::before {
+  top: 0;
+  background: linear-gradient(to bottom, var(--edge-shade), transparent);
+}
+
+.scroll-edges::after {
+  bottom: 0;
+  background: linear-gradient(to top, var(--edge-shade), transparent);
+}
+
+.scroll-edges.can-scroll-up::before,
+.scroll-edges.can-scroll-down::after {
+  opacity: 1;
+}

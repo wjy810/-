@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useRoute } from 'vue-router'
 import { useMediaQuery } from '@vueuse/core'
 import { Toaster } from 'vue-sonner'
 import 'vue-sonner/style.css'
@@ -7,7 +8,10 @@ import { usePreferencesStore } from '@/stores/preferences'
 
 const preferences = usePreferencesStore()
 const mobile = useMediaQuery('(max-width: 640px)')
+const route = useRoute()
 const position = computed(() => (mobile.value ? 'top-center' : 'top-right'))
+// Full-screen editors stack two toolbars (header + pane bar); keep toasts clear of their controls.
+const offset = computed(() => ({ top: route?.meta.focus ? 124 : 68, right: 20 }))
 </script>
 
 <template>
@@ -15,7 +19,7 @@ const position = computed(() => (mobile.value ? 'top-center' : 'top-right'))
     :theme="preferences.resolvedTheme"
     :position="position"
     :visible-toasts="4"
-    :offset="{ top: 68, right: 20 }"
+    :offset="offset"
     :gap="10"
     close-button
     rich-colors

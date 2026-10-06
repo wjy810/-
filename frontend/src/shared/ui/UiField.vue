@@ -40,6 +40,8 @@ const messageId = computed(() => `${fieldId.value}-message`)
 <style scoped>
 .ui-field {
   display: grid;
+  /* An implicit auto track would never shrink below a native input's intrinsic width. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 6px;
   align-content: start;
   min-width: 0;

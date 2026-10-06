@@ -64,6 +64,7 @@ export const routes: RouteRecordRaw[] = [
   {
     path: '/',
     component: () => import('@/app/layouts/FocusLayout.vue'),
+    meta: { focus: true },
     children: [
       {
         path: 'ai-resume/new',

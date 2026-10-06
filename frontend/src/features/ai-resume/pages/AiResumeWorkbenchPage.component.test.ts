@@ -1,4 +1,5 @@
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
+import { createPinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AiResumeConversation, AiResumeDesignPreference, AiSmartTemplate } from '../types'
 import type { ResumeDesignSettings } from '@/features/resume/types'
@@ -13,7 +14,13 @@ vi.mock('../services/aiResumeApi', async () => ({
   ...(await vi.importActual<typeof import('../services/aiResumeApi')>('../services/aiResumeApi')), ...api,
 }))
 vi.mock('@/features/resume/services/resumeApi', () => resumeApi)
-vi.mock('vue-router', () => ({ useRoute: () => ({ params: { conversationId: 'conversation-1' }, query: {} }) }))
+vi.mock('vue-router', () => ({
+  useRoute: () => ({ params: { conversationId: 'conversation-1' }, query: {} }),
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
+  onBeforeRouteLeave: vi.fn(),
+  RouterLink: { name: 'RouterLink', template: '<a><slot /></a>' },
+}))
+vi.mock('vue-sonner', () => ({ toast: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn(), loading: vi.fn(), dismiss: vi.fn(), promise: vi.fn() }) }))
 import AiResumeWorkbenchPage from './AiResumeWorkbenchPage.vue'
 
 function deferred<T>() {
@@ -53,14 +60,22 @@ function conversation(templateId = 'template-a'): AiResumeConversation {
   }
 }
 function mountWorkbench() {
-  return mount(AiResumeWorkbenchPage, { global: { stubs: {
-    RouterLink: true, ResumeTemplatePreview: true, AiSummarySuggestionPanel: true,
-    AppModal: { props: ['open'], template: '<div v-if="open" role="dialog"><slot /><slot name="footer" /></div>' },
-    AppSelect: { props: ['modelValue', 'options', 'ariaLabel'], emits: ['change'], template: `<select :aria-label="ariaLabel" :value="modelValue" @change="$emit('change', $event.target.value)"><option v-for="option in options" :value="option.value">{{ option.label }}</option></select>` },
+  return mount(AiResumeWorkbenchPage, { global: { plugins: [createPinia()], stubs: {
+    ResumeTemplatePreview: true, AiSummarySuggestionPanel: true, ToolDrawer: true,
+    UiTooltip: { template: '<slot />' },
+    UiDialog: { props: ['open'], template: '<div v-if="open" role="dialog"><slot /><slot name="footer" /></div>' },
   } } })
 }
 async function openTab(wrapper: VueWrapper, title: string) {
   await wrapper.findAll('.workbench-tabs button').find((button) => button.text() === title)!.trigger('click')
+}
+const FONT_SCALE: Record<string, string> = { SMALL: '小', STANDARD: '标准', LARGE: '大' }
+async function pickFontScale(wrapper: VueWrapper, value: keyof typeof FONT_SCALE) {
+  await wrapper.findAll('[aria-label="字号"] button').find((button) => button.text() === FONT_SCALE[value])!.trigger('click')
+}
+function fontScale(wrapper: VueWrapper): string {
+  const label = wrapper.get('[aria-label="字号"] [data-state="on"]').text()
+  return Object.entries(FONT_SCALE).find(([, text]) => text === label)![0]
 }
 
 describe('workbench persistence', () => {
@@ -104,20 +119,20 @@ describe('workbench persistence', () => {
     const wrapper = mountWorkbench()
     await flushPromises()
     await openTab(wrapper, '设计')
-    await wrapper.get('select[aria-label="字号"]').setValue('SMALL')
+    await pickFontScale(wrapper, 'SMALL')
     await vi.advanceTimersByTimeAsync(500)
-    await wrapper.get('select[aria-label="字号"]').setValue('LARGE')
+    await pickFontScale(wrapper, 'LARGE')
     await vi.advanceTimersByTimeAsync(500)
     expect(api.saveAiResumeDesign).toHaveBeenCalledTimes(1)
 
-    await wrapper.get('.workbench-bar__tools .btn--primary').trigger('click')
+    await wrapper.get('[data-testid="export-pdf"]').trigger('click')
     await wrapper.findAll('[role="dialog"] button').find((button) => button.text().includes('确认并下载'))!.trigger('click')
     await flushPromises()
     expect(api.exportAiResumePdf).not.toHaveBeenCalled()
     first.resolve({ ...template('template-a').design, settings: { ...settings, fontScale: 'SMALL' }, versionNo: 2 })
     await flushPromises()
-    expect(wrapper.get<HTMLSelectElement>('select[aria-label="字号"]').element.value).toBe('LARGE')
-    expect(wrapper.get('.design-panel > header').text()).not.toContain('已保存')
+    expect(fontScale(wrapper)).toBe('LARGE')
+    expect(wrapper.get('.design-panel__head').text()).not.toContain('已保存')
     expect(api.saveAiResumeDesign).toHaveBeenLastCalledWith('conversation-1', 'template-a', 'MONO', expect.objectContaining({ fontScale: 'LARGE' }), 2)
     expect(api.exportAiResumePdf).not.toHaveBeenCalled()
 
@@ -131,16 +146,16 @@ describe('workbench persistence', () => {
     const wrapper = mountWorkbench()
     await flushPromises()
     await openTab(wrapper, '设计')
-    await wrapper.get('select[aria-label="字号"]').setValue('LARGE')
+    await pickFontScale(wrapper, 'LARGE')
     await vi.advanceTimersByTimeAsync(500)
-    expect(wrapper.get<HTMLSelectElement>('select[aria-label="字号"]').element.value).toBe('LARGE')
+    expect(fontScale(wrapper)).toBe('LARGE')
     wrapper.unmount()
 
     const restored = mountWorkbench()
     await flushPromises()
     await openTab(restored, '设计')
-    expect(restored.get<HTMLSelectElement>('select[aria-label="字号"]').element.value).toBe('LARGE')
-    expect(restored.get('.design-panel > header').text()).not.toContain('已保存')
+    expect(fontScale(restored)).toBe('LARGE')
+    expect(restored.get('.design-panel__head').text()).not.toContain('已保存')
   })
 
   it('confirming one card retains both another dirty card and later edits to the submitted card', async () => {
@@ -194,20 +209,20 @@ describe('workbench persistence', () => {
     const wrapper = mountWorkbench()
     await flushPromises()
     await openTab(wrapper, '设计')
-    await wrapper.get('select[aria-label="字号"]').setValue('SMALL')
+    await pickFontScale(wrapper, 'SMALL')
     await vi.advanceTimersByTimeAsync(500)
     wrapper.unmount()
     const replacement = mountWorkbench()
     await flushPromises()
     await openTab(replacement, '设计')
-    expect(replacement.get<HTMLSelectElement>('select[aria-label="字号"]').element.value).toBe('SMALL')
-    await replacement.get('select[aria-label="字号"]').setValue('LARGE')
+    expect(fontScale(replacement)).toBe('SMALL')
+    await pickFontScale(replacement, 'LARGE')
     old.resolve({ ...template('template-a').design, settings: { ...settings, fontScale: 'SMALL' }, versionNo: 2 })
     await flushPromises()
     replacement.unmount()
     const restored = mountWorkbench()
     await flushPromises()
     await openTab(restored, '设计')
-    expect(restored.get<HTMLSelectElement>('select[aria-label="字号"]').element.value).toBe('LARGE')
+    expect(fontScale(restored)).toBe('LARGE')
   })
 })
