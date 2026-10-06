@@ -11,6 +11,13 @@ export default defineConfig({
   },
   build: {
     emptyOutDir: true,
+    rollupOptions: {
+      // print.html is the resume print entry loaded by the renderer service (docs/phase2/03 §5.4).
+      input: {
+        main: fileURLToPath(new URL('./index.html', import.meta.url)),
+        print: fileURLToPath(new URL('./print.html', import.meta.url)),
+      },
+    },
   },
   server: {
     port: 5173,

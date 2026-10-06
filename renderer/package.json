@@ -1,0 +1,15 @@
+{
+  "name": "jobproof-renderer",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Resume print service: renders frontend/print.html in Chromium and returns PDF/PNG (docs/phase2/03 §5).",
+  "type": "module",
+  "engines": { "node": ">=22.18" },
+  "scripts": {
+    "start": "node src/server.ts",
+    "test": "node --test test/*.test.ts"
+  },
+  "dependencies": {
+    "playwright-core": "1.62.1"
+  }
+}

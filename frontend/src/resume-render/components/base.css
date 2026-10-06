@@ -1,0 +1,210 @@
+/*
+ * Resume paper base styles (docs/phase2/04 §2). Everything is namespaced .rr-*, sized in pt/mm and
+ * driven by the --r-* variables set on .rr-root; templates override under [data-template="id"].
+ * Layout contract for templates: the page has a fixed size; regions get their height from the page
+ * (flex/grid with min-height: 0), never from their content, so probe pages measure true capacity.
+ */
+.rr-root {
+  --r-section-gap: calc(var(--r-size) * var(--r-leading) * 1.15 * var(--r-gap));
+  --r-item-gap: calc(var(--r-size) * var(--r-leading) * 0.6 * var(--r-gap));
+  --r-line-gap: calc(var(--r-size) * 0.25 * var(--r-gap));
+  position: relative;
+  color: var(--r-ink);
+  font-family: var(--r-font-body);
+  font-size: var(--r-size);
+  font-weight: 400;
+  line-height: var(--r-leading);
+  font-kerning: normal;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  text-align: left;
+  letter-spacing: 0;
+}
+
+.rr-root *, .rr-root *::before, .rr-root *::after { box-sizing: border-box; }
+.rr-root :where(h1, h2, h3, h4, p, ul, ol, li, figure) { margin: 0; padding: 0; }
+.rr-root :where(ul) { list-style: none; }
+.rr-root a { color: inherit; text-decoration: none; }
+.rr-root strong { font-weight: 600; }
+
+/* Measuring area: real size, out of sight, never affects layout around it. */
+.rr-measure {
+  position: absolute;
+  top: 0;
+  left: -200000px;
+  visibility: hidden;
+  pointer-events: none;
+}
+.rr-measure > .rr-page { margin-bottom: 40px; }
+
+.rr-viewport { width: 100%; }
+.rr-scaled { position: relative; margin: 0 auto; }
+.rr-pages { display: flex; flex-direction: column; width: max-content; transform-origin: top left; }
+.rr-pages--pending { visibility: hidden; }
+
+.rr-page {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: var(--r-page-w);
+  height: var(--r-page-h);
+  overflow: hidden;
+  background: var(--r-paper);
+  isolation: isolate;
+}
+.rr-mode-preview .rr-page, .rr-mode-thumbnail .rr-page {
+  box-shadow: 0 1px 2px rgb(15 23 42 / 0.08), 0 12px 32px -12px rgb(15 23 42 / 0.22);
+}
+.rr-page--probe { box-shadow: none !important; }
+
+/* Default sheet shell: templates may use it or draw their own. */
+.rr-sheet {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  padding: var(--r-margin-y) var(--r-margin-x);
+}
+.rr-body { display: flex; flex: 1; gap: 8mm; min-height: 0; }
+.rr-region { flex: 1 1 0; min-width: 0; min-height: 0; }
+
+.rr-page__number {
+  position: absolute;
+  z-index: 2;
+  right: var(--r-margin-x);
+  bottom: calc(var(--r-margin-y) * 0.45);
+  color: var(--r-muted);
+  font-size: 7.5pt;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Continuation header shown from page 2 (templates place .rr-continue themselves). */
+.rr-continue {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 5mm;
+  padding-bottom: 2mm;
+  border-bottom: 0.5pt solid var(--r-rule);
+  color: var(--r-muted);
+  font-size: var(--r-size-sm);
+}
+.rr-continue strong { color: var(--r-ink); font-family: var(--r-font-heading); font-weight: 600; }
+
+/* Blocks: spacing via padding only, so measured heights add up exactly. */
+.rr-block { padding-bottom: var(--r-item-gap); }
+.rr-block--start { padding-top: calc(var(--r-section-gap) - var(--r-item-gap)); }
+.rr-region > .rr-block--start:first-child { padding-top: 0; }
+.rr-block--cont { padding-bottom: var(--r-line-gap); }
+
+/* Section heading */
+.rr-heading {
+  display: flex;
+  align-items: baseline;
+  gap: 2mm;
+  margin-bottom: calc(var(--r-size) * 0.55);
+  color: var(--r-ink);
+  font-family: var(--r-font-heading);
+  font-size: var(--r-size-section);
+  font-weight: 700;
+  line-height: 1.3;
+  break-after: avoid;
+}
+.rr-heading__index { display: none; }
+
+/* Timeline entry: title + date on one line, meta below, body under both. */
+.rr-entry {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: 'title date' 'meta meta' 'body body';
+  column-gap: 4mm;
+}
+.rr-entry__title { grid-area: title; font-size: var(--r-size-title); font-weight: 600; line-height: 1.35; }
+.rr-entry__date {
+  grid-area: date;
+  align-self: baseline;
+  color: var(--r-muted);
+  font-size: var(--r-size-sm);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.rr-entry__meta {
+  grid-area: meta;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0 4mm;
+  margin-top: 0.4pt;
+  color: var(--r-muted);
+  font-size: var(--r-size-sm);
+}
+.rr-entry__subtitle { color: var(--r-ink); font-weight: 500; }
+.rr-entry__body { grid-area: body; margin-top: calc(var(--r-size) * 0.3); }
+.rr-entry__body:empty { display: none; }
+.rr-entry--cont .rr-entry__body { margin-top: 0; }
+
+.rr-p + .rr-p { margin-top: var(--r-line-gap); }
+.rr-p + .rr-bullets { margin-top: var(--r-line-gap); }
+/*
+ * Paint order is PDF text order (what ATS parsers read). Text containers are never positioned;
+ * markers and decorations use grid cells, backgrounds or z-index: -1 layers instead.
+ */
+.rr-bullets { display: grid; gap: var(--r-line-gap); }
+.rr-bullets li { display: grid; grid-template-columns: 3.4mm minmax(0, 1fr); }
+.rr-bullets li::before {
+  content: '';
+  align-self: start;
+  width: 3pt;
+  height: 3pt;
+  margin: calc(var(--r-size) * var(--r-leading) * 0.5 - 1.5pt) 0 0 0.5mm;
+  border-radius: 50%;
+  background: var(--r-accent);
+}
+
+/* Skills */
+.rr-skill { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 3mm; }
+.rr-skill__name { font-weight: 600; white-space: nowrap; }
+.rr-skill__name::after { content: '：'; }
+.rr-root:lang(en) .rr-skill__name::after { content: ':'; }
+.rr-skill__items { color: var(--r-ink); }
+.rr-skill__note { grid-column: 1 / -1; margin-top: 1pt; color: var(--r-muted); font-size: var(--r-size-sm); }
+
+/* Simple lists (certificates, honors, languages) */
+.rr-list-item__line { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 2.5mm; }
+.rr-list-item__title { font-weight: 600; }
+.rr-list-item__detail { color: var(--r-muted); font-size: var(--r-size-sm); }
+.rr-list-item__date { margin-left: auto; color: var(--r-muted); font-size: var(--r-size-sm); font-variant-numeric: tabular-nums; }
+.rr-list-item__body { margin-top: 1pt; color: var(--r-muted); font-size: var(--r-size-sm); }
+
+/* Contact */
+.rr-contact { display: flex; flex-wrap: wrap; align-items: center; gap: 1.2mm 0; color: var(--r-muted); font-size: var(--r-size-sm); }
+.rr-contact__item { display: inline-flex; align-items: center; gap: 1.2mm; white-space: nowrap; }
+.rr-contact__icon { width: 1em; height: 1em; flex: none; fill: none; stroke: var(--r-accent); stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+.rr-contact__sep { margin: 0 2.2mm; color: var(--r-rule); }
+.rr-contact--icons .rr-contact__sep { margin: 0 1.6mm; }
+.rr-no-icons .rr-contact__icon { display: none; }
+
+/* Photo */
+.rr-photo { display: block; width: 26mm; height: 32mm; object-fit: cover; background: var(--r-accent-soft); }
+.rr-photo[data-shape='circle'] { width: 28mm; height: 28mm; border-radius: 50%; }
+.rr-photo[data-shape='rounded'] { border-radius: 3mm; }
+
+/* Decorations sit behind content and disappear when turned off. */
+.rr-decor { position: absolute; z-index: -1; pointer-events: none; user-select: none; }
+.rr-no-decor .rr-decor { display: none; }
+
+/* Workbench interaction (screen only). */
+.rr-interactive .rr-pages [data-section] { cursor: pointer; border-radius: 1mm; transition: background-color 120ms ease, box-shadow 120ms ease; }
+.rr-interactive .rr-pages [data-section]:hover { box-shadow: 0 0 0 1.5mm color-mix(in srgb, var(--r-accent) 9%, transparent); background: color-mix(in srgb, var(--r-accent) 9%, transparent); }
+.rr-pages [data-section].rr-flash { animation: rr-flash 900ms ease 2; }
+@keyframes rr-flash { 50% { box-shadow: 0 0 0 1.5mm color-mix(in srgb, var(--r-accent) 28%, transparent); background: color-mix(in srgb, var(--r-accent) 14%, transparent); } }
+
+@media print {
+  .rr-measure { display: none; }
+  .rr-page { break-after: page; box-shadow: none !important; }
+  .rr-page:last-child { break-after: auto; }
+}
+/* Structural backgrounds (sidebars, bands) stay when decorations are off. */
+.rr-no-decor .rr-decor--always { display: block; }
