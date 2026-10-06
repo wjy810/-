@@ -173,7 +173,7 @@ function visible(value: string | null | undefined): string {
       :style="sheetStyle" :data-renderer-protocol="rendererProtocol" :aria-label="`简历版式预览第 ${pageIndex + 1} 页`">
       <header v-if="pageIndex === 0" class="resume-sheet__head" :class="`resume-sheet__head--${visual.headerStyle?.toLowerCase()}`">
         <div class="resume-sheet__identity"><h2>{{ displayName }}</h2><p v-if="targetJob">{{ targetJob }}</p>
-          <small v-if="contactLine">{{ contactLine }}</small><small v-else>{{ visual.subtitle }} · {{ variant }}</small></div>
+          <small v-if="contactLine">{{ contactLine }}</small><small v-else class="resume-contact-placeholder">{{ visual.subtitle }}</small></div>
         <img v-if="displayPhoto" class="resume-sheet__photo" :src="photoUrl || ''" alt="简历照片" />
         <span v-else-if="visual.showMark" class="resume-sheet__mark">JP</span>
       </header>

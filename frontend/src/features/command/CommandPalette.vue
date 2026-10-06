@@ -133,7 +133,7 @@ watch(() => palette.open, async (open) => {
   activeIndex.value = 0
   await nextTick()
   input.value?.focus()
-})
+}, { immediate: true })
 
 watch(query, () => {
   activeIndex.value = 0

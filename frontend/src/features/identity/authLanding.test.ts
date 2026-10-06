@@ -9,9 +9,9 @@ import {
 import { safeNextPath } from './safeNext.ts'
 
 test('login defaults to the career library while preserving an explicit protected destination', () => {
-  assert.equal(safeNextPath(undefined), '/career-library')
+  assert.equal(safeNextPath(undefined), '/dashboard')
   assert.equal(safeNextPath('/mock-interviews'), '/mock-interviews')
-  assert.equal(safeNextPath('https://example.com'), '/career-library')
+  assert.equal(safeNextPath('https://example.com'), '/dashboard')
 })
 
 test('legacy login routes become a homepage login overlay query', () => {

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ArrowLeft, FileText, ShieldCheck } from 'lucide-vue-next'
-import brandLogo from '@/assets/jobproof-ai-logo.png'
+import BrandMark from '@/shared/ui/BrandMark.vue'
 
 const props = defineProps<{ kind: 'terms' | 'privacy' }>()
 const isTerms = props.kind === 'terms'
@@ -9,7 +9,7 @@ const isTerms = props.kind === 'terms'
 <template>
   <div class="policy-page">
     <header class="policy-topbar">
-      <RouterLink class="policy-brand" to="/"><img :src="brandLogo" alt="JobProof AI" width="124" height="27"></RouterLink>
+      <RouterLink class="policy-brand" to="/" aria-label="JobProof AI 首页"><BrandMark :size="28" /></RouterLink>
       <RouterLink class="policy-back" to="/"><ArrowLeft :size="16" />返回首页</RouterLink>
     </header>
     <main>
@@ -42,25 +42,25 @@ const isTerms = props.kind === 'terms'
 </template>
 
 <style scoped>
-.policy-page { min-height: 100vh; color: #17233a; background: #f5f8fc; }
-.policy-topbar { position: sticky; top: 0; z-index: 10; height: 64px; display: flex; align-items: center; justify-content: space-between; padding: 0 max(22px, calc((100vw - 980px) / 2)); border-bottom: 1px solid #dfe7f2; background: rgba(255, 255, 255, .94); backdrop-filter: blur(12px); }
-.policy-brand, .policy-back { display: inline-flex; align-items: center; gap: 9px; color: #10234a; }
-.policy-brand img { width: 124px; height: 27px; object-fit: contain; }
-.policy-back { color: #52647f; font-size: 13px; }
-.policy-page main { width: min(900px, calc(100% - 32px)); margin: 0 auto; padding: 48px 0 72px; }
-.policy-page article { padding: 44px 56px; border: 1px solid #dfe7f2; border-radius: 8px; background: #fff; box-shadow: 0 18px 50px rgba(25, 48, 82, .07); }
-.policy-page article > header span { display: inline-flex; align-items: center; gap: 6px; padding: 5px 9px; border-radius: 6px; color: #2457e8; background: #edf3ff; font-size: 12px; font-weight: 700; }
-.policy-page h1 { margin: 12px 0 5px; color: #10234a; font-size: 32px; letter-spacing: 0; }
-.policy-page article > header p { margin: 0; color: #7a899e; font-size: 12px; }
-.policy-page aside { display: flex; align-items: flex-start; gap: 8px; margin: 28px 0 32px; padding: 14px 16px; border: 1px solid #f0d7a2; border-radius: 8px; color: #7b5910; background: #fff9eb; font-size: 13px; line-height: 1.7; }
+.policy-page { min-height: 100vh; color: var(--text-primary); }
+.policy-topbar { position: sticky; top: 0; z-index: var(--z-topbar); height: 64px; display: flex; align-items: center; justify-content: space-between; padding: 0 max(22px, calc((100vw - 900px) / 2)); border-bottom: 1px solid var(--border-subtle); background: color-mix(in srgb, var(--bg-app) 84%, transparent); backdrop-filter: blur(14px); }
+.policy-brand, .policy-back { display: inline-flex; align-items: center; gap: 8px; color: var(--text-primary); }
+.policy-back { color: var(--text-secondary); font-size: var(--fs-sm); }
+.policy-back:hover { color: var(--text-primary); }
+.policy-page main { width: min(900px, calc(100% - 32px)); margin: 0 auto; padding: var(--space-12) 0 var(--space-16); animation: jp-rise-in var(--dur-slow) var(--ease-out) both; }
+.policy-page article { padding: var(--space-10) var(--space-12); border: 1px solid var(--border-subtle); border-radius: var(--radius-xl); background: var(--surface-1); box-shadow: var(--shadow-sm); }
+.policy-page article > header span { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; color: var(--color-primary-text); background: var(--color-primary-soft); font-size: var(--fs-xs); font-weight: 650; }
+.policy-page h1 { margin: var(--space-3) 0 6px; font-size: 30px; line-height: 1.3; letter-spacing: -0.02em; }
+.policy-page article > header p { color: var(--text-tertiary); font-size: var(--fs-xs); }
+.policy-page aside { display: flex; align-items: flex-start; gap: 8px; margin: var(--space-6) 0 var(--space-8); padding: 14px 16px; border-radius: var(--radius-md); color: var(--color-warning-text); background: var(--color-warning-soft); font-size: var(--fs-sm); line-height: 1.7; }
 .policy-page aside svg { flex: 0 0 auto; margin-top: 3px; }
-.policy-page section { padding: 21px 0; border-top: 1px solid #e8edf4; }
-.policy-page section h2 { margin: 0 0 8px; color: #1f3150; font-size: 17px; letter-spacing: 0; }
-.policy-page section p { margin: 0; color: #53647c; font-size: 14px; line-height: 1.85; }
+.policy-page section { padding: var(--space-5) 0; border-top: 1px solid var(--border-subtle); }
+.policy-page section h2 { margin: 0 0 8px; font-size: 17px; }
+.policy-page section p { color: var(--text-secondary); font-size: var(--fs-body); line-height: 1.85; }
 @media (max-width: 640px) {
   .policy-topbar { height: 58px; padding: 0 16px; }
   .policy-page main { width: 100%; padding: 0; }
-  .policy-page article { padding: 30px 20px 48px; border-width: 0; border-radius: 0; box-shadow: none; }
-  .policy-page h1 { font-size: 26px; }
+  .policy-page article { padding: 28px 20px 48px; border-width: 0; border-radius: 0; box-shadow: none; }
+  .policy-page h1 { font-size: 24px; }
 }
 </style>

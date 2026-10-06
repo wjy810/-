@@ -69,7 +69,7 @@ async function logout(): Promise<void> {
 
     <div class="sidebar__cta">
       <UiTooltip :content="showLabels ? '' : '新建简历'" side="right">
-        <RouterLink to="/ai-resume/new" class="sidebar__new" @click="emit('close-mobile')">
+        <RouterLink to="/ai-resume/new" class="sidebar__new" :aria-label="showLabels ? undefined : '新建简历'" @click="emit('close-mobile')">
           <Plus :size="17" :stroke-width="2.2" />
           <span v-if="showLabels">新建简历</span>
         </RouterLink>
@@ -77,7 +77,7 @@ async function logout(): Promise<void> {
     </div>
 
     <nav class="sidebar__nav">
-      <section v-for="group in groups" :key="group.key" class="nav-group">
+      <section v-for="group in groups" :key="group.key" class="nav-group" :aria-label="showLabels ? undefined : group.label">
         <h2 v-if="showLabels" class="nav-group__label">{{ group.label }}</h2>
         <div v-else class="nav-group__rule" aria-hidden="true" />
         <ul>
@@ -88,6 +88,7 @@ async function logout(): Promise<void> {
                 class="nav-link"
                 :class="{ 'is-active': isNavActive(item, route.path) }"
                 :aria-current="isNavActive(item, route.path) ? 'page' : undefined"
+                :aria-label="showLabels ? undefined : item.label"
                 @click="emit('close-mobile')"
               >
                 <component :is="item.icon" class="nav-link__icon" :size="18" :stroke-width="1.85" />

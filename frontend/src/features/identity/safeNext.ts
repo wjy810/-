@@ -1,4 +1,4 @@
-const FALLBACK = '/career-library'
+const FALLBACK = '/dashboard'
 const AUTH_ONLY = new Set(['/', '/login', '/register', '/reset'])
 const ORIGIN = 'https://jobproof.invalid'
 

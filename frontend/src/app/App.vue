@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { defineAsyncComponent } from 'vue'
+import { defineAsyncComponent, ref, watch } from 'vue'
 import { TooltipProvider } from 'reka-ui'
 import { RotateCcw } from 'lucide-vue-next'
 import BrandMark from '@/shared/ui/BrandMark.vue'
@@ -7,13 +7,33 @@ import UiButton from '@/shared/ui/UiButton.vue'
 import UiConfirmHost from '@/shared/ui/UiConfirmHost.vue'
 import UiToaster from '@/shared/ui/UiToaster.vue'
 import { useSessionStore } from '@/stores/session'
+import { useCommandPaletteStore } from '@/stores/commandPalette'
 import { useGlobalShortcuts } from '@/features/command/useGlobalShortcuts'
 
-const CommandPalette = defineAsyncComponent(() => import('@/features/command/CommandPalette.vue'))
+const loadCommandPalette = () => import('@/features/command/CommandPalette.vue')
+const CommandPalette = defineAsyncComponent(loadCommandPalette)
 const ShortcutsDialog = defineAsyncComponent(() => import('@/features/command/ShortcutsDialog.vue'))
 
 const session = useSessionStore()
+const palette = useCommandPaletteStore()
 useGlobalShortcuts()
+
+// The palette carries the pinyin dictionary (~145 KB gzip): mount it on first use and
+// warm the chunk when the browser is idle, so it never competes with the first paint.
+const paletteActivated = ref(false)
+watch(() => palette.open, open => {
+  if (open) paletteActivated.value = true
+})
+watch(
+  () => session.signedIn,
+  signedIn => {
+    if (!signedIn || typeof window === 'undefined') return
+    const warm = () => void loadCommandPalette().catch(() => undefined)
+    if ('requestIdleCallback' in window) window.requestIdleCallback(warm, { timeout: 8000 })
+    else globalThis.setTimeout(warm, 4000)
+  },
+  { immediate: true },
+)
 </script>
 
 <template>
@@ -34,7 +54,7 @@ useGlobalShortcuts()
       </Transition>
       <UiToaster />
       <UiConfirmHost />
-      <CommandPalette v-if="session.signedIn" />
+      <CommandPalette v-if="session.signedIn && paletteActivated" />
       <ShortcutsDialog />
     </div>
   </TooltipProvider>

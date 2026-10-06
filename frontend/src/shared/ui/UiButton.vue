@@ -26,6 +26,24 @@ const props = withDefaults(
 const tag = computed(() => (props.to ? RouterLink : props.href ? 'a' : 'button'))
 const iconSize = computed(() => (props.size === 'sm' ? 15 : props.size === 'lg' ? 18 : 16))
 const inert = computed(() => props.disabled || props.pending)
+
+// Bind only what each element understands: an `href: undefined` falling through onto
+// RouterLink would override the href it renders, leaving an unfocusable <a>.
+const tagAttrs = computed<Record<string, unknown>>(() => {
+  if (props.to) {
+    return { to: props.to, target: props.target, 'aria-disabled': inert.value ? 'true' : undefined, tabindex: inert.value ? -1 : undefined }
+  }
+  if (props.href) {
+    return {
+      href: props.href,
+      target: props.target,
+      rel: props.target === '_blank' ? 'noopener noreferrer' : undefined,
+      'aria-disabled': inert.value ? 'true' : undefined,
+      tabindex: inert.value ? -1 : undefined,
+    }
+  }
+  return { type: props.type, disabled: inert.value }
+})
 </script>
 
 <template>
@@ -33,15 +51,8 @@ const inert = computed(() => props.disabled || props.pending)
     :is="tag"
     class="ui-btn"
     :class="[`ui-btn--${variant}`, `ui-btn--${size}`, { 'is-block': block, 'is-pending': pending }]"
-    :type="tag === 'button' ? type : undefined"
-    :to="to"
-    :href="href"
-    :target="target"
-    :rel="target === '_blank' ? 'noopener noreferrer' : undefined"
-    :disabled="tag === 'button' ? inert : undefined"
-    :aria-disabled="tag !== 'button' && inert ? 'true' : undefined"
+    v-bind="tagAttrs"
     :aria-busy="pending || undefined"
-    :tabindex="tag !== 'button' && inert ? -1 : undefined"
   >
     <UiSpinner v-if="pending" :size="iconSize" class="ui-btn__icon" />
     <component :is="icon" v-else-if="icon" :size="iconSize" :stroke-width="2" class="ui-btn__icon" aria-hidden="true" />

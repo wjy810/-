@@ -1,6 +1,7 @@
 import { expect, test, type APIResponse, type Page, type TestInfo } from '@playwright/test'
-import { mkdir } from 'node:fs/promises'
+import { mkdir, readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
+import { SEEKER_STATE } from './fixtures'
 
 type CareerPlanningOverview = {
   session?: CareerPlanningSession | null
@@ -86,11 +87,8 @@ async function deferWhatsNew(page: Page): Promise<void> {
 }
 
 async function loginAndOpenActiveSession(page: Page): Promise<CareerPlanningOverview> {
-  const login = await page.request.post('/api/v1/auth/login', {
-    data: { email: 'seeker', password: 'seeker123' },
-  })
-  expect(login.ok(), `求职者登录失败：${login.status()}`).toBeTruthy()
-
+  const { cookies } = JSON.parse(await readFile(SEEKER_STATE, 'utf8')) as { cookies: Parameters<ReturnType<Page['context']>['addCookies']>[0] }
+  await page.context().addCookies(cookies)
   const overviewResponse = await page.request.get('/api/v1/career-planning')
   expect(overviewResponse.ok(), `职业规划概览读取失败：${overviewResponse.status()}`).toBeTruthy()
   const payload = await overviewResponse.json() as CareerPlanningOverview | ApiEnvelope<CareerPlanningOverview>

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, onMounted, ref, watch } from 'vue'
 import { useRoute, type RouteLocationNormalizedLoaded } from 'vue-router'
-import { useMediaQuery } from '@vueuse/core'
+import { onKeyStroke, useMediaQuery } from '@vueuse/core'
 import { useQueryClient } from '@tanstack/vue-query'
 import { useSessionStore } from '@/stores/session'
 import { usePreferencesStore } from '@/stores/preferences'
@@ -32,6 +32,12 @@ const wide = computed(() => Boolean(route.meta.wide))
 watch(() => route.fullPath, () => {
   mobileNavOpen.value = false
 })
+watch(mobile, isMobile => {
+  if (!isMobile) mobileNavOpen.value = false
+})
+onKeyStroke('Escape', () => {
+  mobileNavOpen.value = false
+}, { dedupe: true })
 
 /** Remount pages on param changes, but keep nested layouts (e.g. settings) mounted across children. */
 function viewKey(viewRoute: RouteLocationNormalizedLoaded): string {
@@ -55,7 +61,8 @@ onMounted(() => {
     <a class="skip-link" href="#main-content">跳到主要内容</a>
     <AppSidebar :collapsed="collapsed" :mobile-open="mobileNavOpen" @close-mobile="mobileNavOpen = false" />
     <Transition name="fade">
-      <button v-if="mobileNavOpen" class="shell__scrim" type="button" aria-label="关闭导航" @click="mobileNavOpen = false" />
+      <!-- Pointer-only affordance: the menu toggle and Escape are the accessible ways out. -->
+      <div v-if="mobileNavOpen" class="shell__scrim" aria-hidden="true" @click="mobileNavOpen = false" />
     </Transition>
     <div class="shell__main">
       <AppTopbar :mobile-open="mobileNavOpen" @toggle-mobile="mobileNavOpen = !mobileNavOpen" @open-notifications="notificationsOpen = true" />

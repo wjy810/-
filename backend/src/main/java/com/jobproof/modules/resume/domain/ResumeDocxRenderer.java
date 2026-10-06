@@ -284,7 +284,8 @@ public final class ResumeDocxRenderer {
         meta.setStyle("JobProofSubtitle");
         meta.setSpacingAfter(header.contactLine().isBlank() ? 180 : 40);
         XWPFRun metaRun = meta.createRun();
-        metaRun.setText(join(" · ", header.targetJob(), subtitle, variant));
+        // The variant code (e.g. NO_PHOTO) is an internal identifier and must never reach the document.
+        metaRun.setText(join(" · ", header.targetJob(), subtitle));
         formatRun(metaRun, typography.points(9), false, palette.muted(), typography);
         if (header.contactLine().isBlank()) {
             meta.setBorderBottom(Borders.SINGLE);
