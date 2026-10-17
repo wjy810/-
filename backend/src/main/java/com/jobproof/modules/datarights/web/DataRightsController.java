@@ -49,6 +49,11 @@ public class DataRightsController {
                 current.accountId(), request.scope(), request.targetType(), request.targetId(), request.confirmationAck()));
     }
 
+    @GetMapping("/deletions")
+    public ApiResponse<java.util.List<DeletionView>> deletions() {
+        return ApiResponse.ok(dataRightsService.listDeletions(SecurityConfig.currentAccount().accountId()));
+    }
+
     @GetMapping("/deletions/{id}")
     public ApiResponse<DeletionView> get(@PathVariable String id) {
         return ApiResponse.ok(dataRightsService.getDeletion(SecurityConfig.currentAccount().accountId(), id));
@@ -59,6 +64,11 @@ public class DataRightsController {
             @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
             HttpServletRequest ignored) {
         return ApiResponse.ok(dataRightsService.createExport(SecurityConfig.currentAccount().accountId(), idempotencyKey));
+    }
+
+    @GetMapping("/exports")
+    public ApiResponse<java.util.List<ExportView>> exports() {
+        return ApiResponse.ok(dataRightsService.listExports(SecurityConfig.currentAccount().accountId()));
     }
 
     @GetMapping("/exports/{id}")
@@ -80,7 +90,8 @@ public class DataRightsController {
     public ResponseEntity<byte[]> download(@PathVariable String id) {
         byte[] body = dataRightsService.downloadExport(SecurityConfig.currentAccount().accountId(), id);
         return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=jobproof-export.json")
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=jobproof-export-"
+                        + java.time.LocalDate.now(java.time.ZoneOffset.UTC) + ".json")
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(body);
     }

@@ -213,6 +213,20 @@ public class DataRightsService {
         return toView(entity);
     }
 
+    /** Recent deletion requests, newest first, so the page can show progress after a reload. */
+    @Transactional(readOnly = true)
+    public List<DeletionView> listDeletions(String accountId) {
+        return deletions.findTop10ByAccountIdOrderByCreatedAtDesc(accountId).stream().map(this::toView).toList();
+    }
+
+    /** Recent exports, newest first: the latest one decides what the export panel offers. */
+    @Transactional(readOnly = true)
+    public List<ExportView> listExports(String accountId) {
+        return exports.findTop10ByAccountIdOrderByCreatedAtDesc(accountId).stream()
+                .map(entity -> toExportView(entity, taskService.getOwned(accountId, entity.getTaskId())))
+                .toList();
+    }
+
     @Transactional
     public ExportView createExport(String accountId, String idempotencyKey) {
         TaskView task = taskService.create(accountId, TaskTypes.ACCOUNT_EXPORT, idempotencyKey, "{\"scope\":\"ACCOUNT\"}");

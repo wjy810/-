@@ -1,33 +1,53 @@
 import { flushPromises, mount } from '@vue/test-utils'
+import { createPinia } from 'pinia'
 import { reactive } from 'vue'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiClientError } from '@/shared/api/types'
 
-const api = vi.hoisted(() => ({ preview: vi.fn(), history: vi.fn() }))
+const api = vi.hoisted(() => ({
+  preview: vi.fn(),
+  history: vi.fn(),
+  exports: vi.fn(),
+  deletions: vi.fn(),
+  records: vi.fn(),
+  files: vi.fn(),
+}))
 const route = vi.hoisted(() => ({ value: null as unknown as { query: Record<string, string> } }))
 vi.mock('../services/dataRightsApi', async (importOriginal) => ({
   ...await importOriginal<typeof import('../services/dataRightsApi')>(),
   fetchDeletionPreview: api.preview,
+  listExports: api.exports,
+  listDeletions: api.deletions,
 }))
 vi.mock('@/features/career-library/services/careerLibraryApi', async (importOriginal) => ({
   ...await importOriginal<typeof import('@/features/career-library/services/careerLibraryApi')>(),
   fetchCareerHistory: api.history,
+  fetchCareerRecords: api.records,
+  fetchCareerFiles: api.files,
 }))
-vi.mock('vue-router', () => ({ useRoute: () => route.value }))
+vi.mock('vue-router', async (importOriginal) => ({
+  ...await importOriginal<typeof import('vue-router')>(),
+  useRoute: () => route.value,
+}))
 
 import DataRightsPage from './DataRightsPage.vue'
 
 const failure = new ApiClientError({ category: 'SYSTEM_FAILURE', reason: 'X', message: '服务暂时不可用' }, 503, 'req-rights')
 const accountPreview = { scope: 'ACCOUNT', impactSummary: '将删除账号', legalExceptionNote: '依法保留审计记录', canProceed: true, impacts: [], blockers: [] }
+const record = { id: 'record-2', type: 'PROJECT', title: '增长实验平台', organization: '某科技', resumeReferenceCount: 0, status: 'ACTIVE' }
 
 function mountPage() {
-  return mount(DataRightsPage, { global: { stubs: { UiIllustration: true, AppSelect: true } } })
+  return mount(DataRightsPage, { global: { plugins: [createPinia()], stubs: { UiIllustration: true } } })
 }
 
 beforeEach(() => {
   route.value = reactive({ query: {} })
   api.preview.mockResolvedValue(accountPreview)
   api.history.mockResolvedValue({ total: 2, counts: { APPLICATION: 2 }, archivedAt: null })
+  api.exports.mockResolvedValue([])
+  api.deletions.mockResolvedValue([])
+  api.records.mockResolvedValue({ items: [record], total: 1, page: 0, size: 50 })
+  api.files.mockResolvedValue({ items: [], total: 0, page: 0, size: 50 })
 })
 
 describe('DataRightsPage', () => {
@@ -72,5 +92,40 @@ describe('DataRightsPage', () => {
     expect(section).toContain('永久删除')
     expect(section).toContain('正被简历版本引用')
     expect(section).not.toMatch(/CAREER_RECORD|TARGET|OBJECT|canProceed|impacts/)
+    expect(wrapper.get('#object').find('button.ui-btn--danger').attributes('disabled')).toBeDefined()
+  })
+
+  it('lets the user pick an item to delete instead of typing its id', async () => {
+    const wrapper = mountPage()
+    await flushPromises()
+    const row = wrapper.get('#object').findAll('[role="radio"]').find(item => item.text().includes('增长实验平台'))
+    expect(row).toBeDefined()
+    expect(wrapper.get('#object').find('input#object-id').exists()).toBe(false)
+    await row!.trigger('click')
+    await flushPromises()
+    expect(api.preview).toHaveBeenCalledWith({ scope: 'OBJECT', targetType: 'CAREER_RECORD', targetId: 'record-2' })
+  })
+
+  it('remembers a finished export after a reload and offers only the download', async () => {
+    api.exports.mockResolvedValue([{ id: 'exp-1', taskId: 'task-1', taskStatus: 'SUCCEEDED', downloadAvailable: true,
+      downloadExpired: false, downloadExpiresAt: new Date(Date.now() + 5 * 3600_000).toISOString(), createdAt: new Date().toISOString() }])
+    const wrapper = mountPage()
+    await flushPromises()
+    const panel = wrapper.get('#export').text()
+    expect(panel).toContain('导出文件已就绪')
+    expect(panel).toContain('下载导出文件')
+    expect(panel).not.toContain('取消导出')
+    expect(panel).not.toContain('发起导出')
+  })
+
+  it('shows open deletion requests after a reload', async () => {
+    api.deletions.mockResolvedValue([{ id: 'del-1', scope: 'OBJECT', targetType: 'CAREER_FILE', status: 'COMPLETED',
+      receipts: [{ moduleCode: 'career-library', status: 'SUCCEEDED' }], createdAt: new Date().toISOString() }])
+    const wrapper = mountPage()
+    await flushPromises()
+    const list = wrapper.get('#deletion-progress').text()
+    expect(list).toContain('资料文件')
+    expect(list).toContain('已完成')
+    expect(list).not.toMatch(/CAREER_FILE|COMPLETED/)
   })
 })

@@ -165,6 +165,58 @@ class DataRightsAndNotificationIT {
         String exportId = objectMapper.readTree(created.getResponse().getContentAsString()).path("data").path("id").asText();
         mockMvc.perform(get("/api/v1/data-rights/exports/{id}", exportId).cookie(bob))
                 .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/v1/data-rights/exports").cookie(bob))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(0));
+    }
+
+    @Test
+    void exportAndDeletionHistorySurviveAReloadWithSpecificNotifications() throws Exception {
+        Cookie session = registerAndLogin("history+" + System.nanoTime() + "@example.com");
+        MvcResult created = mockMvc.perform(post("/api/v1/data-rights/exports")
+                        .cookie(session)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isOk())
+                .andReturn();
+        String exportId = objectMapper.readTree(created.getResponse().getContentAsString()).path("data").path("id").asText();
+
+        await().atMost(Duration.ofSeconds(8)).untilAsserted(() -> mockMvc.perform(
+                        get("/api/v1/data-rights/exports").cookie(session))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].id").value(exportId))
+                .andExpect(jsonPath("$.data[0].taskStatus").value("SUCCEEDED"))
+                .andExpect(jsonPath("$.data[0].downloadAvailable").value(true)));
+
+        await().atMost(Duration.ofSeconds(8)).untilAsserted(() -> {
+            MvcResult page = mockMvc.perform(get("/api/v1/notifications").cookie(session))
+                    .andExpect(status().isOk())
+                    .andReturn();
+            JsonNode items = objectMapper.readTree(page.getResponse().getContentAsString()).path("data").path("items");
+            boolean found = false;
+            for (JsonNode item : items) {
+                if ("TASK_COMPLETED".equals(item.path("type").asText())) {
+                    assertThat(item.path("title").asText()).isEqualTo("个人数据导出已完成");
+                    assertThat(item.path("actionPath").asText()).isEqualTo("/account/data-rights");
+                    found = true;
+                }
+            }
+            assertThat(found).isTrue();
+        });
+
+        mockMvc.perform(get("/api/v1/data-rights/deletions").cookie(session))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(0));
+        mockMvc.perform(post("/api/v1/data-rights/deletions")
+                        .cookie(session)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"scope":"ACCOUNT","confirmationAck":true}
+                                """))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/api/v1/data-rights/deletions").cookie(session))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].scope").value("ACCOUNT"));
     }
 
     private Cookie registerAndLogin(String email) throws Exception {

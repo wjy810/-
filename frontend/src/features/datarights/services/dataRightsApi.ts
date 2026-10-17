@@ -42,6 +42,11 @@ export function submitDeletion(body: SubmitDeletionBody): Promise<DeletionView> 
   })
 }
 
+/** Recent deletion requests, newest first. */
+export function listDeletions(): Promise<DeletionView[]> {
+  return api<DeletionView[]>('/api/v1/data-rights/deletions')
+}
+
 export function fetchDeletion(id: string): Promise<DeletionView> {
   return api<DeletionView>(`/api/v1/data-rights/deletions/${encodeURIComponent(id)}`)
 }
@@ -55,6 +60,11 @@ export function createExport(idempotencyKey?: string): Promise<ExportView> {
     method: 'POST',
     headers,
   })
+}
+
+/** Recent exports, newest first. */
+export function listExports(): Promise<ExportView[]> {
+  return api<ExportView[]>('/api/v1/data-rights/exports')
 }
 
 export function fetchExport(id: string): Promise<ExportView> {

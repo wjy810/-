@@ -2,13 +2,15 @@
 const files = import.meta.glob<string>('../assets/illustrations/*.webp', { eager: true, import: 'default', query: '?url' })
 
 export type IllustrationName =
-  | 'ai-orb' | 'auth-key' | 'dash-interview' | 'dash-library' | 'dash-match' | 'dash-planning'
-  | 'empty-canvas' | 'empty-folder' | 'empty-interview' | 'empty-match' | 'empty-notification'
-  | 'empty-resume' | 'empty-search' | 'empty-templates' | 'error-plane'
+  | 'account-security' | 'admin-channel' | 'ai-orb' | 'ai-usage' | 'auth-key' | 'calendar' | 'career-profile'
+  | 'dash-interview' | 'dash-library' | 'dash-match' | 'dash-planning' | 'data-export' | 'decor-scatter' | 'delete-bin'
+  | 'empty-canvas' | 'empty-folder' | 'empty-history' | 'empty-interview' | 'empty-match' | 'empty-notification'
+  | 'empty-progress' | 'empty-resume' | 'empty-search' | 'empty-templates' | 'empty-updates' | 'error-plane'
   | 'hero-cap' | 'hero-chat' | 'hero-check' | 'hero-magnifier' | 'hero-pencil' | 'hero-plane'
   | 'hero-resume' | 'hero-sparkles' | 'hero-target'
   | 'identity-graduate' | 'identity-professional' | 'identity-student'
-  | 'ink-pen' | 'rocket' | 'success-confetti' | 'success-trophy' | 'welcome-desk'
+  | 'ink-pen' | 'job-offer' | 'privacy-shield' | 'resume-import' | 'rocket' | 'success-confetti' | 'success-trophy'
+  | 'upload-cloud' | 'voice-headset' | 'welcome-desk'
 
 const byName = new Map<string, string>()
 for (const [path, url] of Object.entries(files)) {

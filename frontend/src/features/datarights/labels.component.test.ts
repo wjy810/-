@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { deletionProgressNote, exportDownloadDisabledReason, objectSubmitBlockedReason } from './labels'
+import { deletionProgressNote, exportDownloadDisabledReason, exportPhase, objectSubmitBlockedReason, timeLeft } from './labels'
 import type { DeletionPreview, ExportView } from './types'
 
 describe('data rights feedback', () => {
@@ -37,5 +37,24 @@ describe('data rights feedback', () => {
       expect(reason).not.toBe('')
       expect(reason).not.toMatch(/scope=|canProceed|BLOCKING|假装|后端/)
     }
+  })
+
+  it('derives one export phase so the panel offers only the actions that apply', () => {
+    expect(exportPhase(null)).toBe('none')
+    expect(exportPhase({ id: 'e', taskStatus: 'PENDING' })).toBe('running')
+    expect(exportPhase({ id: 'e', taskStatus: 'PENDING' }, 'SUCCEEDED')).toBe('expired')
+    expect(exportPhase({ id: 'e', taskStatus: 'PENDING', downloadAvailable: true }, 'SUCCEEDED')).toBe('ready')
+    expect(exportPhase({ id: 'e', taskStatus: 'SUCCEEDED', downloadAvailable: true, downloadExpired: true })).toBe('expired')
+    expect(exportPhase({ id: 'e', taskStatus: 'FAILED' })).toBe('failed')
+    expect(exportPhase({ id: 'e', taskStatus: 'CANCELLED' })).toBe('cancelled')
+  })
+
+  it('counts the download window down in plain words', () => {
+    const now = Date.parse('2026-10-17T10:00:00Z')
+    expect(timeLeft('2026-10-17T10:39:10Z', now)).toBe('还剩 40 分钟')
+    expect(timeLeft('2026-10-18T09:00:00Z', now)).toBe('还剩 23 小时')
+    expect(timeLeft('2026-10-21T10:00:00Z', now)).toBe('还剩 4 天')
+    expect(timeLeft('2026-10-17T09:00:00Z', now)).toBe('')
+    expect(timeLeft(null, now)).toBe('')
   })
 })

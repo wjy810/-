@@ -66,16 +66,37 @@ function isActive(to: string): boolean {
   color: var(--color-primary);
 }
 
+/* Narrow screens: every section stays visible (no tab hidden off the edge of a scroller). */
 @media (max-width: 860px) {
   .settings-nav {
-    display: flex;
-    overflow-x: auto;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 4px;
-    scrollbar-width: none;
+    padding: 4px;
+    border-radius: var(--radius-lg);
+    background: var(--surface-3);
   }
 
   .settings-nav__item {
-    flex-shrink: 0;
+    justify-content: center;
+    min-width: 0;
+    padding: 0 8px;
+  }
+
+  .settings-nav__item span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+@media (max-width: 560px) {
+  .settings-nav {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .settings-nav__item {
+    height: 36px;
+    font-size: var(--fs-sm);
   }
 }
 </style>

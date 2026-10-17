@@ -10,4 +10,6 @@ public interface ExportRequestJpaRepository extends JpaRepository<ExportRequestE
     Optional<ExportRequestEntity> findByDownloadTokenHash(String downloadTokenHash);
 
     List<ExportRequestEntity> findByAccountIdOrderByCreatedAtDesc(String accountId);
+
+    List<ExportRequestEntity> findTop10ByAccountIdOrderByCreatedAtDesc(String accountId);
 }

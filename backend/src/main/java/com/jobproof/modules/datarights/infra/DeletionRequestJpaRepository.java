@@ -7,6 +7,8 @@ import org.springframework.data.jpa.repository.JpaRepository;
 public interface DeletionRequestJpaRepository extends JpaRepository<DeletionRequestEntity, String> {
     List<DeletionRequestEntity> findByAccountIdOrderByCreatedAtDesc(String accountId);
 
+    List<DeletionRequestEntity> findTop10ByAccountIdOrderByCreatedAtDesc(String accountId);
+
     Optional<DeletionRequestEntity> findFirstByAccountIdAndScopeAndStatusInOrderByCreatedAtDesc(
             String accountId, String scope, List<String> statuses);
 

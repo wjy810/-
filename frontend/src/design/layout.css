@@ -152,6 +152,15 @@
   font-size: var(--fs-sm);
 }
 
+/* Card shell used by the settings sections (账号与安全, AI 用量). */
+.settings-card {
+  min-width: 0;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--surface-1);
+  box-shadow: var(--shadow-sm);
+}
+
 .settings-section__actions {
   display: flex;
   flex-wrap: wrap;

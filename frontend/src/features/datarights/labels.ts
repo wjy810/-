@@ -154,6 +154,43 @@ export function exportDownloadDisabledReason(view: ExportView | null, taskStatus
   return '导出文件暂不可下载，请刷新进度或重新发起导出。'
 }
 
+export type ExportPhase = 'none' | 'running' | 'ready' | 'expired' | 'failed' | 'cancelled'
+
+/** Where an export stands; the live task status (while polling) wins over the stored one. */
+export function exportPhase(view: ExportView | null, liveStatus?: string | null): ExportPhase {
+  if (!view) {
+    return 'none'
+  }
+  const status = liveStatus ?? view.taskStatus
+  if (status === 'PENDING' || status === 'RUNNING') {
+    return 'running'
+  }
+  if (status === 'FAILED') {
+    return 'failed'
+  }
+  if (status === 'CANCELLED') {
+    return 'cancelled'
+  }
+  return exportDownloadDisabledReason({ ...view, taskStatus: status }) ? 'expired' : 'ready'
+}
+
+/** "还剩 40 分钟" / "还剩 23 小时" / "还剩 3 天"; empty once the moment has passed. */
+export function timeLeft(iso?: string | null, now: number = Date.now()): string {
+  if (!iso) {
+    return ''
+  }
+  const ms = new Date(iso).getTime() - now
+  if (!Number.isFinite(ms) || ms <= 0) {
+    return ''
+  }
+  const minutes = Math.ceil(ms / 60_000)
+  if (minutes < 60) {
+    return `还剩 ${minutes} 分钟`
+  }
+  const hours = Math.floor(minutes / 60)
+  return hours < 48 ? `还剩 ${hours} 小时` : `还剩 ${Math.floor(hours / 24)} 天`
+}
+
 export function glossImpactRelation(relation?: string | null): string {
   return relation ? IMPACT_RELATION_GLOSS[relation.toUpperCase()] ?? '相关数据' : '相关数据'
 }
