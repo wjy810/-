@@ -28,6 +28,7 @@ import com.jobproof.shared.page.PageQuery;
 import com.jobproof.shared.page.PageResult;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -279,8 +280,9 @@ public class CareerLibraryController {
     @GetMapping("/files/{id}/download")
     public ResponseEntity<byte[]> download(@PathVariable String id) {
         Binary value = files.download(SecurityConfig.currentAccount(), id);
+        // RFC 6266 / 5987 encoding keeps Chinese file names intact (a plain header is sent as ISO-8859-1).
         return ResponseEntity.ok().header(HttpHeaders.CONTENT_DISPOSITION,
-                        "attachment; filename=\"" + safeHeader(value.filename()) + "\"")
+                        ContentDisposition.attachment().filename(value.filename(), StandardCharsets.UTF_8).build().toString())
                 .contentType(mediaType(value.contentType())).contentLength(value.body().length).body(value.body());
     }
 
@@ -304,7 +306,6 @@ public class CareerLibraryController {
     private static MediaType mediaType(String value) {
         try { return MediaType.parseMediaType(value); } catch (Exception exception) { return MediaType.APPLICATION_OCTET_STREAM; }
     }
-    private static String safeHeader(String value) { return value == null ? "file" : value.replaceAll("[\\r\\n\"]", "_"); }
     public record AvatarUploadView(ProfileView profile, FileView file, com.jobproof.modules.task.application.TaskView task) { }
     public record VersionRequest(Integer expectedVersion) {}
 }

@@ -62,6 +62,7 @@ import {
   waiveOutcome,
 } from '../services/resumeApi'
 import type { CurrentResumeLayout, KeyOutcome, ResumeMasterView, ResumeTemplateDetail, ResumeVersionView } from '../types'
+import { resumeFileName } from '../utils/downloadName'
 
 type ArchiveTarget = { kind: 'master' | 'version'; id: string; version: number }
 type ExportRun = { versionId: string; task: TaskView }
@@ -417,7 +418,7 @@ async function onDownload(kind: 'pdf' | 'docx'): Promise<void> {
     const file = kind === 'pdf'
       ? viaPath ? await downloadByPath(namedUrl) : await downloadPrivateFile(fileId)
       : viaPath ? await downloadDocxByPath(namedUrl) : await downloadPrivateDocxFile(fileId)
-    triggerBrowserDownload(file.blob, file.filename || (kind === 'pdf' ? 'resume.pdf' : 'resume.docx'))
+    triggerBrowserDownload(file.blob, resumeFileName({ title: master.value?.title, extension: kind }))
   } catch (error) {
     handleWriteError(error, '下载失败')
   } finally {

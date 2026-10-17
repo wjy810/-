@@ -37,6 +37,7 @@ export function createWorkbench(conversationId: () => string, options: { source?
   const pdf = usePdfExport(session, {
     design: () => design,
     previewBasics: () => objectRecord(previewContent.value.basics),
+    previewTarget: () => String(objectRecord(previewContent.value.intentions).targetJob ?? ''),
     unconfirmedDraftCount: () => drafts.dirty.size,
   })
   const design = useDesignDraft(session, { isExporting: () => pdf.pending.value })

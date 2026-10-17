@@ -109,8 +109,8 @@ public class CareerFileService {
         privateFiles.save(privateFile);
 
         jdbc.update("INSERT INTO career_library_files(id,account_id,private_file_id,category,display_name,original_filename,content_type,size_bytes,sha256,scan_status,scan_engine,scan_detail,preview_status,preview_page_count,preview_error,status,version_no,created_at,updated_at,archived_at,folder_id,processing_task_id,processing_status,processing_attempts) VALUES(?,?,?,?,?,?,?,?,?,'PENDING',NULL,NULL,'PENDING',0,NULL,'ACTIVE',0,?,?,NULL,?,NULL,'SCANNING',0)",
-                fileId, current.accountId(), privateId, normalizedCategory, displayName(displayName, safeName),
-                safeName, accepted.contentType(), content.length, ResumeTemplateDocxInspector.sha256(content),
+                fileId, current.accountId(), privateId, normalizedCategory, displayName(displayName, accepted.originalName()),
+                accepted.originalName(), accepted.contentType(), content.length, ResumeTemplateDocxInspector.sha256(content),
                 now, now, normalizedFolder);
 
         TaskView task = tasks.create(current.accountId(), TaskTypes.CAREER_FILE_PROCESS,

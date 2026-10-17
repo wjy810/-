@@ -10,7 +10,8 @@ import { downloadPrivateFile } from '@/features/resume/services/resumeApi'
 import { pdfDownloadDisabledReason } from '@/features/resume/labels'
 import { exportAiResumePdf, fetchAiResumeExportPreview, type AiResumeExportPreview } from '../services/aiResumeApi'
 import type { AiResumePdfExportMode } from '../types'
-import { needsPdfContactWarning, pdfFallbackFilename } from '../utils/pdfExportMode'
+import { needsPdfContactWarning } from '../utils/pdfExportMode'
+import { resumeFileName } from '@/features/resume/utils/downloadName'
 import type { DesignDraft } from './useDesignDraft'
 import type { WorkbenchSession } from './useWorkbenchSession'
 
@@ -54,6 +55,8 @@ export function usePdfExport(session: WorkbenchSession, deps: {
   /** Late-bound: the design draft itself asks whether an export is running. */
   design: () => DesignDraft
   previewBasics: () => Record<string, unknown>
+  /** Target job of the previewed content, for the download name. */
+  previewTarget: () => string
   unconfirmedDraftCount: () => number
 }) {
   const open = ref(false)
@@ -191,7 +194,13 @@ export function usePdfExport(session: WorkbenchSession, deps: {
         return
       }
       const file = await downloadPrivateFile(finished.fileId!.trim())
-      triggerBrowserDownload(file.blob, file.filename || pdfFallbackFilename(exportMode))
+      triggerBrowserDownload(file.blob, resumeFileName({
+        name: deps.previewBasics().name,
+        target: deps.previewTarget(),
+        title: session.conversation.value?.resume?.title,
+        anonymous: exportMode === 'ANONYMOUS',
+        extension: 'pdf',
+      }))
       outcome.value = outcomeOf(finished, exportMode)
       if (!open.value) {
         session.notify(exportMode === 'ANONYMOUS'
