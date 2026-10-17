@@ -11,7 +11,7 @@ import PageState from '@/shared/ui/PageState.vue'
 import { useToastFeedback } from '@/shared/ui/toast'
 import ForbidState from '@/shared/ui/ForbidState.vue'
 import { errorMessage, isForbidden } from '@/shared/api/types'
-import { formatWhen } from '@/shared/lib/datetime'
+import { formatRelative, formatWhen } from '@/shared/lib/datetime'
 import { useLoadState } from '@/shared/lib/useLoadState'
 import type { JobProofIconName } from '@/shared/ui/jobProofIcons'
 import {
@@ -54,7 +54,7 @@ type DecoratedRow = {
 }
 
 // 任务类通知：点击可打开任务详情抽屉
-const TASKISH_TYPES = new Set(['TASK_COMPLETED', 'TASK_FAILED', 'DATA_EXPORT_PROGRESS', 'DATA_DELETION_PROGRESS'])
+const TASKISH_TYPES = new Set(['TASK_COMPLETED', 'TASK_FAILED'])
 
 const router = useRouter()
 const pending = ref('')
@@ -147,7 +147,8 @@ function decorate(item: NotificationView): DecoratedRow {
   }
 }
 
-// 时间分桶：0 今天 / 1 昨天 / 2 更早，按本地日期
+// 时间分桶：0 今天 / 1 昨天 / 2 更早；与时间文字一样按北京时间（Asia/Shanghai）分日
+const shanghaiDay = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai' })
 function dayBucketIndex(iso?: string | null): number {
   if (!iso) {
     return 2
@@ -156,12 +157,9 @@ function dayBucketIndex(iso?: string | null): number {
   if (Number.isNaN(date.getTime())) {
     return 2
   }
-  const startOf = (value: Date) => new Date(value.getFullYear(), value.getMonth(), value.getDate()).getTime()
-  const diffDays = Math.round((startOf(new Date()) - startOf(date)) / 86400000)
-  if (diffDays <= 0) {
-    return 0
-  }
-  return diffDays === 1 ? 1 : 2
+  const day = (value: Date) => Date.parse(shanghaiDay.format(value))
+  const diffDays = Math.round((day(new Date()) - day(date)) / 86400000)
+  return diffDays <= 0 ? 0 : diffDays === 1 ? 1 : 2
 }
 
 const groups = computed(() => {
@@ -248,16 +246,26 @@ async function onNext(): Promise<void> {
   await load()
 }
 
+/** Task notifications are keyed "<taskId>:<status>"; the drawer needs the task id alone. */
+function taskIdOf(item: NotificationView): string {
+  if (item.type !== 'TASK_COMPLETED' && item.type !== 'TASK_FAILED') return ''
+  return (item.eventId ?? '').split(':')[0]?.trim() ?? ''
+}
+
+/** A notice with somewhere to go opens it; a task notice without one opens its details. */
 async function openItem(row: DecoratedRow): Promise<void> {
-  if (row.item.type === 'PRODUCT_UPDATE' && row.source) {
+  if (row.source) {
     await openSource(row)
     return
   }
-  if (!row.taskish) return
+  if (row.taskish) await openDetails(row)
+}
+
+async function openDetails(row: DecoratedRow): Promise<void> {
   selected.value = row.item
   selectedTask.value = null
   taskError.value = ''
-  const taskId = row.item.eventId?.trim()
+  const taskId = taskIdOf(row.item)
   if (!taskId) {
     taskError.value = '这条通知没有关联的任务，无法查看任务详情。'
     return
@@ -386,8 +394,10 @@ onMounted(() => {
               v-for="row in group.rows"
               :key="row.item.id"
               class="n-row"
-              :class="{ 'is-unread': row.item.status === 'DELIVERED', 'is-clickable': row.taskish || row.item.type === 'PRODUCT_UPDATE' }"
+              :class="{ 'is-unread': row.item.status === 'DELIVERED', 'is-clickable': Boolean(row.source) || row.taskish }"
+              :tabindex="row.source || row.taskish ? 0 : undefined"
               @click="openItem(row)"
+              @keydown.enter.self="openItem(row)"
             >
               <span class="n-icon" :class="`n-icon--${row.meta.cls}`">
                 <JobProofIcon :name="row.meta.icon" :size="18" />
@@ -397,26 +407,33 @@ onMounted(() => {
                   <strong>{{ row.item.title }}</strong>
                   <AppTag v-if="row.tag" :tone="row.tag.tone">{{ row.tag.text }}</AppTag>
                 </div>
-                <p class="n-body">{{ row.item.body || '（无正文）' }}</p>
-                <p class="fine">
-                  {{ glossNotificationType(row.item.type) }} · {{ formatWhen(row.item.createdAt) }}
-                  <template v-if="row.item.readAt"> · 已读于 {{ formatWhen(row.item.readAt) }}</template>
+                <p v-if="row.item.body" class="n-body">{{ row.item.body }}</p>
+                <p class="n-meta">
+                  <span>{{ glossNotificationType(row.item.type) }}</span>
+                  <time :datetime="row.item.createdAt ?? undefined" :title="formatWhen(row.item.createdAt)">{{ formatRelative(row.item.createdAt) }}</time>
+                  <span v-if="row.item.readAt">已读</span>
                 </p>
                 <p v-if="row.blockReason" class="fine n-lock">{{ row.blockReason }}</p>
               </div>
               <div class="n-side" @click.stop>
                 <span v-if="row.item.status === 'DELIVERED'" class="n-dot" title="未读" />
-                <button
-                  v-if="row.readable"
-                  class="btn btn--ghost btn--sm"
-                  type="button"
-                  :disabled="pending === `read-${row.item.id}`"
-                  @click="onRead(row.item.id)"
-                >
-                  {{ pending === `read-${row.item.id}` ? '标记中…' : '标为已读' }}
-                </button>
-                <button v-if="row.source" class="text-link" type="button" @click="openSource(row)">查看来源</button>
-                <span v-if="row.taskish" class="fine n-hint">点击查看任务详情</span>
+                <div class="n-actions">
+                  <button
+                    v-if="row.readable"
+                    class="n-action"
+                    type="button"
+                    title="标为已读"
+                    aria-label="标为已读"
+                    :disabled="pending === `read-${row.item.id}`"
+                    @click="onRead(row.item.id)"
+                  >
+                    <AppIcon name="check" :size="15" />
+                  </button>
+                  <button v-if="row.taskish && row.source" class="n-action" type="button" title="任务详情" aria-label="任务详情" @click="openDetails(row)">
+                    <AppIcon name="info" :size="15" />
+                  </button>
+                </div>
+                <AppIcon v-if="row.source || row.taskish" class="n-go" name="chevron-right" :size="16" />
               </div>
             </li>
           </ul>
@@ -665,10 +682,19 @@ onMounted(() => {
   color: var(--color-warning);
 }
 
+.n-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+
 .n-side {
-  display: grid;
-  justify-items: end;
-  gap: 8px;
+  align-self: center;
+  display: flex;
+  align-items: center;
+  gap: 6px;
   flex-shrink: 0;
 }
 
@@ -679,8 +705,54 @@ onMounted(() => {
   background: var(--color-primary);
 }
 
-.n-hint {
+.n-actions {
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease-out);
+}
+
+.n-row:hover .n-actions,
+.n-row:focus-within .n-actions {
+  opacity: 1;
+}
+
+.n-action {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.n-action:hover:not(:disabled) {
+  border-color: var(--color-primary);
+  color: var(--color-primary-text);
+}
+
+.n-go {
   color: var(--text-tertiary);
+  transition: transform var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+}
+
+.n-row.is-clickable:hover .n-go {
+  color: var(--color-primary-text);
+  transform: translateX(2px);
+}
+
+.n-row:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
+}
+
+@media (hover: none) {
+  .n-actions {
+    opacity: 1;
+  }
 }
 
 .d-status {
@@ -798,11 +870,6 @@ onMounted(() => {
 .seg__item:active { transform: scale(.97); }
 .n-block { animation: notification-block-in var(--motion-base) var(--motion-ease-out) both; }
 @keyframes notification-block-in { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
-.n-list { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
-.n-row { display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px; border: 1px solid var(--border); border-radius: var(--radius-l); background: var(--surface); box-shadow: var(--shadow-s); }
-.n-row.is-unread { border-left: 3px solid var(--color-primary); }
-.n-row.is-clickable { cursor: pointer; transition: border-color .15s, box-shadow .15s; }
-.n-row.is-clickable:hover { border-color: var(--color-primary); box-shadow: var(--shadow-l); }
 .n-icon { width: 40px; height: 40px; flex-shrink: 0; display: grid; place-items: center; border-radius: 10px; }
 .n-main { min-width: 0; flex: 1; display: grid; gap: 4px; }
 .n-body { color: var(--text-secondary); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
