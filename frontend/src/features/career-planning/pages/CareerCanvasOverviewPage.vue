@@ -9,6 +9,8 @@ import JobProofIcon from '@/shared/ui/JobProofIcon.vue'
 import AppModal from '@/shared/ui/AppModal.vue'
 import AppSelect from '@/shared/ui/AppSelect.vue'
 import PageState from '@/shared/ui/PageState.vue'
+import UiButton from '@/shared/ui/UiButton.vue'
+import UiEmptyState from '@/shared/ui/UiEmptyState.vue'
 import { jobProofIconIds } from '@/shared/ui/jobProofIcons'
 import { useLoadState } from '@/shared/lib/useLoadState'
 import { useToastFeedback } from '@/shared/ui/toast'
@@ -233,7 +235,12 @@ onBeforeUnmount(() => window.clearTimeout(reloadTimer))
             </footer>
           </article>
 
-          <button class="create-canvas-card" type="button" @click="openNew">
+          <section v-if="!items.length && !query && status === 'ALL'" class="canvas-first">
+            <UiEmptyState size="lg" illustration="dash-planning" title="创建你的第一张能力画布" description="选一个目标职业，AI 会结合你已确认的经历生成能力树、学习计划和验证标准，每一步都可以修改。">
+              <UiButton @click="openNew">新建能力画布</UiButton>
+            </UiEmptyState>
+          </section>
+          <button v-else-if="items.length" class="create-canvas-card" type="button" @click="openNew">
             <span><JobProofIcon :name="jobProofIconIds.newCanvas" :size="34" /></span>
             <strong>创建新的能力画布</strong>
             <p>选择目标职业后，AI 将生成独立的能力树、学习计划与验证标准。</p>
@@ -356,6 +363,7 @@ onBeforeUnmount(() => window.clearTimeout(reloadTimer))
   border: 1px dashed var(--border-strong); border-radius: 12px; color: var(--text); background: var(--surface-warm); text-align: left;
   transition: border-color 160ms ease, background-color 160ms ease;
 }
+.canvas-first { grid-column: 1 / -1; border: 1px solid var(--border-subtle); border-radius: 12px; background: var(--surface-1); box-shadow: var(--shadow-sm); }
 .create-canvas-card:hover { border-color: var(--color-primary); background: var(--surface-1); }
 .create-canvas-card > span { grid-area: icon; width: 40px; height: 40px; display: grid; place-items: center; border-radius: 8px; color: var(--color-primary); background: var(--color-primary-soft); }
 .create-canvas-card > span:deep(svg) { width: 22px; height: 22px; }

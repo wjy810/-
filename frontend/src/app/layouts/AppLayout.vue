@@ -135,7 +135,7 @@ onMounted(() => {
   transition: transform var(--dur-base) var(--ease-out);
 }
 
-.skip-link:focus {
+.skip-link:focus-visible {
   transform: translateY(0);
   color: var(--text-on-primary);
 }
