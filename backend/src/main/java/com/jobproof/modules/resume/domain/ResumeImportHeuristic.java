@@ -141,7 +141,7 @@ public final class ResumeImportHeuristic {
     private static boolean looksLikeContact(String value) {
         String normalized = value.toLowerCase(Locale.ROOT);
         return normalized.contains("@")
-                || normalized.matches(".*(?:\\+?86[- ]?)?1[3-9]\\d{9}.*")
+                || normalized.matches(".*(?:\\+?86[- ]?)?1[3-9]\\d(?:[- ]?\\d{4}){2}.*")
                 || normalized.startsWith("电话")
                 || normalized.startsWith("手机")
                 || normalized.startsWith("邮箱")

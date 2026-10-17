@@ -45,6 +45,24 @@ class ResumeContentParserTest {
     }
 
     @Test
+    void readsMobileNumbersWrittenInGroups() {
+        for (String written : List.of("139 0000 0000", "139-0000-0000", "+86 139 0000 0000")) {
+            ResumeContentParser.Parsed parsed = ResumeContentParser.parse("""
+                    周以宁
+                    电话：%s  邮箱：zhouyining@example.com  城市：武汉
+                    教育经历
+                    2024.09 - 2026.06 武汉大学 应用统计 硕士
+                    """.formatted(written));
+            assertThat(map(parsed.content().get("basics")))
+                    .containsEntry("name", "周以宁")
+                    .containsEntry("phone", written.replaceFirst("^\\+86 ", ""))
+                    .containsEntry("location", "武汉");
+        }
+        // Longer digit runs (ID or order numbers) are not mistaken for phone numbers.
+        assertThat(map(ResumeContentParser.parse("王五\n订单号 138001380001234\n").content().get("basics"))).doesNotContainKey("phone");
+    }
+
+    @Test
     void splitsEntriesFieldsAndDatesWithoutDuplicatingOrInventingContent() {
         ResumeContentParser.Parsed parsed = ResumeContentParser.parse("""
                 李明

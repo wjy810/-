@@ -21,7 +21,8 @@ import java.util.regex.Pattern;
  */
 public final class ResumeContentParser {
     private static final Pattern EMAIL = Pattern.compile("[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}", Pattern.CASE_INSENSITIVE);
-    private static final Pattern PHONE = Pattern.compile("(?<!\\d)(?:\\+?86[- ]?)?1[3-9]\\d{9}(?!\\d)");
+    /** Mainland mobile numbers, also written in groups: 13800138000, 138 0013 8000, 138-0013-8000. */
+    private static final Pattern PHONE = Pattern.compile("(?<!\\d)(?:\\+?86[- ]?)?1[3-9]\\d(?:[- ]?\\d{4}){2}(?!\\d)");
     private static final String MONTH = "(?:1[0-2]|0?[1-9])";
     private static final String POINT = "(?:19|20)\\d{2}(?:\\s*[.\\-/年]\\s*" + MONTH + "\\s*月?)?";
     private static final Pattern DATE_RANGE = Pattern.compile("(" + POINT + ")\\s*(?:-|–|—|至|~|～|到)\\s*(" + POINT + "|至今|现在|今|present|now)", Pattern.CASE_INSENSITIVE);

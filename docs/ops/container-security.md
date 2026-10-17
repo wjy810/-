@@ -39,6 +39,23 @@ Compose 和 CI 的 ClamAV/Nginx 使用同一固定 digest；CI 补入 HTTPS 续�
 
 本次是只读复核，未建立或发布衍生镜像。Docker/WSL 的单次 15 秒状态检查仍超时，阻止运行时验证；没有重启或停止其他项目。证据保留于 `.codex_tmp/ops-security-final-20260906/certbot-nightly-evaluation.json`、`certbot-python-base-layer.tar.gz` 和 `certbot-remediation-review.json`。官方资料：[镜像标签](https://hub.docker.com/v2/repositories/certbot/certbot/tags?page_size=12&ordering=last_updated)、[Certbot Dockerfile](https://github.com/certbot/certbot/blob/v5.8.0/tools/docker/Dockerfile)、[Alpine v3.23 包目录](https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/)、[pip 元数据](https://pypi.org/pypi/pip/json)。
 
+## 2026-10-17 复验
+
+Trivy 0.69.3 以远程方式（不经本机 Docker）扫描 Compose 与 CI 门禁里的镜像，只统计 High/Critical。标签与 digest 通过 Docker Hub 官方 API 核对。
+
+| 镜像 | High/Critical | 处理 |
+| --- | --- | --- |
+| `nginx:1.30.4-alpine-slim`（原 digest） | 1（pcre2，已有修复版本） | 升级为 `nginx:1.30.6-alpine-slim@sha256:3028fc14…`，复扫 0 |
+| `clamav/clamav:1.4.6`（原 digest） | 4（pcre2） | 官方 2026-10-12 重新构建同标签，固定新 digest `sha256:b5b910ce…`，复扫 0 |
+| `eclipse-temurin:21-jre-jammy` | 0 | 保持 |
+| `redis:7.4-alpine`（即 7.4.11） | 2（libssl3 / libcrypto3，修复版 3.3.7-r2 尚未进入官方镜像） | 7.4 线暂无干净镜像；`redis:8.2-alpine` 复扫 0，但 Redis 8 改为 AGPLv3 / RSALv2 / SSPLv1 三选一许可，需许可评估；BSD 许可的 Valkey 是另一选项 |
+| `mysql:8.4.11`（最新 8.4） | 40（pcre2 与 MySQL Shell 自带的 Python 库） | 官方最新构建仍未修复，等待上游或自建镜像升级 pcre2、移除不需要的 MySQL Shell |
+| `certbot/certbot:v5.8.0`（最新） | 12（libuuid、urllib3、msgpack、setuptools） | 上游最新版仍未修复；只在签发/续签时短暂运行，不对外提供服务 |
+| `mcr.microsoft.com/playwright:v1.62.1-noble` | 17（3 个 gstreamer 无修复版本；openssl 与 npm 自带依赖有修复版本） | 渲染服务镜像基础层；可在 Dockerfile 中升级 openssl、去掉运行期不需要的 npm 与 gstreamer，需构建后实测 Chromium |
+| `minio/minio:RELEASE.2025-09-07T16-13-09Z` | 无法扫描 | **Docker Hub 上 `minio/minio` 仓库已不存在，quay.io 同名镜像也拒绝匿名拉取**：现有 Compose 无法拉取 MinIO，属于部署阻塞项 |
+
+结论：nginx 与 ClamAV 已清零；其余 High 来自上游尚未发布修复的官方镜像，或需要替换组件（MinIO、Redis 许可），按下方发布规则继续阻断，不用忽略文件放行。
+
 ## 发布规则
 
 正式构建必须重新扫描实际解析到的镜像 digest，而不是只扫描标签文字。任何 Critical/High 默认阻断发布；UNKNOWN 必须记录来源与人工结论。当前 MinIO、Certbot 的 Critical/High 尚未清零，因此整体发布门禁仍不通过；应用 JAR 另以最终包的独立重扫为准。不得通过忽略文件或调低严重性来伪造通过。

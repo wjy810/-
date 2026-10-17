@@ -55,7 +55,7 @@ public class AiResumeSummarySuggestionService {
                     + "机器学习|深度学习|数据建模|特征工程|算法调优|数据可视化|用户研究|需求分析|原型设计|"
                     + "自动化测试|单元测试|接口测试|数据库|数据结构|操作系统)");
     private static final Pattern CONTACT_TEXT = Pattern.compile(
-            "(?iu)(?:[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}|https?://|www\\.|(?<!\\d)1[3-9]\\d{9}(?!\\d))");
+            "(?iu)(?:[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}|https?://|www\\.|(?<!\\d)1[3-9]\\d(?:[- ]?\\d{4}){2}(?!\\d))");
     private static final Pattern BULLET_OR_LINE_BREAK = Pattern.compile("[\\r\\n]|(?:^|\\s)[•·●▪*-]\\s*");
     private static final Pattern FIRST_PERSON = Pattern.compile("(?:^|[，。；、\\s])(?:我|本人|我们)(?:[，。；、\\s]|$)");
     private static final Pattern ADVISORY_TEXT = Pattern.compile(
