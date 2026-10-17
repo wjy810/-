@@ -39,6 +39,38 @@ class JobMatchTextServiceTest {
     }
 
     @Test
+    void readsTheHeadlineAndKeepsCoreSkillsWithABonusTailAsRequirements() {
+        var parsed = service.parse("""
+                数据分析师（2026 届校招） - 拾光电商 - 上海 · 全职
+                岗位职责：
+                1. 负责用户增长与留存相关的数据分析，搭建并维护核心指标看板，定期输出业务洞察；
+                2. 设计并评估 A/B 实验，量化策略效果，输出可执行的优化建议；
+                3. 与产品、运营团队紧密协作，定位用户转化与流失的关键环节，推动问题闭环；
+                4. 参与数据埋点方案评审与数据质量治理，保证分析口径一致；
+                任职要求：
+                1. 统计学、数学、计算机、经济学等相关专业，硕士及以上学历；
+                2. 熟练使用 SQL 与 Python（Pandas、NumPy），有 Spark 或 Hive 经验者优先；
+                3. 掌握回归分析、假设检验、因果推断等常用统计方法，能独立设计实验；
+                4. 熟悉 Tableau、Power BI 等至少一种可视化工具；
+                5. 有互联网公司数据分析相关实习经历者优先；
+                6. 逻辑清晰，沟通表达能力强，能把分析结论讲给非技术同学听懂。
+                加分项：有机器学习建模经验，参加过数学建模或数据类竞赛并获奖。
+                """);
+
+        assertThat(parsed.title()).isEqualTo("数据分析师（2026 届校招）");
+        assertThat(parsed.company()).isEqualTo("拾光电商");
+        assertThat(parsed.location()).isEqualTo("上海");
+        assertThat(parsed.conflicts()).doesNotContain("JOB_TITLE_MISSING");
+        var sql = parsed.requirements().stream().filter(item -> item.text().startsWith("熟练使用 SQL")).findFirst().orElseThrow();
+        assertThat(sql.priority()).isNotEqualTo("BONUS");
+        assertThat(sql.category()).isEqualTo("SKILL");
+        var tools = parsed.requirements().stream().filter(item -> item.text().startsWith("熟悉 Tableau")).findFirst().orElseThrow();
+        assertThat(tools.hardGate()).isFalse();
+        assertThat(parsed.requirements()).anyMatch(item -> item.text().startsWith("有互联网公司") && "BONUS".equals(item.priority()));
+        assertThat(parsed.requirements()).anyMatch(item -> item.text().startsWith("有机器学习建模经验") && "BONUS".equals(item.priority()));
+    }
+
+    @Test
     void urlFetcherRejectsLoopbackAndPrivateNetworksBeforeOpeningAConnection() {
         assertThatThrownBy(() -> service.fetch("http://127.0.0.1:8080/internal"))
                 .isInstanceOfSatisfying(AppException.class,

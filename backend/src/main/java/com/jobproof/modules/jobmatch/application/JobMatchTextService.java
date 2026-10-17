@@ -53,8 +53,15 @@ public class JobMatchTextService {
     private static final Pattern COMPANY = Pattern.compile("(?im)^(?:公司名称|公司)\\s*[:：]\\s*(.{2,100})$");
     private static final Pattern LOCATION = Pattern.compile("(?im)^(?:工作地点|地点|城市)\\s*[:：]\\s*(.{1,80})$");
     private static final Pattern REQUIREMENT_LINE = Pattern.compile("^(?:[-*•]|\\d+[.、)]|[（(]?[一二三四五六七八九十]+[）)、.]?)\\s*(.+)$");
-    private static final Set<String> HARD_WORDS = Set.of("必须", "要求", "至少", "本科", "硕士", "年经验", "持有", "具备");
+    private static final Set<String> HARD_WORDS = Set.of("必须", "要求", "本科", "硕士", "年经验", "持有", "具备");
+    /** "至少 3 年" / "至少两个项目" is a threshold; "至少一种可视化工具" is not. */
+    private static final Pattern AT_LEAST = Pattern.compile("至少.{0,4}?[0-9一二两三四五六七八九十]+\\s*(?:年|个|项|段|次)");
     private static final Set<String> PLUS_WORDS = Set.of("加分", "优先", "更佳", "preferred", "plus");
+    /** A clause that states the requirement itself; a trailing "…者优先" clause then only adds a bonus. */
+    private static final Set<String> CORE_WORDS = Set.of("熟练", "掌握", "精通", "熟悉", "了解", "能够", "负责", "proficient");
+    private static final Pattern HEADLINE_SPLIT = Pattern.compile("\\s+[-–—|｜/]\\s+|\\s*[｜丨|]\\s*");
+    private static final Pattern CITY = Pattern.compile(
+            "(北京|上海|广州|深圳|杭州|南京|苏州|成都|武汉|西安|重庆|天津|长沙|厦门|青岛|合肥|郑州|宁波|东莞|珠海|无锡|大连|济南|福州|昆明|沈阳|哈尔滨|香港|远程)");
 
     private final String executable;
     private final String dataDir;
@@ -97,9 +104,10 @@ public class JobMatchTextService {
         if (text.length() > MAX_JD) {
             throw AppException.user("JD_TEXT_TOO_LARGE", "岗位描述不能超过 10000 字符");
         }
-        String title = capture(LABEL, text, "待确认岗位");
-        String company = capture(COMPANY, text, "");
-        String location = capture(LOCATION, text, "");
+        String[] headline = headline(text);
+        String title = capture(LABEL, text, headline[0] == null ? "待确认岗位" : headline[0]);
+        String company = capture(COMPANY, text, headline[1] == null ? "" : headline[1]);
+        String location = capture(LOCATION, text, headline[2] == null ? "" : headline[2]);
         String workMode = containsAny(text.toLowerCase(Locale.ROOT), "远程", "remote") ? "REMOTE"
                 : containsAny(text, "混合办公", "混合") ? "HYBRID" : "ONSITE";
         List<RequirementDraft> requirements = new ArrayList<>();
@@ -112,33 +120,41 @@ public class JobMatchTextService {
             String line = rawLine.trim();
             if (line.isBlank()) continue;
             String lower = line.toLowerCase(Locale.ROOT);
+            boolean header = false;
             if (containsAny(lower, "岗位职责", "工作职责", "职责描述", "responsibilities")) {
                 inResponsibilities = true;
                 inPlus = false;
-                continue;
-            }
-            if (containsAny(lower, "任职要求", "职位要求", "岗位要求", "requirements", "qualifications")) {
+                header = true;
+            } else if (containsAny(lower, "任职要求", "职位要求", "岗位要求", "requirements", "qualifications")) {
                 inResponsibilities = false;
                 inPlus = false;
-                continue;
+                header = true;
             }
             if (containsAny(lower, "加分项", "优先条件", "preferred qualifications")) {
                 inResponsibilities = false;
                 inPlus = true;
-                continue;
+                header = true;
             }
-            Matcher item = REQUIREMENT_LINE.matcher(line);
-            if (!item.matches()) continue;
-            String value = item.group(1).trim();
+            String value;
+            if (header) {
+                // "加分项：有机器学习建模经验" carries its first item on the header line itself.
+                value = inlineItem(line);
+                if (value == null) continue;
+            } else {
+                Matcher item = REQUIREMENT_LINE.matcher(line);
+                if (!item.matches()) continue;
+                value = item.group(1).trim();
+            }
             if (value.length() < 4) continue;
             if (inResponsibilities) {
                 responsibilities.add(value);
                 requirements.add(new RequirementDraft("RESPONSIBILITY", value, "IMPORTANT", false,
                         "line:" + lineNo, value, 88));
             } else {
-                boolean plus = inPlus || containsAny(lower, PLUS_WORDS.toArray(String[]::new));
-                boolean hard = !plus && containsAny(lower, HARD_WORDS.toArray(String[]::new));
-                String category = inferCategory(value, plus);
+                String core = coreClause(value);
+                boolean plus = inPlus || core == null && containsAny(value.toLowerCase(Locale.ROOT), PLUS_WORDS.toArray(String[]::new));
+                boolean hard = !plus && isHard(core == null ? value : core);
+                String category = inferCategory(core == null ? value : core, plus);
                 requirements.add(new RequirementDraft(category, value, plus ? "BONUS" : hard ? "MUST" : "IMPORTANT",
                         hard, "line:" + lineNo, value, hard ? 90 : 84));
             }
@@ -148,7 +164,7 @@ public class JobMatchTextService {
                 String value = sentence.trim();
                 if (value.length() < 10 || value.length() > 220) continue;
                 boolean plus = containsAny(value.toLowerCase(Locale.ROOT), PLUS_WORDS.toArray(String[]::new));
-                boolean hard = !plus && containsAny(value.toLowerCase(Locale.ROOT), HARD_WORDS.toArray(String[]::new));
+                boolean hard = !plus && isHard(value);
                 requirements.add(new RequirementDraft(inferCategory(value, plus), value,
                         plus ? "BONUS" : hard ? "MUST" : "IMPORTANT", hard,
                         "sentence:" + (requirements.size() + 1), value, 70));
@@ -393,6 +409,59 @@ public class JobMatchTextService {
     }
 
     private static int meaningful(String value) { return value == null ? 0 : value.replaceAll("\\s+", "").length(); }
+    /**
+     * The first line of many postings is "数据分析师 - 拾光电商 - 上海 · 全职": title, then company and
+     * city. Returns {title, company, location}, each null when the line does not say.
+     */
+    private static String[] headline(String text) {
+        String[] result = new String[3];
+        for (String raw : text.split("\\n")) {
+            String line = raw.trim();
+            if (line.isEmpty()) continue;
+            if (line.length() > 60 || REQUIREMENT_LINE.matcher(line).matches() || line.contains("：") || line.contains(":")
+                    || containsAny(line.toLowerCase(Locale.ROOT), "岗位职责", "任职要求", "职位要求", "工作职责")) {
+                return result;
+            }
+            String[] parts = HEADLINE_SPLIT.split(line);
+            result[0] = parts[0].trim().isEmpty() ? null : parts[0].trim();
+            for (int i = 1; i < parts.length; i++) {
+                String part = parts[i].trim();
+                Matcher city = CITY.matcher(part);
+                if (result[2] == null && city.find() && part.length() <= 16) result[2] = city.group(1);
+                else if (result[1] == null && !part.isEmpty()) result[1] = part;
+            }
+            return result;
+        }
+        return result;
+    }
+
+    /** Text after "加分项：" on the header line, or null when the header stands alone. */
+    private static String inlineItem(String line) {
+        int colon = Math.max(line.indexOf('：'), line.indexOf(':'));
+        if (colon < 0) return null;
+        String rest = line.substring(colon + 1).trim();
+        return rest.length() >= 4 ? rest : null;
+    }
+
+    /**
+     * For "熟练使用 SQL 与 Python，有 Spark 经验者优先" the first clause is the requirement and the
+     * "…优先" clause only a bonus: returns that first clause. Null when the line is not of that shape.
+     */
+    private static String coreClause(String value) {
+        String[] clauses = value.split("[，,；;]");
+        if (clauses.length < 2) return null;
+        String first = clauses[0].trim();
+        String lowerFirst = first.toLowerCase(Locale.ROOT);
+        if (containsAny(lowerFirst, PLUS_WORDS.toArray(String[]::new))) return null;
+        if (!containsAny(lowerFirst, CORE_WORDS.toArray(String[]::new))) return null;
+        return first;
+    }
+
+    private static boolean isHard(String value) {
+        String lower = value.toLowerCase(Locale.ROOT);
+        return containsAny(lower, HARD_WORDS.toArray(String[]::new)) || AT_LEAST.matcher(value).find();
+    }
+
     private static String capture(Pattern pattern, String text, String fallback) { Matcher m = pattern.matcher(text); return m.find() ? m.group(1).trim() : fallback; }
     private static boolean containsAny(String value, String... needles) { for (String needle : needles) if (value.contains(needle.toLowerCase(Locale.ROOT))) return true; return false; }
     private static String inferCategory(String text, boolean plus) {

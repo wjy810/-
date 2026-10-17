@@ -716,7 +716,7 @@ public class JobMatchService {
         List<ClarificationView> clarifications = jdbc.query("SELECT * FROM job_match_clarifications WHERE match_id=? ORDER BY sequence_no",
                 this::clarification, matchId);
         return new MatchView(row.id(), row.status(), row.version(), row.progress(), row.checkpoint(), row.errorCode(),
-                row.jobId(), row.jobVersionId(), String.valueOf(job.get("title")), blank(String.valueOf(job.get("company_name"))),
+                row.jobId(), row.jobVersionId(), blank(String.valueOf(job.get("title"))), blank(String.valueOf(job.get("company_name"))),
                 blank(String.valueOf(version.get("location"))), blank(String.valueOf(version.get("work_mode"))),
                 requirements, selectedResume, row.resumeImportId(), row.evidenceMode(), row.authorizationId(),
                 row.currentReportId(), row.analysisTaskId(), clarifications, row.createdAt(), row.updatedAt());

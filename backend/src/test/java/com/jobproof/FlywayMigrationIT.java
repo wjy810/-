@@ -15,7 +15,7 @@ class FlywayMigrationIT {
     void freshDatabaseMigratesThroughLatestVersion() {
         Flyway flyway = flyway("fresh-" + UUID.randomUUID(), null);
 
-        assertThat(flyway.migrate().targetSchemaVersion).isEqualTo("71");
+        assertThat(flyway.migrate().targetSchemaVersion).isEqualTo("72");
     }
 
     @Test
@@ -25,7 +25,7 @@ class FlywayMigrationIT {
         assertThat(version39.migrate().targetSchemaVersion).isEqualTo("39");
 
         Flyway latest = flyway(database, null);
-        assertThat(latest.migrate().targetSchemaVersion).isEqualTo("71");
+        assertThat(latest.migrate().targetSchemaVersion).isEqualTo("72");
     }
 
     @Test
@@ -73,11 +73,28 @@ class FlywayMigrationIT {
         jdbc.update(insert, "n1", "TASK_COMPLETED", taskId + ":SUCCEEDED");
         jdbc.update(insert, "n2", "TASK_FAILED", "22222222-2222-2222-2222-222222222222:FAILED");
 
-        assertThat(flyway(database, null).migrate().targetSchemaVersion).isEqualTo("71");
+        assertThat(flyway(database, MigrationVersion.fromVersion("71")).migrate().targetSchemaVersion).isEqualTo("71");
 
         assertThat(jdbc.queryForObject("SELECT title FROM notifications WHERE id='n1'", String.class)).isEqualTo("岗位匹配报告已生成");
         assertThat(jdbc.queryForObject("SELECT action_path FROM notifications WHERE id='n1'", String.class)).isEqualTo("/job-match/history");
         assertThat(jdbc.queryForObject("SELECT title FROM notifications WHERE id='n2'", String.class)).isEqualTo("后台任务未完成");
+    }
+
+    @Test
+    void version72NamesFilesWhoseChineseNameWasLost() {
+        String database = "names-" + UUID.randomUUID();
+        assertThat(flyway(database, MigrationVersion.fromVersion("71")).migrate().targetSchemaVersion).isEqualTo("71");
+        JdbcTemplate jdbc = new JdbcTemplate(dataSource(database));
+        String insert = "INSERT INTO career_library_files (id, account_id, private_file_id, category, display_name, original_filename, "
+                + "content_type, size_bytes, sha256, scan_status, preview_status, preview_page_count, status, version_no, created_at, updated_at) "
+                + "VALUES (?, 'acc', ?, 'RESUME', ?, ?, 'application/pdf', 10, 'x', 'PASSED', 'READY', 1, 'ACTIVE', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)";
+        jdbc.update(insert, "f1", "p1", "____.pdf", "____.pdf");
+        jdbc.update(insert, "f2", "p2", "resume_2026.pdf", "resume_2026.pdf");
+
+        assertThat(flyway(database, null).migrate().targetSchemaVersion).isEqualTo("72");
+
+        assertThat(jdbc.queryForObject("SELECT display_name FROM career_library_files WHERE id='f1'", String.class)).isEqualTo("未命名文件.pdf");
+        assertThat(jdbc.queryForObject("SELECT display_name FROM career_library_files WHERE id='f2'", String.class)).isEqualTo("resume_2026.pdf");
     }
 
     private static DriverManagerDataSource dataSource(String database) {

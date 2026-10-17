@@ -15,6 +15,7 @@ import {
   fetchEvidenceRecommendations, fetchJobMatch, fetchMatchCapabilities, fetchResumeImport,
   fetchResumeOptions, selectMatchResume, startAnalysis, updateJdStructure, uploadJd, uploadMatchResume,
 } from '../services/jobMatchApi'
+import { fileCategoryLabel } from '@/features/career-library/labels'
 import type { EvidenceCandidate, JobMatch, MatchCapabilities, MatchRequirement, ResumeImportSession, ResumeOption } from '../types'
 import { displayJobMatchText } from '../utils/reportPresentation'
 import { serverStage, stepNumber, type MatchRouteStage } from '../utils/stage'
@@ -40,6 +41,18 @@ const requirements = ref<MatchRequirement[]>([])
 const resumeSource = ref<'SITE' | 'UPLOAD'>('SITE')
 const resumes = ref<ResumeOption[]>([])
 const selectedResumeId = ref('')
+
+/** What the evidence row says under its title: the record's own text, or the file's category. */
+function evidenceNote(item: EvidenceCandidate): string {
+  if (item.sourceType === 'CAREER_FILE') return `资料文件 · ${fileCategoryLabel(item.excerpt ?? '')}`
+  return item.excerpt?.trim() || '没有填写描述，只引用标题'
+}
+
+/** With a single resume there is nothing to choose: select it so the step can go on. */
+function setResumeOptions(options: ResumeOption[]): void {
+  resumes.value = options
+  if (!selectedResumeId.value && options.length === 1) selectedResumeId.value = options[0]!.revisionId
+}
 const selectedResumeFile = ref<File | null>(null)
 const resumeImport = ref<ResumeImportSession | null>(null)
 const importStatus = ref('')
@@ -103,7 +116,7 @@ const { error: loadError, loading, loaded, load } = useLoadState(async () => {
 
 async function loadStageData() {
   if (!match.value) return
-  if (stage.value === 'resume') resumes.value = await fetchResumeOptions(match.value.id)
+  if (stage.value === 'resume') setResumeOptions(await fetchResumeOptions(match.value.id))
   if (stage.value === 'evidence' || stage.value === 'confirm') {
     evidence.value = await fetchEvidenceRecommendations(match.value.id)
     if (match.value.evidenceMode === 'NONE') evidenceMode.value = 'NONE'
@@ -150,7 +163,7 @@ async function confirmJd() {
       expectedVersion: match.value.version,
       requestId: `job-match:jd-structure:${match.value.id}:${match.value.version}`,
     })
-    syncFromMatch(updated); stage.value = 'resume'; resumes.value = await fetchResumeOptions(updated.id)
+    syncFromMatch(updated); stage.value = 'resume'; setResumeOptions(await fetchResumeOptions(updated.id))
   } catch (reason) { pageError.value = errorMessage(reason, '岗位结构确认失败') }
   finally { pending.value = false }
 }
@@ -328,7 +341,7 @@ onMounted(load)
         <template v-else-if="stage === 'evidence'">
           <div class="jm-wizard__body"><header><h2>补充求职资料证据</h2><p>资料库默认不授权。你可以自动选择相关项、手动选择，或完全不使用。</p></header>
             <div class="jm-choice-row"><button class="jm-choice" :class="{ 'is-selected':evidenceMode==='AUTO' }" type="button" :aria-pressed="evidenceMode==='AUTO'" @click="evidenceMode='AUTO'"><strong>自动选择相关证据</strong><small>按 JD 相关度推荐，但仍由你确认范围。</small></button><button class="jm-choice" :class="{ 'is-selected':evidenceMode==='MANUAL' }" type="button" :aria-pressed="evidenceMode==='MANUAL'" @click="evidenceMode='MANUAL'"><strong>手动选择</strong><small>逐项选择项目、成果和文件资料。</small></button><button class="jm-choice" :class="{ 'is-selected':evidenceMode==='NONE' }" type="button" :aria-pressed="evidenceMode==='NONE'" @click="evidenceMode='NONE'"><strong>不使用资料库</strong><small>只基于 JD 与本次投递简历分析。</small></button></div>
-            <Transition name="jm-switch" mode="out-in"><div :key="evidenceMode" class="jm-evidence-panel"><div v-if="evidenceMode!=='NONE'" class="jm-evidence-list"><label v-for="item in evidence" :key="`${item.sourceType}:${item.sourceId}`" class="jm-evidence-option" :class="{ 'is-selected':selectedEvidence.has(`${item.sourceType}:${item.sourceId}`) }"><input type="checkbox" :checked="selectedEvidence.has(`${item.sourceType}:${item.sourceId}`)" @change="toggleEvidence(item)"><p><strong>{{ item.title }}</strong><small>{{ item.excerpt || item.locator }}</small></p><em v-if="item.recommended">与岗位要求有关键词重合</em></label><p v-if="!evidence.length" class="jm-privacy"><ShieldCheck :size="17" /><span>资料库暂无可用证据，可以选择“不使用资料库”继续。</span></p></div><div v-else class="jm-evidence-none"><ShieldCheck :size="20" /><p><strong>本次不使用资料库</strong><small>分析只读取已确认的 JD 和投递简历，之后仍可重新创建匹配并授权证据。</small></p></div></div></Transition>
+            <Transition name="jm-switch" mode="out-in"><div :key="evidenceMode" class="jm-evidence-panel"><div v-if="evidenceMode!=='NONE'" class="jm-evidence-list"><label v-for="item in evidence" :key="`${item.sourceType}:${item.sourceId}`" class="jm-evidence-option" :class="{ 'is-selected':selectedEvidence.has(`${item.sourceType}:${item.sourceId}`) }"><input type="checkbox" :checked="selectedEvidence.has(`${item.sourceType}:${item.sourceId}`)" @change="toggleEvidence(item)"><p><strong>{{ item.title }}</strong><small>{{ evidenceNote(item) }}</small></p><em v-if="item.recommended">与岗位要求有关键词重合</em></label><p v-if="!evidence.length" class="jm-privacy"><ShieldCheck :size="17" /><span>资料库暂无可用证据，可以选择“不使用资料库”继续。</span></p></div><div v-else class="jm-evidence-none"><ShieldCheck :size="20" /><p><strong>本次不使用资料库</strong><small>分析只读取已确认的 JD 和投递简历，之后仍可重新创建匹配并授权证据。</small></p></div></div></Transition>
             <div class="jm-privacy"><ShieldCheck :size="18" /><p><strong>敏感信息已排除</strong><span>手机号、邮箱、详细地址、身份证及敏感属性不会进入模型输入；授权只作用于当前任务。</span></p></div>
           </div><footer class="jm-wizard__footer"><button class="jm-secondary" type="button" @click="goBack">返回</button><button class="jm-primary" type="button" :disabled="pending" @click="confirmEvidence">确认资料范围</button></footer>
         </template>
