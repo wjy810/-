@@ -2,7 +2,7 @@
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
-  FileUp, FolderPlus, LockKeyhole, Plus, Search, ShieldCheck, UploadCloud,
+  FileText, FileUp, FolderPlus, LockKeyhole, Plus, Search, ShieldCheck, UploadCloud,
 } from 'lucide-vue-next'
 import { errorMessage } from '@/shared/api/types'
 import { useLoadState } from '@/shared/lib/useLoadState'
@@ -12,10 +12,11 @@ import CareerLibraryTabs, { type CareerLibraryView } from '../components/CareerL
 import CareerProfileTab from '../components/CareerProfileTab.vue'
 import CareerRecordsTab from '../components/CareerRecordsTab.vue'
 import CareerFilesTab from '../components/CareerFilesTab.vue'
+import ResumeImportDialog from '../components/ResumeImportDialog.vue'
 import {
   fetchCareerOverview, fetchCareerProfile, saveCareerProfile, searchCareerLibrary,
 } from '../services/careerLibraryApi'
-import type { CareerOverview, CareerProfile, CareerSearchResult } from '../types'
+import type { CareerOverview, CareerProfile, CareerSearchResult, ResumeImportResult } from '../types'
 import '../career-library.css'
 
 const route = useRoute()
@@ -48,6 +49,18 @@ const filesTab = ref<InstanceType<typeof CareerFilesTab> | null>(null)
 /** Category to preselect once the files tab has mounted and its picker can open. */
 const pendingPick = ref<string | null>(null)
 let searchTimer = 0
+const importOpen = ref(false)
+
+async function onImported(result: ResumeImportResult): Promise<void> {
+  importOpen.value = false
+  setNotice(result.created
+    ? `已添加 ${result.created} 项到资料库${result.skipped ? `，${result.skipped} 项已存在` : ''}。`
+    : '选中的条目都已在资料库中。')
+  if (view.value !== 'records') await changeView('records')
+  await nextTick()
+  await recordsTab.value?.reload()
+  void refreshOverview()
+}
 
 function textQuery(key: string): string {
   const value = route.query[key]
@@ -171,7 +184,7 @@ onBeforeUnmount(() => window.clearTimeout(searchTimer))
         <h1>求职资料库</h1>
         <p>维护长期职业档案、结构化经历和私有文件，供简历与经你授权的 AI 使用。</p>
         <small v-if="view === 'profile'"><ShieldCheck :size="14" />仅在 AI 对话中经你授权后使用；不采集年龄、性别、婚育和民族等敏感字段。</small>
-        <small v-else-if="view === 'records'"><FileUp :size="14" />上传的简历文件保存在“文件资料”中，可预览和下载，不会自动拆分成经历记录。</small>
+        <small v-else-if="view === 'records'"><FileUp :size="14" />上传的简历文件保存在“文件资料”中，可预览和下载，不会自动拆分成经历记录；需要时可以“从简历添加”，自己勾选要放进来的条目。</small>
       </div>
       <div v-if="loaded" class="career-head-actions">
         <template v-if="view === 'profile'">
@@ -180,6 +193,7 @@ onBeforeUnmount(() => window.clearTimeout(searchTimer))
         </template>
         <template v-else-if="view === 'records'">
           <button class="career-btn ghost" type="button" title="文件保存到“文件资料”，不会自动生成经历记录" @click="pickFile('RESUME')"><FileUp :size="17" />上传简历文件</button>
+          <button class="career-btn ghost" type="button" title="从已有简历里勾选经历、技能和荣誉添加到资料库" @click="importOpen = true"><FileText :size="17" />从简历添加</button>
           <button class="career-btn primary" type="button" @click="recordsTab?.openCreate()"><Plus :size="17" />添加记录</button>
         </template>
         <template v-else>
@@ -207,10 +221,11 @@ onBeforeUnmount(() => window.clearTimeout(searchTimer))
       <Transition name="career-view" mode="out-in">
         <div v-if="profile && overview" :key="view" class="career-view-panel">
           <CareerProfileTab v-if="view === 'profile'" :profile="profile" :overview="overview" :pending="profilePending" @save="saveProfile" @profile-updated="profile = $event; refreshOverview()" @notice="setNotice" @error="setError" />
-          <CareerRecordsTab v-else-if="view === 'records'" ref="recordsTab" :overview="overview" :q="q" :type="type" :status="status" :sort="sort" :layout="layout" @query="patchQuery" @changed="refreshOverview" @upload-file="pickFile" @remove="removeItem" @notice="setNotice" @error="setError" />
+          <CareerRecordsTab v-else-if="view === 'records'" ref="recordsTab" :overview="overview" :q="q" :type="type" :status="status" :sort="sort" :layout="layout" @query="patchQuery" @changed="refreshOverview" @upload-file="pickFile" @import-resume="importOpen = true" @remove="removeItem" @notice="setNotice" @error="setError" />
           <CareerFilesTab v-else ref="filesTab" :overview="overview" :q="q" :type="type" :status="status" :sort="sort" :layout="layout" :folder-id="folderId" @query="patchQuery" @changed="refreshOverview" @remove="removeItem" @notice="setNotice" @error="setError" />
         </div>
       </Transition>
     </PageState>
+    <ResumeImportDialog :open="importOpen" @close="importOpen = false" @imported="onImported" />
   </div>
 </template>

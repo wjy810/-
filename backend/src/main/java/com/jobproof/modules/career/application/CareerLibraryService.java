@@ -177,20 +177,46 @@ public class CareerLibraryService implements DeletionModuleHandler, AccountExpor
     @Transactional
     public RecordView createRecord(CurrentAccount current, RecordWrite write) {
         assertSeeker(current);
+        String id = insertRecord(current.accountId(), write, "USER", null);
+        bump(current.accountId(), "RECORD_CREATED");
+        return requireRecord(current.accountId(), id);
+    }
+
+    /**
+     * Records the user picked from one of their resumes: confirmed (the user chose them), with the
+     * resume as their source so the library shows where they came from. One snapshot bump for the batch.
+     */
+    @Transactional
+    public List<RecordView> createRecordsFromResume(CurrentAccount current, String masterId, List<RecordWrite> writes) {
+        assertSeeker(current);
+        List<String> ids = new ArrayList<>();
+        for (RecordWrite write : writes) ids.add(insertRecord(current.accountId(), write, "RESUME", masterId));
+        if (!ids.isEmpty()) bump(current.accountId(), "RECORDS_IMPORTED_FROM_RESUME");
+        return ids.stream().map(id -> requireRecord(current.accountId(), id)).toList();
+    }
+
+    /** Existing records as (type, title, organization) keys, to keep a second import from duplicating them. */
+    @Transactional(readOnly = true)
+    public List<String[]> recordIdentities(CurrentAccount current) {
+        assertSeeker(current);
+        return jdbc.query("SELECT record_type,title,organization FROM career_library_records WHERE account_id=?",
+                (rs, n) -> new String[] {rs.getString(1), rs.getString(2), rs.getString(3)}, current.accountId());
+    }
+
+    private String insertRecord(String accountId, RecordWrite write, String sourceType, String sourceRefId) {
         String type = normalizeType(write.type());
         String title = requiredTitle(write.title());
         Instant now = clock.now();
         String id = Ids.newId();
-        jdbc.update("INSERT INTO career_library_records(id,account_id,record_type,title,organization,role_name,start_date,end_date,location,description_text,core_outcome,url,payload_json,strength,pending_supplement,source_type,source_ref_id,status,confirmed,sort_order,version_no,created_at,updated_at,archived_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,'USER',NULL,'ACTIVE',1,?,0,?,?,NULL)",
-                id, current.accountId(), type, title, blankToNull(write.organization()), blankToNull(write.role()),
+        jdbc.update("INSERT INTO career_library_records(id,account_id,record_type,title,organization,role_name,start_date,end_date,location,description_text,core_outcome,url,payload_json,strength,pending_supplement,source_type,source_ref_id,status,confirmed,sort_order,version_no,created_at,updated_at,archived_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,?,?,'ACTIVE',1,?,0,?,?,NULL)",
+                id, accountId, type, title, blankToNull(write.organization()), blankToNull(write.role()),
                 blankToNull(write.startDate()), blankToNull(write.endDate()), blankToNull(write.location()),
                 blankToNull(write.description()), blankToNull(write.coreOutcome()), blankToNull(write.url()),
                 json(write.payload() == null ? mapper.createObjectNode() : write.payload()),
-                blankToNull(write.strength()), write.sortOrder() == null ? 0 : write.sortOrder(), now, now);
-        bump(current.accountId(), "RECORD_CREATED");
-        audit.append(current.accountId(), "CAREER_LIBRARY_RECORD_CREATED", "CAREER_LIBRARY_RECORD", id,
-                "type=" + type);
-        return requireRecord(current.accountId(), id);
+                blankToNull(write.strength()), sourceType, sourceRefId, write.sortOrder() == null ? 0 : write.sortOrder(), now, now);
+        audit.append(accountId, "CAREER_LIBRARY_RECORD_CREATED", "CAREER_LIBRARY_RECORD", id,
+                "type=" + type + " source=" + sourceType);
+        return id;
     }
 
     @Transactional

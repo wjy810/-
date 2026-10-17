@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import {
-  Archive, ArchiveRestore, ArrowRight, BarChart3, BriefcaseBusiness, CheckCircle2, Clock3, Copy,
+  Archive, ArchiveRestore, ArrowRight, BarChart3, BriefcaseBusiness, CheckCircle2, Clock3, Copy, FileText,
   LayoutList, Lightbulb, MoreVertical, Pencil, Plus, Search, ShieldCheck,
   Sparkles, Tags, Trash2, WandSparkles,
 } from 'lucide-vue-next'
@@ -33,6 +33,8 @@ const emit = defineEmits<{
   changed: []
   /** Open the file picker in the files view with this category preselected. */
   uploadFile: [category: string]
+  /** Pick entries from an existing resume. */
+  importResume: []
   /** Permanent deletion goes through the data-rights page, which previews the impact first. */
   remove: [target: { type: 'CAREER_RECORD'; id: string }]
   notice: [message: string]
@@ -205,9 +207,11 @@ function skills(record: CareerRecord): string[] {
 }
 
 
+/** Dated types show a range ("至今" when open); certificates and honours one date; skills and languages none. */
 function period(record: CareerRecord): string {
   const format = (value?: string | null): string => value?.match(/^\d{4}-\d{2}/)?.[0]?.replace('-', '.') || ''
-  return `${format(record.startDate) || '时间待补'} - ${format(record.endDate) || '至今'}`
+  if (DATED_TYPES.has(record.type)) return `${format(record.startDate) || '时间待补'} - ${format(record.endDate) || '至今'}`
+  return format(record.startDate)
 }
 
 function setQuery(key: string, value: string | number): void {
@@ -216,7 +220,7 @@ function setQuery(key: string, value: string | number): void {
 
 watch(() => [props.q, props.type, props.status], load)
 onMounted(() => { void load(); void loadAiAvailability() })
-defineExpose({ openCreate })
+defineExpose({ openCreate, reload: load })
 </script>
 
 <template>
@@ -243,7 +247,7 @@ defineExpose({ openCreate })
       <PageState class="career-list-state" :loading="loading" :error="loadError" :loaded="loaded" :empty="!sortedRecords.length" error-title="经历资料读取失败" compact @retry="load">
         <template #skeleton><div class="records-loading"><span v-for="n in 3" :key="n" class="career-card bone-card" /></div></template>
         <template #empty>
-          <div class="career-card career-empty"><BriefcaseBusiness :size="30" /><strong>还没有符合条件的经历</strong><p>添加真实经历后可用于简历和经授权的 AI 辅助。</p><button type="button" @click="openCreate()"><Plus :size="16" />添加记录</button></div>
+          <div class="career-card career-empty"><BriefcaseBusiness :size="30" /><strong>还没有符合条件的经历</strong><p>添加真实经历后可用于简历和经授权的 AI 辅助。</p><div class="career-empty-actions"><button type="button" @click="openCreate()"><Plus :size="16" />添加记录</button><button type="button" class="is-secondary" @click="emit('importResume')"><FileText :size="16" />从简历添加</button></div></div>
         </template>
         <section class="record-timeline" :class="{ compact: layout === 'compact' }" aria-live="polite">
           <article v-for="(record, index) in sortedRecords" :id="record.id" :key="record.id" class="career-card timeline-record">
@@ -254,7 +258,7 @@ defineExpose({ openCreate })
                 <em v-if="record.resumeReferenceCount"><CheckCircle2 :size="14" />已用于 {{ record.resumeReferenceCount }} 份简历</em>
                 <em v-else-if="record.status === 'ARCHIVED'">已归档</em>
               </header>
-              <div class="record-period"><Clock3 :size="14" />{{ period(record) }}<span>{{ recordTypeLabel(record.type) }}</span></div>
+              <div class="record-period"><template v-if="period(record)"><Clock3 :size="14" />{{ period(record) }}</template><span>{{ recordTypeLabel(record.type) }}</span></div>
               <ul v-if="lines(record).length"><li v-for="line in lines(record).slice(0, layout === 'compact' ? 1 : 4)" :key="line">{{ line }}</li></ul>
               <p v-else class="record-placeholder">尚未填写详细描述，可编辑后补充职责、行动和成果。</p>
               <div v-if="skills(record).length" class="record-tags"><span v-for="skill in skills(record)" :key="skill">{{ skill }}</span></div>

@@ -14,6 +14,8 @@ import type {
   CareerAiAvailability,
   CareerAiCandidate,
   PageResult,
+  ResumeImportCandidates,
+  ResumeImportResult,
 } from '../types'
 
 const ROOT = '/api/v1/career-library'
@@ -25,6 +27,15 @@ function query(values: Record<string, string | number | undefined>): string {
   })
   const text = params.toString()
   return text ? `?${text}` : ''
+}
+
+/** Entries of one of the user's resumes that could be added as records. */
+export function fetchResumeImportCandidates(masterId: string): Promise<ResumeImportCandidates> {
+  return api<ResumeImportCandidates>(`${ROOT}/resume-import${query({ masterId })}`)
+}
+
+export function importRecordsFromResume(masterId: string, keys: string[]): Promise<ResumeImportResult> {
+  return api<ResumeImportResult>(`${ROOT}/resume-import`, { method: 'POST', body: JSON.stringify({ masterId, keys }) })
 }
 
 export function fetchCareerProfile(): Promise<CareerProfile> {

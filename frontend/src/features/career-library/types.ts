@@ -165,3 +165,28 @@ export type CareerAiCandidate = {
   updatedAt: string
   decidedAt?: string | null
 }
+
+/** One resume entry that could become a library record. */
+export type ResumeImportCandidate = {
+  key: string
+  type: string
+  title: string
+  organization?: string | null
+  role?: string | null
+  startDate?: string | null
+  endDate?: string | null
+  description?: string | null
+  alreadyInLibrary: boolean
+}
+
+export type ResumeImportCandidates = {
+  masterId: string
+  resumeTitle?: string | null
+  items: ResumeImportCandidate[]
+}
+
+export type ResumeImportResult = {
+  created: number
+  skipped: number
+  records: CareerRecord[]
+}

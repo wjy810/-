@@ -1,5 +1,6 @@
 package com.jobproof;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
@@ -194,6 +195,61 @@ class CareerLibraryIT {
         mockMvc.perform(post("/api/v1/resumes/{id}/candidates/{candidateId}/reject", masterId, candidateId)
                         .cookie(owner).contentType(MediaType.APPLICATION_JSON).content("{\"expectedVersion\":1}"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("REJECTED"));
+    }
+
+    @Test
+    void importsOnlyTheResumeEntriesTheUserPicksAndNeverTwice() throws Exception {
+        MockCookie owner = registerAndLogin("career-import+" + System.nanoTime() + "@example.com");
+        MockCookie other = registerAndLogin("career-import-other+" + System.nanoTime() + "@example.com");
+        String masterId = data(mockMvc.perform(post("/api/v1/resumes").cookie(owner)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"mode\":\"BLANK\",\"title\":\"导入资料库验收简历\"}"))
+                .andExpect(status().isOk()).andReturn()).path("id").asText();
+        jdbc.update("UPDATE resume_masters SET content_json=? WHERE id=?", """
+                {"schemaVersion":"resume-content-v3",
+                 "education":[{"school":"武汉大学","major":"应用统计","degree":"硕士","startDate":"2024-09","endDate":"2026-06"}],
+                 "experiences":[{"company":"知味外卖","role":"数据分析实习生","startDate":"2025-06","endDate":"2025-09",
+                   "description":"搭建新客留存看板","highlights":["ROI 提升 18%"]},
+                   {"company":"知味外卖","role":"数据分析实习生","startDate":"2025-06","endDate":"2025-09"}],
+                 "skills":[{"category":"数据","items":["Python","SQL"]}],
+                 "honors":[{"name":"一等学业奖学金","date":"2025-10"}]}
+                """, masterId);
+
+        JsonNode candidates = data(mockMvc.perform(get("/api/v1/career-library/resume-import").cookie(owner)
+                        .param("masterId", masterId))
+                .andExpect(status().isOk()).andReturn());
+        assertThat(candidates.path("resumeTitle").asText()).isEqualTo("导入资料库验收简历");
+        JsonNode items = candidates.path("items");
+        // The repeated experience appears once.
+        assertThat(items).hasSize(4);
+        assertThat(items.get(1).path("type").asText()).isEqualTo("EXPERIENCE");
+        assertThat(items.get(1).path("title").asText()).isEqualTo("数据分析实习生");
+        assertThat(items.get(1).path("organization").asText()).isEqualTo("知味外卖");
+        assertThat(items.get(1).path("description").asText()).contains("- ROI 提升 18%");
+        String experience = items.get(1).path("key").asText();
+        String skills = items.get(2).path("key").asText();
+
+        mockMvc.perform(get("/api/v1/career-library/resume-import").cookie(other).param("masterId", masterId))
+                .andExpect(status().isBadRequest());
+
+        mockMvc.perform(post("/api/v1/career-library/resume-import").cookie(owner)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"masterId\":\"" + masterId + "\",\"keys\":[\"" + experience + "\",\"" + skills + "\"]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.created").value(2))
+                .andExpect(jsonPath("$.data.records[0].sourceType").value("RESUME"))
+                .andExpect(jsonPath("$.data.records[1].payload.skills[1]").value("SQL"));
+
+        mockMvc.perform(get("/api/v1/career-library/resume-import").cookie(owner).param("masterId", masterId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[1].alreadyInLibrary").value(true))
+                .andExpect(jsonPath("$.data.items[0].alreadyInLibrary").value(false));
+        mockMvc.perform(post("/api/v1/career-library/resume-import").cookie(owner)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"masterId\":\"" + masterId + "\",\"keys\":[\"" + experience + "\"]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.created").value(0))
+                .andExpect(jsonPath("$.data.skipped").value(1));
     }
 
     @Test

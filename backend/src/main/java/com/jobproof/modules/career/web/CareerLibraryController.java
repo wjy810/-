@@ -11,6 +11,9 @@ import com.jobproof.modules.career.application.CareerFileService.FolderWrite;
 import com.jobproof.modules.career.application.CareerFileService.StorageView;
 import com.jobproof.modules.career.application.CareerFileService.UploadView;
 import com.jobproof.modules.career.application.CareerRecordAiCandidateService;
+import com.jobproof.modules.career.application.CareerResumeImportService;
+import com.jobproof.modules.career.application.CareerResumeImportService.CandidatesView;
+import com.jobproof.modules.career.application.CareerResumeImportService.ImportView;
 import com.jobproof.modules.career.application.CareerRecordAiCandidateService.AvailabilityView;
 import com.jobproof.modules.career.application.CareerRecordAiCandidateService.CandidateView;
 import com.jobproof.modules.career.application.CareerRecordAiCandidateService.Decision;
@@ -50,12 +53,29 @@ public class CareerLibraryController {
     private final CareerLibraryService library;
     private final CareerFileService files;
     private final CareerRecordAiCandidateService recordAi;
+    private final CareerResumeImportService resumeImport;
 
     public CareerLibraryController(CareerLibraryService library, CareerFileService files,
-            CareerRecordAiCandidateService recordAi) {
+            CareerRecordAiCandidateService recordAi, CareerResumeImportService resumeImport) {
         this.library = library;
         this.files = files;
         this.recordAi = recordAi;
+        this.resumeImport = resumeImport;
+    }
+
+    /** Entries of one resume that could become library records, with those already in the library marked. */
+    @GetMapping("/resume-import")
+    public ApiResponse<CandidatesView> resumeImportCandidates(@RequestParam("masterId") String masterId) {
+        return ApiResponse.ok(resumeImport.candidates(SecurityConfig.currentAccount(), masterId));
+    }
+
+    @PostMapping("/resume-import")
+    public ApiResponse<ImportView> importFromResume(@RequestBody ResumeImportRequest request) {
+        return ApiResponse.ok(resumeImport.importSelected(SecurityConfig.currentAccount(),
+                request.masterId(), request.keys()));
+    }
+
+    public record ResumeImportRequest(String masterId, List<String> keys) {
     }
 
     @GetMapping("/profile")

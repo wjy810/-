@@ -1866,6 +1866,18 @@ textarea.career-input {
   font-size: 12px;
 }
 
+.career-empty-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+
+.career-empty button.is-secondary {
+  border-color: var(--border-default);
+  color: var(--text-secondary);
+}
+
 .files-loading,
 .records-loading,
 .career-shell-loading {
