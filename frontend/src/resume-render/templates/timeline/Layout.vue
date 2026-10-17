@@ -62,6 +62,6 @@ defineProps<LayoutProps>()
   background: radial-gradient(circle closest-side, var(--r-paper) 52%, var(--r-accent) 58%, var(--r-accent) 92%, transparent 100%) no-repeat calc(var(--tl-line) - 2.6pt) var(--tl-dot-y) / 6pt 6pt;
 }
 [data-template='timeline'] .rr-entry--cont .rr-entry__body { grid-column: 2; }
-[data-template='timeline'] .rr-entry__meta { justify-content: flex-start; }
+[data-template='timeline'] .rr-entry__meta { justify-content: flex-start; column-gap: 1.2mm; }
 [data-template='timeline'] .rr-entry__location::before { content: '· '; }
 </style>

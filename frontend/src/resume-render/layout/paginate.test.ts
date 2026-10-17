@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { paginate, type MeasuredBlock } from './paginate.ts'
+import { autoFitTarget, paginate, type MeasuredBlock } from './paginate.ts'
 
 const block = (id: string, height: number, region = 'main', section = id.split(':')[0]!): MeasuredBlock => ({ id, height, region, section })
 const cap = (first: number, next = first, region = 'main') => ({ first: { [region]: first }, next: { [region]: next } })
@@ -42,4 +42,19 @@ test('regions flow independently and the page count is the longest region', () =
 test('sub-pixel rounding does not push a fitting block to the next page', () => {
   const result = paginate([block('a:1', 500.3), block('a:2', 500)], cap(1000), 1)
   assert.equal(result.pageCount, 1)
+})
+
+test('reports how full the last page is, using the fullest region', () => {
+  const blocks = [block('m:1', 900, 'main'), block('m:2', 250, 'main'), block('s:1', 400, 'side')]
+  const result = paginate(blocks, { first: { main: 1000, side: 1000 }, next: { main: 1000, side: 1000 } }, 2)
+  assert.equal(result.pageCount, 2)
+  assert.equal(result.lastPageFill, 0.25)
+  assert.equal(paginate([block('a:1', 500)], cap(1000), 2).lastPageFill, 0.5)
+})
+
+test('AUTO fits back a nearly empty last page or content beyond the limit, and leaves the rest alone', () => {
+  assert.equal(autoFitTarget({ pageCount: 2, lastPageFill: 0.12 }, 2), 1)
+  assert.equal(autoFitTarget({ pageCount: 2, lastPageFill: 0.7 }, 2), null)
+  assert.equal(autoFitTarget({ pageCount: 3, lastPageFill: 0.9 }, 2), 2)
+  assert.equal(autoFitTarget({ pageCount: 1, lastPageFill: 0.05 }, 2), null)
 })

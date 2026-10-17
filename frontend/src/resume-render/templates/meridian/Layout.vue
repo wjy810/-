@@ -42,7 +42,7 @@ defineProps<LayoutProps>()
 [data-template='meridian'] .mr-title { margin-top: 1.6mm; color: var(--r-accent); font-size: calc(var(--r-size) + 0.75pt); font-weight: 600; }
 [data-template='meridian'] .mr-contact { flex-direction: column; align-items: flex-start; gap: 1.8mm; margin-top: 5mm; }
 [data-template='meridian'] .mr-contact .rr-contact__sep { display: none; }
-[data-template='meridian'] .mr-contact .rr-contact__item { white-space: normal; word-break: break-all; }
+[data-template='meridian'] .mr-contact .rr-contact__item { white-space: normal; overflow-wrap: anywhere; }
 [data-template='meridian'] .mr-side { grid-area: side; padding: 5mm 7mm var(--r-margin-y) var(--r-margin-x); }
 [data-template='meridian'] .mr-main { grid-area: main; padding: var(--r-margin-y) var(--r-margin-x) var(--r-margin-y) 8mm; }
 [data-template='meridian'] .rr-heading {

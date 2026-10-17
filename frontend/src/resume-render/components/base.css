@@ -32,8 +32,8 @@
 .rr-root a { color: inherit; text-decoration: none; }
 .rr-root strong { font-weight: 600; }
 
-/* Measuring area: real size, out of sight, never affects layout around it. */
-.rr-measure {
+/* Measuring copy of the paper: real size, out of sight, never affects layout around it. */
+.rr-root.rr-measure {
   position: absolute;
   top: 0;
   left: -200000px;
@@ -170,8 +170,11 @@
 }
 
 /* Skills */
-.rr-skill { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 3mm; }
+/* --r-skill-label (set per section) lines the items of every row up in one column. */
+.rr-skill { display: grid; grid-template-columns: minmax(var(--r-skill-label, auto), auto) minmax(0, 1fr); column-gap: 3mm; }
 .rr-skill__name { font-weight: 600; white-space: nowrap; }
+/* A group without a name uses the whole row. */
+.rr-skill__items:first-child { grid-column: 1 / -1; }
 .rr-skill__name::after { content: '：'; }
 .rr-root:lang(en) .rr-skill__name::after { content: ':'; }
 .rr-skill__items { color: var(--r-ink); }
@@ -189,6 +192,8 @@
 .rr-contact__item { display: inline-flex; align-items: center; gap: 1.2mm; white-space: nowrap; }
 .rr-contact__icon { width: 1em; height: 1em; flex: none; fill: none; stroke: var(--r-accent); stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
 .rr-contact__sep { margin: 0 2.2mm; color: var(--r-rule); }
+/* Set after layout on a separator that ends a wrapped line; hidden (not removed) so lines do not reflow. */
+.rr-contact__sep[data-line-end] { visibility: hidden; }
 .rr-contact--icons .rr-contact__sep { margin: 0 1.6mm; }
 .rr-no-icons .rr-contact__icon { display: none; }
 

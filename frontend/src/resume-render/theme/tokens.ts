@@ -4,8 +4,8 @@ import { SECTION_KEYS, type SectionKey } from '../model/types'
 import type { Palette, TemplateManifest } from '../templates/manifest'
 import { contrastRatio, ensureContrast, parseHex, tint } from './contrast'
 import {
-  DESIGN_SCHEMA, FONT_PAIRINGS, FONT_SIZE_PT, FONT_SIZES, LINE_HEIGHT_VALUE, LINE_HEIGHTS, PAGE_MARGIN_MM, PAGE_MARGINS,
-  PAGE_TARGETS, PHOTO_MODES, PHOTO_SHAPES, SPACING_SCALE, SPACINGS, type ResumeDesignV2,
+  DESIGN_SCHEMA, FONT_PAIRINGS, FONT_SIZE_PT, FONT_SIZES, fittedRhythm, LINE_HEIGHTS, PAGE_MARGIN_MM, PAGE_MARGINS,
+  PAGE_TARGETS, PHOTO_MODES, PHOTO_SHAPES, SPACINGS, type ResumeDesignV2,
 } from './design'
 import { FONT_STACKS } from './fonts'
 
@@ -129,7 +129,7 @@ export interface ResolvedTheme {
   pageMm: { width: number; height: number }
 }
 
-export function resolveTheme(manifest: TemplateManifest, design: ResumeDesignV2): ResolvedTheme {
+export function resolveTheme(manifest: TemplateManifest, design: ResumeDesignV2, fit = 0): ResolvedTheme {
   const palette = paletteOf(manifest, design)
   const paper = palette.paper ?? '#ffffff'
   const ink = palette.ink ?? '#1d2129'
@@ -140,6 +140,7 @@ export function resolveTheme(manifest: TemplateManifest, design: ResumeDesignV2)
   const size = FONT_SIZE_PT[design.fontSize]
   const margin = PAGE_MARGIN_MM[design.pageMargin]
   const pageMm = PAPER_MM[design.paperSize]
+  const rhythm = fittedRhythm(design, fit)
   return {
     accent,
     accentAdjusted: Boolean(design.customAccent) && adjusted,
@@ -164,8 +165,8 @@ export function resolveTheme(manifest: TemplateManifest, design: ResumeDesignV2)
       '--r-size-sm': `${(size - 1).toFixed(2)}pt`,
       '--r-size-title': `${(size + 0.75).toFixed(2)}pt`,
       '--r-size-section': `${(size + 1.75).toFixed(2)}pt`,
-      '--r-leading': String(LINE_HEIGHT_VALUE[design.lineHeight]),
-      '--r-gap': String(SPACING_SCALE[design.spacing]),
+      '--r-leading': String(Math.round(rhythm.leading * 1000) / 1000),
+      '--r-gap': String(Math.round(rhythm.gap * 1000) / 1000),
       '--r-margin-x': `${margin}mm`,
       '--r-margin-y': `${(margin * 0.9).toFixed(1)}mm`,
       '--r-page-w': `${pageMm.width}mm`,

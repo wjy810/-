@@ -36,6 +36,8 @@ const status = computed(() => {
 })
 const accentNote = computed(() => result.value?.accentAdjusted
   ? `自定义强调色在白纸上对比度不足，预览与导出已自动加深为 ${result.value.accentAdjusted}` : '')
+const fitNote = computed(() => result.value?.autoFit
+  ? `为避免最后一页只剩几行，已自动收紧段落间距与行距（预览与导出一致）。想保持原间距，可在「设计」里把目标页数设为固定页数。` : '')
 
 function currentScale(): number {
   if (zoom.value !== 'fit') return zoom.value
@@ -96,6 +98,7 @@ wb.session.onLanded(async (cardType) => {
       </button>
     </header>
     <p v-if="accentNote" class="preview-pane__note"><Info :size="13" aria-hidden="true" />{{ accentNote }}</p>
+    <p v-if="fitNote" class="preview-pane__note"><Info :size="13" aria-hidden="true" />{{ fitNote }}</p>
 
     <div class="preview-pane__stage-shell scroll-edges" :class="{ 'can-scroll-up': surface.edges.canScrollUp, 'can-scroll-down': surface.edges.canScrollDown }">
       <div ref="stage" class="preview-pane__stage" tabindex="0" aria-label="简历预览滚动区域" @scroll.passive="surface.onScroll">

@@ -17,7 +17,7 @@ const stroke = { '--iw-stroke': `url(${artUrl('ink-wash-band')})` }
   <span class="rr-decor iw-corner" :class="`iw-corner--${corner}`" :style="cornerStyle" aria-hidden="true" />
   <span class="rr-decor iw-mountains" :style="mountains" aria-hidden="true" />
   <div class="rr-sheet iw-sheet" :style="stroke">
-    <header v-if="!page.continuation" class="iw-head">
+    <header v-if="!page.continuation" class="iw-head" :class="`iw-head--${corner}`">
       <ResumePhoto v-if="document.header.photo" :src="document.header.photo" :shape="design.photo.shape" class="iw-photo" />
       <div class="iw-identity">
         <h1 class="iw-name">
@@ -40,6 +40,10 @@ const stroke = { '--iw-stroke': `url(${artUrl('ink-wash-band')})` }
 [data-template='inkwash'] .iw-sheet { padding-bottom: calc(var(--r-margin-y) + 16mm); }
 [data-template='inkwash'] .iw-identity { max-width: 132mm; }
 [data-template='inkwash'] .iw-head { display: flex; align-items: center; gap: 7mm; margin: 2mm 0 7mm; }
+/* Keep the name and contacts clear of the corner art (the plum branch reaches ~40 mm into the text area). */
+[data-template='inkwash'] .iw-head--ink-plum { padding-right: 36mm; }
+[data-template='inkwash'] .iw-head--ink-bamboo { padding-right: 12mm; }
+[data-template='inkwash'].rr-no-decor .iw-head { padding-right: 0; }
 [data-template='inkwash'] .iw-name { display: flex; align-items: center; gap: 3.2mm; font-family: var(--r-font-heading); font-size: 29pt; font-weight: 600; line-height: 1.1; letter-spacing: 0.18em; color: var(--r-ink); }
 [data-template='inkwash'] .iw-seal {
   display: grid;

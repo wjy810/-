@@ -48,6 +48,24 @@ export const LINE_HEIGHT_VALUE: Record<LineHeight, number> = { COMPACT: 1.42, NO
 export const SPACING_SCALE: Record<Spacing, number> = { TIGHT: 0.72, NORMAL: 1, RELAXED: 1.28 }
 export const PAGE_MARGIN_MM: Record<PageMargin, number> = { NARROW: 12, STANDARD: 16, WIDE: 20 }
 
+/**
+ * How far the AUTO page target may tighten a layout (fit = 1): spacing shrinks to this share of the
+ * chosen setting and line height drops by up to this much, never below the floor. Font size is left
+ * alone; shrinking type is the explicit "one-click compact".
+ */
+export const AUTO_FIT = { minGapShare: 0.6, leadingDrop: 0.1, minLeading: 1.36 } as const
+export const AUTO_FIT_LEVELS = [0.25, 0.5, 0.75, 1] as const
+
+/** Spacing scale and line height after applying an auto-fit level (0 = as designed). */
+export function fittedRhythm(design: ResumeDesignV2, fit: number): { gap: number; leading: number } {
+  const level = Math.min(1, Math.max(0, fit))
+  const leading = LINE_HEIGHT_VALUE[design.lineHeight]
+  return {
+    gap: SPACING_SCALE[design.spacing] * (1 - (1 - AUTO_FIT.minGapShare) * level),
+    leading: Math.min(leading, Math.max(AUTO_FIT.minLeading, leading - AUTO_FIT.leadingDrop * level)),
+  }
+}
+
 /** "One-click compact" steps, applied in order until the content fits (docs/phase2/03 §3.3). */
 export function compactSteps(design: ResumeDesignV2): ResumeDesignV2[] {
   const steps: ResumeDesignV2[] = []

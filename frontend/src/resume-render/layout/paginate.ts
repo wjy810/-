@@ -26,12 +26,30 @@ export interface PaginationResult {
   overflowPx: number
   firstOverflowSection: string | null
   oversize: string[]
+  /** How full the last page is (0–1): the fullest region's used height over its capacity. */
+  lastPageFill: number
+}
+
+/** A last page filled less than this is "nearly empty": the AUTO page target tries to fold it back. */
+export const SPARSE_LAST_PAGE = 0.4
+
+/**
+ * AUTO page target: the page count worth tightening the spacing for, or null when the layout is fine
+ * as it is. Content beyond the limit should come back within it; a nearly empty last page should fold
+ * into the page before it.
+ */
+export function autoFitTarget(result: Pick<PaginationResult, 'pageCount' | 'lastPageFill'>, pageLimit: number): number | null {
+  if (result.pageCount > pageLimit) return pageLimit
+  if (result.pageCount > 1 && result.lastPageFill < SPARSE_LAST_PAGE) return result.pageCount - 1
+  return null
 }
 
 export function paginate(blocks: MeasuredBlock[], capacity: RegionCapacity, pageLimit: number): PaginationResult {
   const regions = [...new Set(blocks.map(block => block.region))]
   const placement = new Map<string, number>()
   const oversize: string[] = []
+  /** Where each region ends: its last page and the share of that page it fills. */
+  const ends: Array<{ page: number; fill: number }> = []
   let pageCount = 1
 
   for (const region of regions) {
@@ -50,7 +68,10 @@ export function paginate(blocks: MeasuredBlock[], capacity: RegionCapacity, page
       used += block.height
       pageCount = Math.max(pageCount, page + 1)
     }
+    const endCap = (page === 0 ? capacity.first[region] : capacity.next[region]) ?? 0
+    ends.push({ page, fill: endCap > 0 ? Math.min(1, used / endCap) : 1 })
   }
+  const lastPageFill = Math.max(0, ...ends.filter(end => end.page === pageCount - 1).map(end => end.fill))
 
   const pages: Array<Record<string, string[]>> = Array.from({ length: pageCount }, () => Object.fromEntries(regions.map(region => [region, [] as string[]])))
   for (const block of blocks) pages[placement.get(block.id) ?? 0]![block.region]!.push(block.id)
@@ -67,5 +88,5 @@ export function paginate(blocks: MeasuredBlock[], capacity: RegionCapacity, page
       }
     }
   }
-  return { pages, pageCount, overflowPx, firstOverflowSection, oversize }
+  return { pages, pageCount, overflowPx, firstOverflowSection, oversize, lastPageFill }
 }

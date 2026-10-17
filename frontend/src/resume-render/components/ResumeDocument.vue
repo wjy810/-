@@ -8,9 +8,9 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch 
 import '../fonts/fonts.css'
 import './base.css'
 import { buildBlocks, type Block } from '../layout/blocks'
-import { paginate } from '../layout/paginate'
+import { autoFitTarget, paginate, type PaginationResult } from '../layout/paginate'
 import { normalize } from '../model/normalize'
-import type { ResumeDesignV2 } from '../theme/design'
+import { AUTO_FIT_LEVELS, type ResumeDesignV2 } from '../theme/design'
 import { coerceDesign, PX_PER_MM, resolveTheme } from '../theme/tokens'
 import type { TemplateModule } from '../templates/manifest'
 import ResumePage from './ResumePage.vue'
@@ -21,6 +21,8 @@ export interface LayoutResult {
   overflowMm: number
   firstOverflowSection: string | null
   accentAdjusted: string | null
+  /** AUTO page target only: how far spacing was tightened to save a page (0 = as designed, 1 = most). */
+  autoFit: number
 }
 
 const props = withDefaults(defineProps<{
@@ -42,11 +44,27 @@ const emit = defineEmits<{ layout: [result: LayoutResult]; sectionClick: [key: s
 
 const manifest = computed(() => props.template.manifest)
 const design = computed<ResumeDesignV2>(() => coerceDesign(manifest.value, props.design))
-const theme = computed(() => resolveTheme(manifest.value, design.value))
+/** The design as chosen; relayout runs whenever it changes. */
+const baseTheme = computed(() => resolveTheme(manifest.value, design.value))
+/** Auto-fit level the visible pages use, and the one the measuring copy is trying. */
+const appliedFit = ref(0)
+const trialFit = ref(0)
+const theme = computed(() => (appliedFit.value ? resolveTheme(manifest.value, design.value, appliedFit.value) : baseTheme.value))
+const measureTheme = computed(() => (trialFit.value ? resolveTheme(manifest.value, design.value, trialFit.value) : baseTheme.value))
 const photo = computed(() => (manifest.value.photo !== 'none' && design.value.photo.mode !== 'HIDE' && props.photo ? props.photo : null))
 const doc = computed(() => normalize(props.content, design.value, {
   locale: manifest.value.locale, photo: photo.value, templateTitles: manifest.value.sectionTitles,
 }))
+/** Attributes and classes template styles key on; shared by the visible paper and the measuring copy. */
+const paperAttrs = computed(() => ({
+  lang: manifest.value.locale,
+  'data-template': manifest.value.id,
+  'data-palette': design.value.paletteId,
+  'data-header': design.value.headerVariant,
+  'data-photo-shape': design.value.photo.shape.toLowerCase(),
+  'data-fonts': design.value.fontPairing,
+}))
+const paperClasses = computed(() => ({ 'rr-no-decor': !design.value.decorations, 'rr-no-icons': !design.value.contactIcons }))
 const blocks = computed(() => buildBlocks(doc.value, manifest.value, design.value))
 const byId = computed(() => new Map(blocks.value.map(block => [block.id, block])))
 const allByRegion = computed(() => groupByRegion(blocks.value))
@@ -77,11 +95,10 @@ function regionCapacity(page: Element, scale: number): Record<string, number> {
 let generation = 0
 let timer: ReturnType<typeof setTimeout> | undefined
 
-async function relayout(): Promise<LayoutResult | null> {
-  const token = ++generation
-  await nextTick()
-  if (typeof document !== 'undefined' && document.fonts) await document.fonts.ready
-  if (token !== generation) return null
+interface Measured { packed: PaginationResult }
+
+/** Measures every block and the region capacities on the hidden probe pages, then packs pages. */
+function measure(): Measured | null {
   const root = measureRoot.value
   if (!root) return null
   const [contentProbe, firstProbe, nextProbe] = Array.from(root.querySelectorAll<HTMLElement>(':scope > .rr-page'))
@@ -92,7 +109,54 @@ async function relayout(): Promise<LayoutResult | null> {
     const element = contentProbe.querySelector<HTMLElement>(`[data-block="${CSS.escape(block.id)}"]`)
     return { id: block.id, region: block.region, section: block.sectionKey, height: element ? element.getBoundingClientRect().height / scale : 0 }
   })
-  const packed = paginate(measured, { first: regionCapacity(firstProbe, scale), next: regionCapacity(nextProbe, scale) }, pageLimit.value)
+  return { packed: paginate(measured, { first: regionCapacity(firstProbe, scale), next: regionCapacity(nextProbe, scale) }, pageLimit.value) }
+}
+
+/**
+ * AUTO page target: when the content runs past the page limit or leaves a nearly empty last page,
+ * tighten spacing and line height step by step on the measuring copy and keep the first level that
+ * saves the page. Explicit one- or two-page targets keep the spacing exactly as designed.
+ */
+async function autoFit(first: Measured, token: number): Promise<{ measured: Measured; fit: number } | null> {
+  const target = design.value.pageTarget === 'AUTO' ? autoFitTarget(first.packed, pageLimit.value) : null
+  if (target === null) return { measured: first, fit: 0 }
+  for (const level of AUTO_FIT_LEVELS) {
+    trialFit.value = level
+    await nextTick()
+    if (token !== generation) return null
+    const attempt = measure()
+    if (!attempt) return null
+    if (attempt.packed.pageCount <= target) return { measured: attempt, fit: level }
+  }
+  return { measured: first, fit: 0 }
+}
+
+/** Hides contact separators that end a wrapped line, so no line ends on a dangling "·" or "|". */
+function hideLineEndSeparators(): void {
+  viewport.value?.querySelectorAll<HTMLElement>('.rr-contact').forEach((list) => {
+    const items = Array.from(list.querySelectorAll<HTMLElement>(':scope > .rr-contact__item'))
+    items.forEach((item, index) => {
+      const separator = item.querySelector<HTMLElement>('.rr-contact__sep')
+      if (!separator) return
+      const next = items[index + 1]
+      const wraps = !next || next.getBoundingClientRect().top > item.getBoundingClientRect().top + 1
+      separator.toggleAttribute('data-line-end', wraps)
+    })
+  })
+}
+
+async function relayout(): Promise<LayoutResult | null> {
+  const token = ++generation
+  trialFit.value = 0
+  await nextTick()
+  if (typeof document !== 'undefined' && document.fonts) await document.fonts.ready
+  if (token !== generation) return null
+  const first = measure()
+  if (!first) return null
+  const fitted = await autoFit(first, token)
+  if (!fitted || token !== generation) return null
+  const { packed } = fitted.measured
+  appliedFit.value = fitted.fit
   pages.value = packed.pages.map(page => Object.fromEntries(Object.entries(page).map(([region, ids]) => [region, ids.map(id => byId.value.get(id)!)])))
   const next: LayoutResult = {
     pageCount: packed.pageCount,
@@ -100,7 +164,11 @@ async function relayout(): Promise<LayoutResult | null> {
     overflowMm: Math.round((packed.overflowPx / PX_PER_MM) * 10) / 10,
     firstOverflowSection: packed.firstOverflowSection,
     accentAdjusted: theme.value.accentAdjusted ? theme.value.accent : null,
+    autoFit: fitted.fit,
   }
+  await nextTick()
+  if (token !== generation) return null
+  hideLineEndSeparators()
   result.value = next
   emit('layout', next)
   return next
@@ -115,7 +183,7 @@ function schedule(): void {
   timer = setTimeout(() => void relayout(), props.debounceMs)
 }
 
-watch([blocks, theme, photo], schedule)
+watch([blocks, baseTheme, photo], schedule)
 
 function onFontsLoaded(): void {
   schedule()
@@ -170,20 +238,16 @@ defineExpose({ relayout, result })
 <template>
   <div
     class="rr-root"
-    :class="[`rr-mode-${mode}`, { 'rr-interactive': interactive, 'rr-no-decor': !design.decorations, 'rr-no-icons': !design.contactIcons }]"
-    :lang="manifest.locale"
-    :data-template="manifest.id"
-    :data-palette="design.paletteId"
-    :data-header="design.headerVariant"
-    :data-photo-shape="design.photo.shape.toLowerCase()"
-    :data-fonts="design.fontPairing"
+    :class="[`rr-mode-${mode}`, paperClasses, { 'rr-interactive': interactive }]"
+    v-bind="paperAttrs"
     :style="theme.vars"
     @click="onClick"
   >
-    <div ref="measureRoot" class="rr-measure" aria-hidden="true">
-      <ResumePage :template="template" :document="doc" :design="design" :theme="theme" :index="0" :total="1" :blocks="allByRegion" probe />
-      <ResumePage :template="template" :document="doc" :design="design" :theme="theme" :index="0" :total="1" :blocks="{}" probe />
-      <ResumePage :template="template" :document="doc" :design="design" :theme="theme" :index="1" :total="2" :blocks="{}" probe />
+    <!-- A full copy of the paper (same template selectors) that measures with the trial auto-fit spacing. -->
+    <div ref="measureRoot" class="rr-root rr-measure" :class="paperClasses" v-bind="paperAttrs" :style="measureTheme.vars" aria-hidden="true">
+      <ResumePage :template="template" :document="doc" :design="design" :theme="measureTheme" :index="0" :total="1" :blocks="allByRegion" probe />
+      <ResumePage :template="template" :document="doc" :design="design" :theme="measureTheme" :index="0" :total="1" :blocks="{}" probe />
+      <ResumePage :template="template" :document="doc" :design="design" :theme="measureTheme" :index="1" :total="2" :blocks="{}" probe />
     </div>
     <div ref="viewport" class="rr-viewport">
       <div class="rr-scaled" :style="scaledBox">

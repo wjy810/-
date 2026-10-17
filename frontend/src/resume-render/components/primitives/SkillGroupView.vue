@@ -2,11 +2,11 @@
 import type { SkillGroup } from '../../model/types'
 import RichTextView from './RichTextView.vue'
 
-defineProps<{ group: SkillGroup; separator: string }>()
+defineProps<{ group: SkillGroup; separator: string; labelEm?: number | null }>()
 </script>
 
 <template>
-  <div class="rr-skill">
+  <div class="rr-skill" :style="labelEm ? { '--r-skill-label': `${labelEm}em` } : undefined">
     <span v-if="group.name" class="rr-skill__name">{{ group.name }}</span>
     <span v-if="group.items.length" class="rr-skill__items">
       <template v-for="(item, index) in group.items" :key="index"><span class="rr-skill__item">{{ item }}</span><span v-if="index < group.items.length - 1" class="rr-skill__sep">{{ separator }}</span></template>
