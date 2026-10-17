@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { ArrowLeft, ChevronLeft, ChevronRight, FileSearch, LoaderCircle, Search } from 'lucide-vue-next'
+import { ArrowLeft, ChevronLeft, ChevronRight, LoaderCircle, Search } from 'lucide-vue-next'
 import AppSelect from '@/shared/ui/AppSelect.vue'
+import UiButton from '@/shared/ui/UiButton.vue'
+import UiEmptyState from '@/shared/ui/UiEmptyState.vue'
 import AppTag from '@/shared/ui/AppTag.vue'
 import PageState from '@/shared/ui/PageState.vue'
 import { useLoadState } from '@/shared/lib/useLoadState'
@@ -54,10 +56,10 @@ onMounted(load)
       <PageState :loading="loading" :error="error" :loaded="loaded" :empty="!items.length" compact error-title="历史记录读取失败" @retry="load">
       <template #skeleton><div class="jm-loading"><LoaderCircle class="jm-spin" :size="20" /> 正在读取历史记录</div></template>
       <template #empty>
-        <div class="jm-empty">
-          <div v-if="filtered"><span><FileSearch :size="30" /></span><h2>没有符合条件的匹配记录</h2><p>调整搜索词或状态筛选后再试。</p></div>
-          <div v-else><span><FileSearch :size="30" /></span><h2>还没有岗位匹配记录</h2><p>创建一次岗位匹配后，记录会出现在这里。</p></div>
-        </div>
+        <UiEmptyState v-if="filtered" illustration="empty-search" title="没有符合条件的匹配记录" description="调整搜索词或状态筛选后再试。" />
+        <UiEmptyState v-else illustration="empty-history" title="还没有岗位匹配记录" description="创建一次岗位匹配后，报告和进行中的分析都会出现在这里。">
+          <UiButton @click="router.push({ name: 'job-match-new' })">创建岗位匹配</UiButton>
+        </UiEmptyState>
       </template>
       <table class="jm-history-table"><thead><tr><th>岗位与公司</th><th>投递简历</th><th>匹配度</th><th>可信度</th><th>状态</th><th>更新时间</th><th>操作</th></tr></thead><tbody><tr v-for="item in items" :key="item.id"><td><strong>{{ item.title }}</strong><small>{{ item.company || '未填写公司' }}</small></td><td>{{ item.resumeTitle || '尚未选择' }}</td><td><strong>{{ item.score ?? '—' }}<template v-if="item.score != null">%</template></strong></td><td>{{ confidenceLabel(item.confidence) }}</td><td><AppTag :tone="statusTone(item.status)">{{ statusLabel(item.status) }}</AppTag></td><td>{{ new Date(item.updatedAt).toLocaleString('zh-CN') }}</td><td><button class="jm-secondary" type="button" @click="open(item)">{{ item.status === 'COMPLETED' ? '查看报告' : '继续' }}</button></td></tr></tbody></table>
       <footer v-if="totalPages > 1" class="jm-pagination"><span>共 {{ total }} 条</span><div><button class="jm-secondary" type="button" :disabled="page === 0" aria-label="上一页" @click="page -= 1"><ChevronLeft :size="16" /></button><strong>第 {{ page + 1 }} / {{ totalPages }} 页</strong><button class="jm-secondary" type="button" :disabled="page + 1 >= totalPages" aria-label="下一页" @click="page += 1"><ChevronRight :size="16" /></button></div></footer>

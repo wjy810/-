@@ -3,6 +3,7 @@ import { onMounted, reactive, ref } from 'vue'
 import { errorMessage } from '@/shared/api/types'
 import { useLoadState } from '@/shared/lib/useLoadState'
 import AppButton from '@/shared/ui/AppButton.vue'
+import UiEmptyState from '@/shared/ui/UiEmptyState.vue'
 import AppIcon from '@/shared/ui/AppIcon.vue'
 import AppSelect from '@/shared/ui/AppSelect.vue'
 import AppTag from '@/shared/ui/AppTag.vue'
@@ -89,7 +90,7 @@ onMounted(load)
       compact
       @retry="load"
     >
-      <template #empty><div class="empty-state">还没有平台通道，可以在上方新增。</div></template>
+      <template #empty><UiEmptyState size="sm" illustration="admin-channel" title="还没有平台通道" description="在上方填写名称、Base URL 和 API 密钥保存为草稿，测试连通后再启用。" /></template>
       <article v-for="channel in channels ?? []" :key="channel.id">
         <header>
           <div><strong>{{ channel.name }}</strong><span>{{ channel.providerCode }} · {{ channel.protocol }} · {{ channel.apiKeyMasked }}</span></div>

@@ -10,6 +10,7 @@ import AppModal from '@/shared/ui/AppModal.vue'
 import AppSelect from '@/shared/ui/AppSelect.vue'
 import AppTag from '@/shared/ui/AppTag.vue'
 import { useToastFeedback } from '@/shared/ui/toast'
+import { glossAssetKind, glossCapability, glossScannerDetail, glossStatus } from '../labels'
 import {
   createTemplateDraft,
   downloadTemplateEvidence,
@@ -655,9 +656,9 @@ onUnmounted(() => {
         <div><strong>{{ families.filter((item) => item.status === 'PUBLISHED').length }}</strong><span>已发布家族</span></div>
         <div>
           <strong :class="malwareScanner?.ready ? 'scanner-ready' : 'scanner-blocked'">
-            {{ malwareScanner?.ready ? '正常' : '阻断' }}
+            {{ malwareScanner?.ready ? '正常' : '上传已暂停' }}
           </strong>
-          <span>{{ malwareScanner?.engineVersion || malwareScanner?.detailCode || '扫描器不可用' }}</span>
+          <span :title="malwareScanner?.detailCode || undefined">{{ malwareScanner?.ready ? (malwareScanner?.engineVersion || '扫描器在线') : glossScannerDetail(malwareScanner?.detailCode) }}</span>
         </div>
       </div>
 
@@ -683,7 +684,7 @@ onUnmounted(() => {
           <aside class="batch-list">
             <button v-for="batch in importBatches" :key="batch.id" type="button" :class="{ active: batch.id === selectedBatchId }" @click="chooseBatch(batch.id)">
               <span><strong>{{ batch.processedCount }} / {{ batch.totalCount }}</strong><small>{{ formatWhen(batch.createdAt) }}</small></span>
-              <AppTag :tone="statusTone(batch.status)">{{ batch.status }}</AppTag>
+              <AppTag :tone="statusTone(batch.status)"><span :title="batch.status">{{ glossStatus(batch.status) }}</span></AppTag>
             </button>
           </aside>
           <div v-if="importBatches.find((item) => item.id === selectedBatchId)" class="batch-detail">
@@ -691,14 +692,14 @@ onUnmounted(() => {
               <div class="batch-metrics"><span><strong>{{ batch.readyCount }}</strong>就绪</span><span><strong>{{ batch.duplicateCount }}</strong>重复</span><span><strong>{{ batch.rejectedCount }}</strong>拒绝</span><span><strong>{{ batch.quarantinedCount }}</strong>隔离</span><span><strong>{{ batch.unsupportedCount }}</strong>不支持</span></div>
               <div class="row-actions"><AppButton v-if="batch.status === 'QUEUED' || batch.status === 'RUNNING'" variant="ghost" @click="runBatchAction('pause', batch)"><AppIcon name="clock" :size="14" />暂停</AppButton><AppButton v-if="batch.status === 'PAUSED' || batch.status === 'FAILED' || batch.quarantinedCount" variant="ghost" @click="runBatchAction('retry', batch)"><AppIcon name="refresh" :size="14" />重试失败项</AppButton></div>
             </template>
-            <div class="table-scroll"><table class="tbl"><thead><tr><th>源文件</th><th>大小</th><th>状态</th><th>原因</th><th>SHA-256</th></tr></thead><tbody><tr v-for="item in importItems" :key="item.id"><td><strong>{{ item.originalFilename }}</strong><small :title="item.sourceRelativePath">{{ item.sourceRelativePath }}</small></td><td>{{ fileSize(item.sizeBytes) }}</td><td><AppTag :tone="statusTone(item.status)">{{ item.status }}</AppTag></td><td>{{ item.detailCode || '—' }}</td><td><code v-if="item.fileHash" :title="item.fileHash">{{ shortHash(item.fileHash) }}</code><span v-else>—</span></td></tr></tbody></table></div>
+            <div class="table-scroll"><table class="tbl"><thead><tr><th>源文件</th><th>大小</th><th>状态</th><th>原因</th><th>SHA-256</th></tr></thead><tbody><tr v-for="item in importItems" :key="item.id"><td><strong>{{ item.originalFilename }}</strong><small :title="item.sourceRelativePath">{{ item.sourceRelativePath }}</small></td><td>{{ fileSize(item.sizeBytes) }}</td><td><AppTag :tone="statusTone(item.status)"><span :title="item.status">{{ glossStatus(item.status) }}</span></AppTag></td><td>{{ item.detailCode || '—' }}</td><td><code v-if="item.fileHash" :title="item.fileHash">{{ shortHash(item.fileHash) }}</code><span v-else>—</span></td></tr></tbody></table></div>
           </div>
           <AppEmpty v-else text="尚未创建导入批次" icon="archive" />
         </div>
       </section>
 
       <section v-else-if="activeTab === 'catalog'" key="catalog" class="ops-panel">
-        <div class="table-scroll"><table class="tbl"><thead><tr><th>目录项</th><th>能力</th><th>频道</th><th>状态</th><th>下载</th><th>操作</th></tr></thead><tbody><tr v-for="entry in catalogEntries" :key="entry.item.id"><td><strong>{{ entry.item.title }}</strong><small>{{ entry.item.sourceName }} · {{ entry.item.referenceId }}</small></td><td>{{ entry.item.capability }}</td><td>{{ entry.item.assetKind }}</td><td><AppTag :tone="statusTone(entry.publicationStatus)">{{ entry.publicationStatus }}</AppTag></td><td>{{ entry.item.downloadCount }}</td><td><div class="row-actions"><button class="icon-btn" type="button" title="校正元数据" @click="openCatalog(entry)"><AppIcon name="edit" :size="15" /></button><button v-if="entry.publicationStatus !== 'PUBLISHED'" class="icon-btn" type="button" title="发布" @click="setCatalogPublication(entry, true)"><AppIcon name="send" :size="15" /></button><button v-else class="icon-btn" type="button" title="退休" @click="setCatalogPublication(entry, false)"><AppIcon name="archive" :size="15" /></button></div></td></tr></tbody></table></div>
+        <div class="table-scroll"><table class="tbl"><thead><tr><th>目录项</th><th>能力</th><th>频道</th><th>状态</th><th>下载</th><th>操作</th></tr></thead><tbody><tr v-for="entry in catalogEntries" :key="entry.item.id"><td><strong>{{ entry.item.title }}</strong><small>{{ entry.item.sourceName }} · {{ entry.item.referenceId }}</small></td><td>{{ glossCapability(entry.item.capability) }}</td><td>{{ glossAssetKind(entry.item.assetKind) }}</td><td><AppTag :tone="statusTone(entry.publicationStatus)"><span :title="entry.publicationStatus">{{ glossStatus(entry.publicationStatus) }}</span></AppTag></td><td>{{ entry.item.downloadCount }}</td><td><div class="row-actions"><button class="icon-btn" type="button" title="校正元数据" @click="openCatalog(entry)"><AppIcon name="edit" :size="15" /></button><button v-if="entry.publicationStatus !== 'PUBLISHED'" class="icon-btn" type="button" title="发布" @click="setCatalogPublication(entry, true)"><AppIcon name="send" :size="15" /></button><button v-else class="icon-btn" type="button" title="退休" @click="setCatalogPublication(entry, false)"><AppIcon name="archive" :size="15" /></button></div></td></tr></tbody></table></div>
         <AppEmpty v-if="!catalogEntries.length" text="公共目录尚无条目" icon="book" />
         <div v-else class="catalog-more">
           <span>已显示 {{ catalogEntries.length }} / 共 {{ catalogTotal }} 条</span>
@@ -783,9 +784,9 @@ onUnmounted(() => {
             <tbody>
               <tr v-for="item in assets" :key="item.id">
                 <td><strong>{{ item.sourceName }}</strong><small :title="item.sourceUri">{{ item.sourceUri }}</small></td>
-                <td><AppTag :tone="statusTone(item.scanStatus)">{{ item.scanStatus }}</AppTag></td>
-                <td>{{ item.licenseStatus }}</td>
-                <td><AppTag :tone="statusTone(item.status)">{{ item.status }}</AppTag><small v-if="item.rejectionReason">{{ item.rejectionReason }}</small></td>
+                <td><AppTag :tone="statusTone(item.scanStatus)"><span :title="item.scanStatus">{{ glossStatus(item.scanStatus) }}</span></AppTag></td>
+                <td :title="item.licenseStatus">{{ glossStatus(item.licenseStatus) }}</td>
+                <td><AppTag :tone="statusTone(item.status)"><span :title="item.status">{{ glossStatus(item.status) }}</span></AppTag><small v-if="item.rejectionReason">{{ item.rejectionReason }}</small></td>
                 <td><code :title="item.fileHash">{{ shortHash(item.fileHash) }}</code></td>
                 <td>{{ formatWhen(item.createdAt) }}</td>
                 <td>
@@ -807,7 +808,7 @@ onUnmounted(() => {
         <aside class="family-list" aria-label="模板家族">
           <button v-for="item in families" :key="item.id" type="button" :class="{ active: item.id === selectedFamilyId }" @click="chooseFamily(item.id)">
             <span><strong>{{ item.displayName }}</strong><small>{{ item.familyName }} · {{ item.recommendedPages }} 页</small></span>
-            <AppTag :tone="statusTone(item.status)">{{ item.status }}</AppTag>
+            <AppTag :tone="statusTone(item.status)"><span :title="item.status">{{ glossStatus(item.status) }}</span></AppTag>
           </button>
         </aside>
 
@@ -829,7 +830,7 @@ onUnmounted(() => {
                   <strong>{{ version.rendererProtocol }}</strong>
                   <small>{{ provenanceLabel(version) }} · 对象版本 {{ version.version }}</small>
                 </div>
-                <AppTag :tone="statusTone(version.status)">{{ version.status }}</AppTag>
+                <AppTag :tone="statusTone(version.status)"><span :title="version.status">{{ glossStatus(version.status) }}</span></AppTag>
               </div>
               <div class="gate-strip" aria-label="发布门禁">
                 <span v-for="gate in GATES" :key="gate.code" :class="{ passed: gatePassed(version, gate.field) }">

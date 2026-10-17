@@ -3,6 +3,8 @@ import { computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ArrowRight, FileCheck2, LoaderCircle, Plus, ShieldCheck, Sparkles } from 'lucide-vue-next'
 import AppTag from '@/shared/ui/AppTag.vue'
+import UiButton from '@/shared/ui/UiButton.vue'
+import UiEmptyState from '@/shared/ui/UiEmptyState.vue'
 import JobProofIcon from '@/shared/ui/JobProofIcon.vue'
 import PageState from '@/shared/ui/PageState.vue'
 import { useLoadState } from '@/shared/lib/useLoadState'
@@ -31,7 +33,7 @@ onMounted(load)
           <section class="jm-card jm-loading"><span><LoaderCircle class="jm-spin" :size="20" /> 正在读取匹配记录</span></section>
         </template>
         <template #empty>
-          <section class="jm-card jm-empty"><div><span><JobProofIcon name="matching-create-match" :size="32" /></span><h2>创建第一份岗位匹配</h2><p>导入一份真实 JD，选择投递简历，获得带事实来源的分析报告。</p><button class="jm-primary" type="button" @click="router.push({ name: 'job-match-new' })"><Plus :size="17" />创建岗位匹配</button></div></section>
+          <section class="jm-card"><UiEmptyState size="lg" illustration="empty-match" title="创建第一份岗位匹配" description="导入一份真实 JD，选择投递简历，获得逐条对照、带事实来源的分析报告。"><UiButton :icon="Plus" @click="router.push({ name: 'job-match-new' })">创建岗位匹配</UiButton></UiEmptyState></section>
         </template>
         <section class="jm-stats" aria-label="岗位匹配统计">
           <article class="jm-card jm-stat"><span class="jm-stat__icon is-blue"><JobProofIcon name="matching-analysis-count" :size="25" /></span><p><small>累计分析</small><strong>{{ dashboard?.total ?? 0 }}</strong><em>全部岗位匹配任务</em></p></article>

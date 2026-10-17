@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
-import { ArrowRight, Filter, Search, SlidersHorizontal } from 'lucide-vue-next'
+import { ArrowRight, Filter, Search } from 'lucide-vue-next'
 import { useRoute, useRouter } from 'vue-router'
 import AppSelect from '@/shared/ui/AppSelect.vue'
+import UiEmptyState from '@/shared/ui/UiEmptyState.vue'
 import PageState from '@/shared/ui/PageState.vue'
 import { useLoadState } from '@/shared/lib/useLoadState'
 import { MODULE_LABELS, TYPE_LABELS, moduleLabel, typeLabel } from '../labels'
@@ -112,11 +113,11 @@ onUnmounted(() => restoreMetadata())
                 <div class="updates-timeline" aria-busy="true"><article v-for="n in 4" :key="n" class="update-card"><div class="bone" /><div><div class="bone" /><div class="bone bone--short" /></div></article></div>
               </template>
               <template #empty>
-                <div class="updates-empty">
-                  <SlidersHorizontal :size="34" />
-                  <h2>{{ filtered ? '没有符合条件的版本' : '还没有发布版本更新' }}</h2>
-                  <p>{{ filtered ? '换个关键词，或清空筛选条件再试。' : '新版本发布后会在这里列出。' }}</p>
-                </div>
+                <UiEmptyState
+                  :illustration="filtered ? 'empty-search' : 'empty-updates'"
+                  :title="filtered ? '没有符合条件的版本' : '还没有发布版本更新'"
+                  :description="filtered ? '换个关键词，或清空筛选条件再试。' : '新版本发布后会在这里列出，重要更新也会通过通知告诉你。'"
+                />
               </template>
               <div class="updates-timeline" :class="{ 'is-refreshing': loading }">
                 <article v-for="item in items" :key="item.id" class="update-card">

@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ChevronRight, LoaderCircle, Plus, Search } from 'lucide-vue-next'
 import AppSelect from '@/shared/ui/AppSelect.vue'
+import UiEmptyState from '@/shared/ui/UiEmptyState.vue'
 import JobProofIcon from '@/shared/ui/JobProofIcon.vue'
 import { formatWhen } from '@/shared/lib/datetime'
 import { errorMessage } from '@/shared/api/types'
@@ -124,7 +125,8 @@ onMounted(load)
                   <thead><tr><th>岗位与公司</th><th>方式</th><th>类型</th><th>进度</th><th>得分</th><th>更新时间</th><th>操作</th></tr></thead>
                   <tbody><tr v-for="item in displayed" :key="item.id"><td data-label="岗位与公司"><strong>{{ item.positionName }}</strong><small>{{ item.companyName || '未指定公司' }}</small></td><td data-label="方式"><span class="mi-tag" :class="item.mode === 'VOICE' ? 'mi-tag--green' : 'mi-tag--blue'">{{ modeLabel(item.mode) }}</span></td><td data-label="类型">{{ typeLabel(item.interviewType) }}</td><td data-label="进度">{{ item.answeredCount }}/{{ item.questionCount }} <span class="mi-tag mi-tag--gray">{{ statusLabel(item.status) }}</span></td><td data-label="得分" :class="{ 'is-score': item.score != null }">{{ item.score ?? (item.status === 'COMPLETED' ? '待评估' : '—') }}</td><td data-label="更新时间">{{ formatWhen(item.updatedAt) }}</td><td data-label="操作"><span v-if="item.status === 'ABANDONED'" class="mi-terminal-action">已结束</span><button v-else type="button" @click="open(item)">{{ item.status === 'COMPLETED' ? '查看报告' : '继续面试' }}</button></td></tr></tbody>
                 </table>
-                <div v-else class="mi-empty">还没有符合条件的训练记录</div>
+                <UiEmptyState v-else-if="modeFilter || statusFilter || typeFilter" size="sm" illustration="empty-search" title="没有符合条件的训练记录" description="换个方式、类型或状态筛选再试。" />
+                <UiEmptyState v-else size="sm" illustration="empty-interview" title="还没有模拟面试记录" description="选择一份简历和目标岗位，开始第一次文字或语音模拟面试。" />
               </div>
             </section>
           </section>
