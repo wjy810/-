@@ -15,7 +15,7 @@ class FlywayMigrationIT {
     void freshDatabaseMigratesThroughLatestVersion() {
         Flyway flyway = flyway("fresh-" + UUID.randomUUID(), null);
 
-        assertThat(flyway.migrate().targetSchemaVersion).isEqualTo("70");
+        assertThat(flyway.migrate().targetSchemaVersion).isEqualTo("71");
     }
 
     @Test
@@ -25,7 +25,7 @@ class FlywayMigrationIT {
         assertThat(version39.migrate().targetSchemaVersion).isEqualTo("39");
 
         Flyway latest = flyway(database, null);
-        assertThat(latest.migrate().targetSchemaVersion).isEqualTo("70");
+        assertThat(latest.migrate().targetSchemaVersion).isEqualTo("71");
     }
 
     @Test
@@ -58,6 +58,26 @@ class FlywayMigrationIT {
                 + "WHERE status='DRAFT' AND verification_source IS NULL", Integer.class)).isPositive();
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM resume_layout_templates WHERE builtin=0 AND sort_order=1000 "
                 + "AND featured=0", Integer.class)).isEqualTo(12);
+    }
+
+    @Test
+    void version71GivesLegacyTaskNotificationsTheirTaskSpecificWording() {
+        String database = "notice-" + UUID.randomUUID();
+        assertThat(flyway(database, MigrationVersion.fromVersion("70")).migrate().targetSchemaVersion).isEqualTo("70");
+        JdbcTemplate jdbc = new JdbcTemplate(dataSource(database));
+        String taskId = "11111111-1111-1111-1111-111111111111";
+        jdbc.update("INSERT INTO async_tasks (id, account_id, task_type, status, input_version, attempt_count, created_at, updated_at) "
+                + "VALUES (?, 'acc', 'JOB_MATCH', 'SUCCEEDED', 'v1', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)", taskId);
+        String insert = "INSERT INTO notifications (id, account_id, type, status, event_id, title, body, created_at) "
+                + "VALUES (?, 'acc', ?, 'DELIVERED', ?, '任务状态更新', '你的一项任务状态有变化，打开对应页面查看详情。', CURRENT_TIMESTAMP)";
+        jdbc.update(insert, "n1", "TASK_COMPLETED", taskId + ":SUCCEEDED");
+        jdbc.update(insert, "n2", "TASK_FAILED", "22222222-2222-2222-2222-222222222222:FAILED");
+
+        assertThat(flyway(database, null).migrate().targetSchemaVersion).isEqualTo("71");
+
+        assertThat(jdbc.queryForObject("SELECT title FROM notifications WHERE id='n1'", String.class)).isEqualTo("岗位匹配报告已生成");
+        assertThat(jdbc.queryForObject("SELECT action_path FROM notifications WHERE id='n1'", String.class)).isEqualTo("/job-match/history");
+        assertThat(jdbc.queryForObject("SELECT title FROM notifications WHERE id='n2'", String.class)).isEqualTo("后台任务未完成");
     }
 
     private static DriverManagerDataSource dataSource(String database) {

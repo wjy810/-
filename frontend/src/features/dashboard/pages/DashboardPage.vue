@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, type Component } from 'vue'
 import { useQuery } from '@tanstack/vue-query'
 import {
-  ArrowRight, Bell, CheckCircle2, ChevronRight, Circle, Compass, FileText, Mic, Plus, Sparkles, Target,
+  ArrowRight, Bell, CheckCircle2, ChevronRight, Circle, CircleAlert, Compass, Download, FileText, Megaphone, Mic, Plus,
+  ShieldCheck, Sparkles, Target, Trash2,
 } from 'lucide-vue-next'
 import UiButton from '@/shared/ui/UiButton.vue'
 import UiErrorState from '@/shared/ui/UiErrorState.vue'
@@ -65,6 +66,21 @@ function matchStatus(status: string) {
 }
 
 const matchLink = summaryRoute
+
+/** Each kind of notice gets its own icon and colour so the feed reads at a glance. */
+const NOTICE_VISUAL: Record<string, { icon: Component; tone: string }> = {
+  TASK_COMPLETED: { icon: CheckCircle2, tone: 'success' },
+  TASK_FAILED: { icon: CircleAlert, tone: 'danger' },
+  DATA_EXPORT_PROGRESS: { icon: Download, tone: 'primary' },
+  DATA_DELETION_PROGRESS: { icon: Trash2, tone: 'warning' },
+  DATA_RIGHTS: { icon: ShieldCheck, tone: 'primary' },
+  PRODUCT_UPDATE: { icon: Megaphone, tone: 'accent' },
+  SECURITY: { icon: ShieldCheck, tone: 'warning' },
+}
+
+function noticeVisual(type: string) {
+  return NOTICE_VISUAL[type] ?? { icon: Bell, tone: 'neutral' }
+}
 </script>
 
 <template>
@@ -213,7 +229,7 @@ const matchLink = summaryRoute
               v-if="!(data.jobMatches?.recent.length) && !data.mockInterviews?.resumable && !(data.careerCanvases?.recent.length)"
               class="progress-empty"
             >
-              <UiIllustration name="hero-sparkles" :size="72" />
+              <UiIllustration name="empty-progress" :size="80" />
               <p>还没有进行中的匹配、面试或规划。</p>
             </div>
           </div>
@@ -246,11 +262,15 @@ const matchLink = summaryRoute
                 class="activity__row"
                 :class="{ 'is-unread': item.status === 'DELIVERED' }"
               >
-                <span class="activity__dot" aria-hidden="true"><Bell :size="14" /></span>
+                <span class="activity__dot" :class="`is-${noticeVisual(item.type).tone}`" aria-hidden="true">
+                  <component :is="noticeVisual(item.type).icon" :size="14" />
+                </span>
                 <span class="activity__text">
                   <strong>{{ item.title }}</strong>
+                  <span v-if="item.body" class="activity__body">{{ item.body }}</span>
                   <small>{{ formatRelative(item.createdAt) }}</small>
                 </span>
+                <ChevronRight v-if="item.actionPath" :size="14" class="activity__go" aria-hidden="true" />
               </component>
             </template>
             <p v-else class="activity__empty"><FileText :size="15" />暂时没有新动态，完成导出或分析后会通知你。</p>
@@ -760,9 +780,45 @@ a.activity__row:hover {
   color: var(--text-tertiary);
 }
 
-.activity__row.is-unread .activity__dot {
+.activity__dot.is-success {
+  background: var(--color-success-soft);
+  color: var(--color-success-text);
+}
+
+.activity__dot.is-danger {
+  background: var(--color-danger-soft);
+  color: var(--color-danger-text);
+}
+
+.activity__dot.is-primary {
+  background: var(--color-primary-soft);
+  color: var(--color-primary-text);
+}
+
+.activity__dot.is-warning {
+  background: var(--color-warning-soft);
+  color: var(--color-warning-text);
+}
+
+.activity__dot.is-accent {
   background: var(--color-accent-soft);
   color: var(--color-accent-text);
+}
+
+.activity__go {
+  flex: none;
+  align-self: center;
+  margin-left: auto;
+  color: var(--text-tertiary);
+  opacity: 0;
+  transform: translateX(-4px);
+  transition: opacity var(--dur-fast) var(--ease-out), transform var(--dur-fast) var(--ease-out);
+}
+
+a.activity__row:hover .activity__go,
+a.activity__row:focus-visible .activity__go {
+  opacity: 1;
+  transform: none;
 }
 
 .activity__row.is-unread .activity__dot::after {
@@ -790,6 +846,15 @@ a.activity__row:hover {
 .activity__text small {
   color: var(--text-tertiary);
   font-size: var(--fs-xs);
+}
+
+.activity__body {
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-size: var(--fs-xs);
+  line-height: 1.5;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .activity__empty {

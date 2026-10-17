@@ -4,9 +4,14 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.jobproof.modules.notification.domain.NotificationType;
 import com.jobproof.shared.event.EventTypes;
 import com.jobproof.shared.event.OutboxEventHandler;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import org.springframework.stereotype.Component;
 
-/** Turns task completion events into an in-app notification; deduplicated by {@code taskId:status}. */
+/**
+ * Turns task completion events into an in-app notification that says which task finished and links
+ * to its result; deduplicated by {@code taskId:status}.
+ */
 @Component
 public class TaskStatusNotificationHandler implements OutboxEventHandler {
 
@@ -29,7 +34,20 @@ public class TaskStatusNotificationHandler implements OutboxEventHandler {
         if (accountId.isBlank() || taskId.isBlank()) {
             throw new IllegalArgumentException("task event without accountId/taskId");
         }
-        NotificationType type = EventTypes.TASK_FAILED.equals(eventType) ? NotificationType.TASK_FAILED : NotificationType.TASK_COMPLETED;
-        notifications.request(accountId, type, taskId + ":" + status, "任务状态更新", "你的一项任务状态有变化，打开对应页面查看详情。");
+        boolean failed = EventTypes.TASK_FAILED.equals(eventType);
+        NotificationType type = failed ? NotificationType.TASK_FAILED : NotificationType.TASK_COMPLETED;
+        TaskNotificationCopy.of(payload.path("taskType").asText(), !failed, refs(payload.path("refs")))
+                .ifPresent(copy -> notifications.request(accountId, type, taskId + ":" + status,
+                        copy.title(), copy.body(), copy.actionPath()));
+    }
+
+    private static Map<String, String> refs(JsonNode node) {
+        Map<String, String> refs = new LinkedHashMap<>();
+        if (node != null && node.isObject()) {
+            node.fields().forEachRemaining(entry -> {
+                if (entry.getValue().isTextual()) refs.put(entry.getKey(), entry.getValue().asText());
+            });
+        }
+        return refs;
     }
 }

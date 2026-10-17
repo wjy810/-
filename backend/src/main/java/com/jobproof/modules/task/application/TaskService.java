@@ -3,6 +3,7 @@ package com.jobproof.modules.task.application;
 import com.jobproof.infrastructure.config.JobProofProperties;
 import com.jobproof.infrastructure.queue.OutboxService;
 import com.jobproof.infrastructure.queue.WorkerIdentity;
+import com.jobproof.modules.task.domain.TaskRefs;
 import com.jobproof.modules.task.domain.TaskStatus;
 import com.jobproof.modules.task.infra.AsyncTaskEntity;
 import com.jobproof.modules.task.infra.AsyncTaskJpaRepository;
@@ -169,6 +170,7 @@ public class TaskService {
         TaskStatus current = TaskStatus.valueOf(entity.getStatus());
         if (current.terminal() || ownedElsewhere(entity)) return false;
         Instant now = clock.now();
+        Map<String, String> refs = TaskRefs.from(entity.getPayloadJson());
         releaseLease(entity);
         entity.setStatus(TaskStatus.SUCCEEDED.name());
         entity.setResultVersion(resultVersion);
@@ -183,7 +185,8 @@ public class TaskService {
                 "taskId", entity.getId(),
                 "accountId", entity.getAccountId(),
                 "taskType", entity.getTaskType(),
-                "status", entity.getStatus()));
+                "status", entity.getStatus(),
+                "refs", refs));
         return true;
     }
 
@@ -226,7 +229,8 @@ public class TaskService {
                 "taskId", entity.getId(),
                 "accountId", entity.getAccountId(),
                 "taskType", entity.getTaskType(),
-                "status", entity.getStatus()));
+                "status", entity.getStatus(),
+                "refs", TaskRefs.from(entity.getPayloadJson())));
         return true;
     }
 

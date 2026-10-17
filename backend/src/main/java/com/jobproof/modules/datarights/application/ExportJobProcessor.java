@@ -58,8 +58,9 @@ public class ExportJobProcessor {
                         account.getId(),
                         NotificationType.TASK_COMPLETED,
                         task.getId() + ":SUCCEEDED",
-                        "导出任务已完成",
-                        "下载链接限时有效，过期需重新导出。通知不含导出正文。");
+                        "个人数据导出已完成",
+                        "导出文件已生成，请在有效期内下载；过期后需要重新导出。",
+                        "/account/data-rights");
             } catch (RuntimeException e) {
                 log.warn("export notification failed, task remains succeeded taskId={}", task.getId());
             }
@@ -71,8 +72,9 @@ public class ExportJobProcessor {
                         task.getAccountId(),
                         NotificationType.TASK_FAILED,
                         task.getId() + ":FAILED",
-                        "导出任务失败",
-                        "数据导出没有完成，请到“数据与隐私”页面重新发起。");
+                        "个人数据导出失败",
+                        "这次导出没有完成，可以在“数据与隐私”页面重新发起。",
+                        "/account/data-rights");
             } catch (RuntimeException ignored) {
                 // 通知失败不回滚任务状态
             }
