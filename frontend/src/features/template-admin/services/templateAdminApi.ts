@@ -155,8 +155,9 @@ export function retryImportBatch(batchId: string): Promise<TemplateImportBatch> 
   return api<TemplateImportBatch>(`${BASE}/import-batches/${encodeURIComponent(batchId)}/retry`, { method: 'POST' })
 }
 
-export function listCatalogEntries(): Promise<PageResult<CatalogAdminItem>> {
-  return api<PageResult<CatalogAdminItem>>(`${BASE}/catalog?page=0&size=100`)
+/** One page of the public catalog (the Word library has thousands of entries; the server caps pages at 100). */
+export function listCatalogEntries(page = 0): Promise<PageResult<CatalogAdminItem>> {
+  return api<PageResult<CatalogAdminItem>>(`${BASE}/catalog?page=${page}&size=100`)
 }
 
 export function updateCatalogEntry(id: string, input: {
