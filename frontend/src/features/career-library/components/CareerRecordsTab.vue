@@ -16,6 +16,7 @@ import {
   fetchCareerAiAvailability, fetchCareerAiCandidates, fetchCareerRecords, generateCareerAiCandidate,
   rejectCareerAiCandidate, restoreCareerRecord, updateCareerRecord,
 } from '../services/careerLibraryApi'
+import { RECORD_TYPES, recordTypeLabel } from '../labels'
 import { usePagedList } from '../usePagedList'
 import type { CareerAiAvailability, CareerAiCandidate, CareerOverview, CareerRecord, CareerRecordWrite } from '../types'
 
@@ -53,14 +54,8 @@ const aiRecord = ref<CareerRecord | null>(null)
 const aiOpen = ref(false)
 const aiPending = ref(false)
 
-const typeOptions = [
-  { value: '', label: '全部类型' }, { value: 'EDUCATION', label: '教育经历' },
-  { value: 'EXPERIENCE', label: '工作经历' }, { value: 'PROJECT', label: '项目经历' },
-  { value: 'ORGANIZATION', label: '组织与社团' }, { value: 'SKILL', label: '专业技能' },
-  { value: 'CERTIFICATE', label: '证书' }, { value: 'HONOR', label: '荣誉' },
-  { value: 'LANGUAGE', label: '语言能力' }, { value: 'ACHIEVEMENT', label: '成果记录' },
-]
-const editableTypes = typeOptions.filter((item) => item.value)
+const typeOptions = [{ value: '', label: '全部类型' }, ...RECORD_TYPES]
+const editableTypes = RECORD_TYPES
 const statusOptions = [
   { value: 'ACTIVE', label: '使用中' }, { value: 'ARCHIVED', label: '已归档' }, { value: 'ALL', label: '全部状态' },
 ]
@@ -209,9 +204,6 @@ function skills(record: CareerRecord): string[] {
   return Array.isArray(value) ? value.map(String).slice(0, 6) : []
 }
 
-function labelFor(type: string): string {
-  return typeOptions.find((item) => item.value === type)?.label || type
-}
 
 function period(record: CareerRecord): string {
   const format = (value?: string | null): string => value?.match(/^\d{4}-\d{2}/)?.[0]?.replace('-', '.') || ''
@@ -262,7 +254,7 @@ defineExpose({ openCreate })
                 <em v-if="record.resumeReferenceCount"><CheckCircle2 :size="14" />已用于 {{ record.resumeReferenceCount }} 份简历</em>
                 <em v-else-if="record.status === 'ARCHIVED'">已归档</em>
               </header>
-              <div class="record-period"><Clock3 :size="14" />{{ period(record) }}<span>{{ labelFor(record.type) }}</span></div>
+              <div class="record-period"><Clock3 :size="14" />{{ period(record) }}<span>{{ recordTypeLabel(record.type) }}</span></div>
               <ul v-if="lines(record).length"><li v-for="line in lines(record).slice(0, layout === 'compact' ? 1 : 4)" :key="line">{{ line }}</li></ul>
               <p v-else class="record-placeholder">尚未填写详细描述，可编辑后补充职责、行动和成果。</p>
               <div v-if="skills(record).length" class="record-tags"><span v-for="skill in skills(record)" :key="skill">{{ skill }}</span></div>

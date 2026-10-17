@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useLocalStorage } from '@vueuse/core'
 import { useRouter } from 'vue-router'
-import { Search } from 'lucide-vue-next'
+import { Archive, ArchiveRestore, Copy, LayoutGrid, Layers, List, Lock, MoreHorizontal, PenLine, Search, Trash2 } from 'lucide-vue-next'
 import AppBanner from '@/shared/ui/AppBanner.vue'
 import AppButton from '@/shared/ui/AppButton.vue'
 import AppField from '@/shared/ui/AppField.vue'
@@ -14,15 +14,17 @@ import AppTag from '@/shared/ui/AppTag.vue'
 import PageState from '@/shared/ui/PageState.vue'
 import UiButton from '@/shared/ui/UiButton.vue'
 import UiDialog from '@/shared/ui/UiDialog.vue'
+import UiDropdownMenu, { type MenuItem } from '@/shared/ui/UiDropdownMenu.vue'
 import UiEmptyState from '@/shared/ui/UiEmptyState.vue'
 import UiField from '@/shared/ui/UiField.vue'
 import UiInput from '@/shared/ui/UiInput.vue'
+import UiSegmented, { type SegmentItem } from '@/shared/ui/UiSegmented.vue'
 import UiSelect from '@/shared/ui/UiSelect.vue'
 import UiSkeleton from '@/shared/ui/UiSkeleton.vue'
 import { useToastFeedback } from '@/shared/ui/toast'
 import ForbidState from '@/shared/ui/ForbidState.vue'
 import { errorMessage, isForbidden, isVersionConflict } from '@/shared/api/types'
-import { formatWhen } from '@/shared/lib/datetime'
+import { formatRelative, formatWhen } from '@/shared/lib/datetime'
 import { useLoadState } from '@/shared/lib/useLoadState'
 import type { JobProofIconName } from '@/shared/ui/jobProofIcons'
 import {
@@ -42,7 +44,8 @@ import {
 } from '../services/resumeApi'
 import type { KeyOutcome, ResumeMasterSummary, ResumeMasterView, ResumeVersionView } from '../types'
 import { RESUME_TITLE_MAX, normalizeResumeTitle, resumeTitleIssue, titleMatches } from '../utils/resumeTitle'
-import { RESUME_SORTS, isResumeSort, sortResumes } from '../utils/resumeSort'
+import { RESUME_SORTS, groupUnderMasters, isResumeSort, sortResumes } from '../utils/resumeSort'
+import ResumeThumbnail from '../components/ResumeThumbnail.vue'
 
 type RowType = '主简历' | '定制版' | '冻结版本'
 type RowTone = 'blue' | 'green' | 'orange'
@@ -87,6 +90,16 @@ const sort = computed({
   set: (value: string) => { storedSort.value = value },
 })
 const sortOptions = RESUME_SORTS.map(item => ({ value: item.value, label: item.label }))
+type ListView = 'grid' | 'list'
+const storedView = useLocalStorage<string>('jp:resumes:view', 'grid')
+const view = computed<ListView>({
+  get: () => (storedView.value === 'list' ? 'list' : 'grid'),
+  set: (value) => { storedView.value = value },
+})
+const VIEWS: SegmentItem<ListView>[] = [
+  { value: 'grid', label: '卡片', icon: LayoutGrid },
+  { value: 'list', label: '列表', icon: List },
+]
 const page = ref(0)
 const pageSize = ref(10)
 const archiveTarget = ref<ResumeRow | null>(null)
@@ -138,17 +151,32 @@ const filtered = computed(() => {
     }
   }
   items = items.filter((row) => titleMatches(row.title, query.value))
-  return sortResumes(items, sort.value)
+  // "全部" keeps every version right under its own resume instead of scattering them by date.
+  return tab.value === 'ALL' ? groupUnderMasters(items, sort.value) : sortResumes(items, sort.value)
 })
 
-const pageCount = computed(() => Math.max(1, Math.ceil(filtered.value.length / pageSize.value)))
+/** Cards fold frozen versions into a chip on their resume (the 冻结版本 tab still lists them one by one). */
+const viewItems = computed(() => (view.value === 'grid' && tab.value === 'ALL'
+  ? filtered.value.filter((row) => row.rowType !== '冻结版本')
+  : filtered.value))
+const snapshotCounts = computed(() => {
+  const counts = new Map<string, number>()
+  for (const row of rows.value) {
+    if (row.rowType === '冻结版本' && !row.archived) counts.set(row.masterId, (counts.get(row.masterId) ?? 0) + 1)
+  }
+  return counts
+})
+/** Evidence coverage only exists for resumes with key outcomes; without any, the column is noise. */
+const hasCoverage = computed(() => filtered.value.some((row) => row.coverage !== null))
+
+const pageCount = computed(() => Math.max(1, Math.ceil(viewItems.value.length / pageSize.value)))
 const pageNums = computed(() => {
   const total = pageCount.value
   const start = Math.max(0, Math.min(page.value - 2, total - 5))
   const end = Math.min(total, start + 5)
   return Array.from({ length: end - start }, (_, i) => start + i)
 })
-const paged = computed(() => filtered.value.slice(page.value * pageSize.value, (page.value + 1) * pageSize.value))
+const paged = computed(() => viewItems.value.slice(page.value * pageSize.value, (page.value + 1) * pageSize.value))
 const searching = computed(() => Boolean(normalizeResumeTitle(query.value)))
 const emptyState = computed(() => {
   if (searching.value) {
@@ -306,6 +334,27 @@ function rowAction(row: ResumeRow): string {
     return row.archived ? '打开' : '编辑'
   }
   return row.pendingConfirm ? '去确认' : '查看版本'
+}
+
+function rowMenu(row: ResumeRow): MenuItem[] {
+  if (row.kind === 'VERSION') {
+    return row.rowType === '冻结版本'
+      ? [{ label: '永久删除', icon: Trash2, danger: true, onSelect: () => void openPermanentDelete(row) }]
+      : []
+  }
+  const items: MenuItem[] = []
+  if (!row.archived) items.push({ label: '重命名', icon: PenLine, onSelect: () => openRename(row) })
+  items.push({ label: '复制一份', icon: Copy, onSelect: () => void onCopy(row) })
+  items.push(row.archived
+    ? { label: '恢复', icon: ArchiveRestore, onSelect: () => void onRestore(row) }
+    : { label: '归档', icon: Archive, onSelect: () => { archiveTarget.value = row } })
+  items.push({ type: 'separator' }, { label: '永久删除', icon: Trash2, danger: true, onSelect: () => void openPermanentDelete(row) })
+  return items
+}
+
+function showSnapshots(row: ResumeRow): void {
+  tab.value = 'SNAPSHOT'
+  query.value = row.title
 }
 
 function openRename(row: ResumeRow): void {
@@ -510,7 +559,7 @@ function handleError(error: unknown): void {
   pageError.value = errorMessage(error, '简历操作失败')
 }
 
-watch([tab, pageSize, query, sort], () => {
+watch([tab, pageSize, query, sort, view], () => {
   page.value = 0
 })
 
@@ -627,25 +676,70 @@ onBeforeUnmount(() => {
             <span v-if="searching" class="muted">找到 {{ filtered.length }} 条</span>
             <div class="list-toolbar__sort">
               <UiSelect v-model="sort" :options="sortOptions" size="sm" aria-label="排序方式" data-testid="resume-sort" />
+              <UiSegmented v-model="view" :items="VIEWS" size="sm" aria-label="显示方式" />
             </div>
           </div>
 
           <Transition name="resume-results" mode="out-in">
             <div :key="`${tab}-${page}-${pageSize}`" class="resume-results">
               <template v-if="paged.length">
-                <div class="tbl-wrap">
+                <ul v-if="view === 'grid'" class="rgrid">
+                  <li
+                    v-for="(row, index) in paged"
+                    :key="row.key"
+                    class="rcard"
+                    :class="[`rcard--${row.rowTone}`, { 'is-archived': row.archived }]"
+                    :style="{ '--i': index }"
+                    data-testid="resume-row"
+                  >
+                    <RouterLink class="rcard__paper" :to="rowLink(row)" :aria-label="`${rowAction(row)}：${row.title}`">
+                      <ResumeThumbnail v-if="row.kind === 'MASTER'" :resume-id="row.masterId" :updated-at="row.updatedAt" :title="row.title">
+                        <span class="rcard__sketch" aria-hidden="true"><i /><i /><i /><i /><i /></span>
+                      </ResumeThumbnail>
+                      <span v-else class="rcard__sketch" aria-hidden="true"><i /><i /><i /><i /><i /></span>
+                      <span v-if="row.lockNote" class="rcard__lock"><Lock :size="12" />内容不可修改</span>
+                      <span class="rcard__open">{{ rowAction(row) }}</span>
+                    </RouterLink>
+                    <div class="rcard__body">
+                      <div class="rcard__title">
+                        <strong :title="row.title">{{ row.title }}</strong>
+                        <UiDropdownMenu v-if="rowMenu(row).length" :items="rowMenu(row)">
+                          <button class="rcard__more" type="button" :disabled="Boolean(pending)" :aria-label="`${row.title} 的更多操作`">
+                            <MoreHorizontal :size="17" />
+                          </button>
+                        </UiDropdownMenu>
+                      </div>
+                      <div class="rcard__meta">
+                        <AppTag :tone="row.rowTone">{{ row.rowType }}<template v-if="row.ordinal"> · 第 {{ row.ordinal }} 版</template></AppTag>
+                        <span class="rcard__status"><span class="dot" :class="`dot--${row.statusTone}`" />{{ row.statusLabel }}</span>
+                      </div>
+                      <div class="rcard__foot">
+                        <span :title="formatWhen(row.updatedAt)">{{ formatRelative(row.updatedAt) }}更新</span>
+                        <button
+                          v-if="row.kind === 'MASTER' && tab === 'ALL' && snapshotCounts.get(row.masterId)"
+                          class="rcard__versions"
+                          type="button"
+                          @click="showSnapshots(row)"
+                        >
+                          <Layers :size="13" />{{ snapshotCounts.get(row.masterId) }} 个冻结版本
+                        </button>
+                      </div>
+                    </div>
+                  </li>
+                </ul>
+                <div v-else class="tbl-wrap">
                   <table class="tbl">
                     <thead>
                       <tr>
                         <th>简历名称</th>
                         <th>状态</th>
-                        <th>证据覆盖度</th>
+                        <th v-if="hasCoverage">证据覆盖度</th>
                         <th>更新时间</th>
                         <th class="ops-col">操作</th>
                       </tr>
                     </thead>
                     <tbody>
-                      <tr v-for="row in paged" :key="row.key" data-testid="resume-row">
+                      <tr v-for="row in paged" :key="row.key" :class="{ 'is-child': tab === 'ALL' && row.kind === 'VERSION' }" data-testid="resume-row">
                         <td data-label="简历名称">
                           <div class="rname">
                             <span class="rtype" :class="`rtype--${row.rowTone}`">
@@ -672,7 +766,7 @@ onBeforeUnmount(() => {
                             <span class="fine">{{ row.statusSub }}</span>
                           </div>
                         </td>
-                        <td data-label="证据覆盖度">
+                        <td v-if="hasCoverage" data-label="证据覆盖度">
                           <div v-if="row.coverage !== null" class="rcell">
                             <span class="rcell__line">
                               <span class="dot" :class="row.coverage >= 60 ? 'dot--green' : 'dot--orange'" />
@@ -737,7 +831,7 @@ onBeforeUnmount(() => {
                   </table>
                 </div>
                 <footer class="tbl-foot">
-                  <span class="muted">共 {{ filtered.length }} 条</span>
+                  <span class="muted">共 {{ viewItems.length }} 条</span>
                   <div class="pager">
                     <AppSelect :model-value="pageSize" class="pager__size" ariaLabel="每页条数" @change="pageSize = Number($event)">
                       <option :value="10">10 条 / 页</option>
@@ -960,9 +1054,254 @@ onBeforeUnmount(() => {
 }
 
 .list-toolbar__sort {
-  width: 132px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   flex: none;
   margin-left: auto;
+}
+
+.list-toolbar__sort > :first-child {
+  width: 132px;
+}
+
+/* ---------- Card view ---------- */
+.rgrid {
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 18px;
+  padding: 18px;
+}
+
+.rcard {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--surface-1);
+  box-shadow: var(--shadow-xs);
+  animation: jp-rise-in var(--dur-slow) var(--ease-out) both;
+  animation-delay: calc(min(var(--i, 0), 8) * 35ms);
+  transition: transform var(--dur-base) var(--ease-out), box-shadow var(--dur-base) var(--ease-out), border-color var(--dur-base) var(--ease-out);
+}
+
+.rcard:hover,
+.rcard:focus-within {
+  transform: translateY(-3px);
+  border-color: var(--border-default);
+  box-shadow: var(--shadow-md);
+}
+
+.rcard.is-archived .rcard__paper {
+  filter: grayscale(0.85);
+  opacity: 0.7;
+}
+
+.rcard__paper {
+  position: relative;
+  display: block;
+  aspect-ratio: 210 / 168;
+  overflow: hidden;
+  margin: 10px 10px 0;
+  border-radius: var(--radius-sm);
+  background: var(--sheet-bg);
+  box-shadow: inset 0 0 0 1px var(--border-subtle);
+}
+
+.rcard__paper::after {
+  content: '';
+  position: absolute;
+  inset: auto 0 0;
+  height: 30%;
+  background: linear-gradient(to bottom, transparent, color-mix(in srgb, var(--sheet-bg) 92%, transparent));
+  pointer-events: none;
+}
+
+.rcard__sketch {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  padding: 18px 20px;
+}
+
+.rcard__sketch i {
+  display: block;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--surface-3);
+}
+
+.rcard__sketch i:first-child {
+  width: 46%;
+  height: 10px;
+  margin-bottom: 6px;
+  background: color-mix(in srgb, var(--color-primary) 40%, var(--surface-3));
+}
+
+.rcard--orange .rcard__sketch i:first-child {
+  background: color-mix(in srgb, var(--color-warning) 45%, var(--surface-3));
+}
+
+.rcard__sketch i:nth-child(2) { width: 86%; }
+.rcard__sketch i:nth-child(3) { width: 72%; }
+.rcard__sketch i:nth-child(4) { width: 80%; }
+.rcard__sketch i:nth-child(5) { width: 54%; }
+
+.rcard__lock {
+  position: absolute;
+  z-index: 1;
+  left: 8px;
+  bottom: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: var(--radius-full);
+  background: var(--surface-glass);
+  color: var(--color-warning-text);
+  font-size: 11.5px;
+  font-weight: 600;
+  backdrop-filter: blur(6px);
+}
+
+.rcard__open {
+  position: absolute;
+  z-index: 1;
+  right: 8px;
+  bottom: 8px;
+  padding: 5px 12px;
+  border-radius: var(--radius-full);
+  background: var(--color-primary);
+  color: var(--text-on-primary);
+  font-size: 12px;
+  font-weight: 600;
+  box-shadow: var(--shadow-primary);
+  opacity: 0;
+  transform: translateY(4px);
+  transition: opacity var(--dur-base) var(--ease-out), transform var(--dur-base) var(--ease-out);
+}
+
+.rcard:hover .rcard__open,
+.rcard__paper:focus-visible .rcard__open {
+  opacity: 1;
+  transform: none;
+}
+
+.rcard__paper:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.rcard__body {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  padding: 12px 14px 14px;
+  min-width: 0;
+}
+
+.rcard__title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.rcard__title strong {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 14.5px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rcard__more {
+  width: 28px;
+  height: 28px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+}
+
+.rcard__more:hover,
+.rcard__more[data-state='open'] {
+  background: var(--surface-3);
+  color: var(--text-primary);
+}
+
+.rcard__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.rcard__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-secondary);
+  font-size: 12.5px;
+}
+
+.rcard__foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+
+.rcard__versions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-full);
+  background: var(--surface-2);
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  transition: border-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+}
+
+.rcard__versions:hover {
+  border-color: var(--color-warning);
+  color: var(--color-warning-text);
+}
+
+/* Versions listed under their resume in the "全部" table. */
+.tbl tr.is-child td:first-child {
+  padding-left: 38px;
+  position: relative;
+}
+
+.tbl tr.is-child td:first-child::before {
+  content: '';
+  position: absolute;
+  left: 22px;
+  top: 0;
+  bottom: 50%;
+  width: 10px;
+  border-left: 1.5px solid var(--border-default);
+  border-bottom: 1.5px solid var(--border-default);
+  border-bottom-left-radius: 6px;
 }
 
 .resume-results {
@@ -1256,31 +1595,57 @@ onBeforeUnmount(() => {
     padding-inline: 8px;
   }
 
+  /* Three compact counters in one row, so the list itself starts above the fold. */
   .grid-stats {
-    grid-template-columns: 1fr;
-    gap: 10px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
   }
 
   .stat {
-    grid-template-columns: 36px minmax(0, 1fr) auto;
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-areas: 'icon value' 'label label';
     align-items: center;
-    column-gap: 10px;
-    padding: 13px 14px;
+    gap: 6px 8px;
+    padding: 10px 12px;
   }
 
   .stat__icon {
-    grid-row: 1 / span 2;
+    grid-area: icon;
+    width: 28px;
+    height: 28px;
     margin-bottom: 0;
   }
 
   .stat__value {
-    grid-column: 3;
-    grid-row: 1 / span 2;
-    font-size: 24px;
+    grid-area: value;
+    justify-content: flex-end;
+    font-size: 22px;
+  }
+
+  .stat__label {
+    grid-area: label;
+    overflow: hidden;
+    font-size: 12px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .stat__sub {
-    grid-column: 2;
+    display: none;
+  }
+
+  .rgrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    padding: 10px;
+  }
+
+  .rcard__body {
+    padding: 10px;
+  }
+
+  .rcard__open {
+    display: none;
   }
 
   .tabs {

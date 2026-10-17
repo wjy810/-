@@ -308,3 +308,13 @@ export type TemplateCatalogQuery = {
   page?: number
   size?: number
 }
+
+/** What a thumbnail needs to draw a resume's first page with its real template. */
+export type ResumeThumbnailModel = {
+  templateId: string
+  design: unknown
+  content: unknown
+  photo?: string | null
+  pageLimit: number
+  updatedAt?: string | null
+}

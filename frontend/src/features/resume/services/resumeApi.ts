@@ -8,6 +8,7 @@ import type {
   ResumeCompareView,
   ResumeMasterSummary,
   ResumeMasterView,
+  ResumeThumbnailModel,
   ResumeLayoutView,
   ResumeAiAvailability,
   ResumeAiCandidateCommand,
@@ -107,6 +108,11 @@ function versioned(expectedVersion?: number): string {
 
 export function listResumes(signal?: AbortSignal): Promise<ResumeMasterSummary[]> {
   return api<ResumeMasterSummary[]>('/api/v1/resumes', { signal })
+}
+
+/** First-page render model (template, design, content); null until the resume has a layout. */
+export function fetchResumeThumbnail(id: string, signal?: AbortSignal): Promise<ResumeThumbnailModel | null> {
+  return api<ResumeThumbnailModel | null>(`/api/v1/resumes/${encodeURIComponent(id)}/thumbnail`, { signal })
 }
 
 export function fetchResume(id: string, signal?: AbortSignal): Promise<ResumeMasterView> {

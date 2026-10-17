@@ -24,3 +24,23 @@ export function sortResumes<T extends { title: string; updatedAt?: string | null
       : newest
   return [...items].sort(compare)
 }
+
+type Grouped = { kind: 'MASTER' | 'VERSION'; masterId: string; title: string; updatedAt?: string | null }
+
+/**
+ * Each resume followed by its own versions (newest first), resumes in the chosen order. Versions
+ * whose resume is not in the list keep their sorted place at the end.
+ */
+export function groupUnderMasters<T extends Grouped>(items: readonly T[], sort: ResumeSort): T[] {
+  const masters = sortResumes(items.filter(item => item.kind === 'MASTER'), sort)
+  const versions = sortResumes(items.filter(item => item.kind === 'VERSION'), 'updated-desc')
+  const byMaster = new Map<string, T[]>()
+  for (const version of versions) byMaster.set(version.masterId, [...(byMaster.get(version.masterId) ?? []), version])
+  const grouped: T[] = []
+  for (const master of masters) {
+    grouped.push(master, ...(byMaster.get(master.masterId) ?? []))
+    byMaster.delete(master.masterId)
+  }
+  for (const orphans of byMaster.values()) grouped.push(...orphans)
+  return grouped
+}

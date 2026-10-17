@@ -20,6 +20,7 @@ import ResumeListPage from './ResumeListPage.vue'
 const failure = new ApiClientError({ category: 'SYSTEM_FAILURE', reason: 'X', message: '服务暂时不可用' }, 503, 'req-list')
 const stubs = {
   UiIllustration: true,
+  ResumeThumbnail: true,
   JobProofIcon: true,
   AppSelect: true,
   UiDialog: { props: ['open', 'title'], template: '<div v-if="open" role="dialog"><slot /><slot name="footer" /></div>' },
@@ -37,6 +38,7 @@ function mountList() {
 }
 
 beforeEach(() => {
+  localStorage.clear()
   Object.values(api).forEach((mock) => mock.mockReset())
   const items = [summary('a', 'Java 后端简历'), summary('bb', '产品经理简历')]
   api.listResumes.mockResolvedValue(items)
@@ -82,6 +84,7 @@ describe('ResumeListPage', () => {
   })
 
   it('renames a resume with the current version and refuses a blank name', async () => {
+    localStorage.setItem('jp:resumes:view', 'list')
     api.updateResume.mockResolvedValue({ ...detail(summary('a', '后端开发 · 校招', 4)) })
     const wrapper = mountList()
     await flushPromises()
@@ -101,5 +104,30 @@ describe('ResumeListPage', () => {
     expect(api.updateResume).toHaveBeenCalledWith('a', { title: '后端开发 · 校招', expectedVersion: 3 })
     expect(wrapper.find('[role="dialog"]').exists()).toBe(false)
     expect(api.listResumes).toHaveBeenCalledTimes(2)
+  })
+
+  it('shows resumes as cards with frozen versions folded into a chip, and lists them under their resume', async () => {
+    const items = [summary('a', 'Java 后端简历'), summary('bb', '产品经理简历')]
+    api.fetchResume.mockImplementation(async (id: string) => ({
+      ...detail(items.find((item) => item.id === id)!),
+      versions: id === 'a'
+        ? [1, 2].map((n) => ({ id: `v${n}`, masterId: 'a', status: 'FROZEN', immutable: true, version: 1, createdAt: `2026-09-1${n}T08:00:00Z`, frozenAt: `2026-09-1${n}T08:00:00Z`, snapshot: { title: `Java 后端简历 快照${n}` } }))
+        : [],
+    }))
+    const wrapper = mountList()
+    await flushPromises()
+    const cards = wrapper.findAll('[data-testid="resume-row"]')
+    expect(cards).toHaveLength(2)
+    expect(wrapper.find('table').exists()).toBe(false)
+    expect(cards.find((card) => card.text().includes('Java 后端简历'))!.text()).toContain('2 个冻结版本')
+
+    localStorage.setItem('jp:resumes:view', 'list')
+    const list = mountList()
+    await flushPromises()
+    const titles = list.findAll('[data-testid="resume-row"]').map((row) => row.text())
+    const master = titles.findIndex((text) => text.includes('Java 后端简历') && text.includes('主简历'))
+    expect(titles[master + 1]).toContain('快照2')
+    expect(titles[master + 2]).toContain('快照1')
+    expect(list.findAll('th').map((cell) => cell.text())).not.toContain('证据覆盖度')
   })
 })

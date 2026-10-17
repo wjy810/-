@@ -60,6 +60,12 @@ public class ResumeController {
         return ApiResponse.ok(resumeService.get(SecurityConfig.currentAccount(), id));
     }
 
+    /** First-page render model for list and dashboard thumbnails; data is null until a layout exists. */
+    @GetMapping("/{id}/thumbnail")
+    public ApiResponse<ResumeService.ThumbnailView> thumbnail(@PathVariable String id) {
+        return ApiResponse.ok(resumeService.thumbnail(SecurityConfig.currentAccount().accountId(), id).orElse(null));
+    }
+
     @PutMapping("/{id}")
     public ApiResponse<MasterView> update(@PathVariable String id, @Valid @RequestBody UpdateRequest request) {
         return ApiResponse.ok(resumeService.update(

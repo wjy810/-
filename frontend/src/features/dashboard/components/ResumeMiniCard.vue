@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { ArrowUpRight } from 'lucide-vue-next'
 import { formatRelative } from '@/shared/lib/datetime'
+import ResumeThumbnail from '@/features/resume/components/ResumeThumbnail.vue'
 import type { RecentResume } from '../types'
 
 const props = defineProps<{ resume: RecentResume }>()
@@ -19,15 +20,20 @@ const accent = computed(() => {
 <template>
   <RouterLink :to="`/resumes/${encodeURIComponent(resume.id)}`" class="mini" :style="{ '--accent': accent }">
     <div class="mini__paper" aria-hidden="true">
-      <div class="mini__head">
-        <span class="mini__avatar" />
-        <span class="mini__name" />
-      </div>
-      <span v-for="n in 3" :key="`a${n}`" class="mini__line" :style="{ width: `${92 - n * 14}%` }" />
-      <span class="mini__section" />
-      <span v-for="n in 4" :key="`b${n}`" class="mini__line" :style="{ width: `${88 - (n % 3) * 18}%` }" />
-      <span class="mini__section" />
-      <span v-for="n in 2" :key="`c${n}`" class="mini__line" :style="{ width: `${80 - n * 16}%` }" />
+      <ResumeThumbnail :resume-id="resume.id" :updated-at="resume.updatedAt" :title="resume.title">
+        <!-- No layout yet (the resume was never opened in the editor): a sketch of a page. -->
+        <div class="mini__sketch">
+          <div class="mini__head">
+            <span class="mini__avatar" />
+            <span class="mini__name" />
+          </div>
+          <span v-for="n in 3" :key="`a${n}`" class="mini__line" :style="{ width: `${92 - n * 14}%` }" />
+          <span class="mini__section" />
+          <span v-for="n in 4" :key="`b${n}`" class="mini__line" :style="{ width: `${88 - (n % 3) * 18}%` }" />
+          <span class="mini__section" />
+          <span v-for="n in 2" :key="`c${n}`" class="mini__line" :style="{ width: `${80 - n * 16}%` }" />
+        </div>
+      </ResumeThumbnail>
       <span class="mini__open"><ArrowUpRight :size="15" /></span>
     </div>
     <div class="mini__meta">
@@ -63,14 +69,27 @@ const accent = computed(() => {
 .mini__paper {
   position: relative;
   aspect-ratio: 210 / 150;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
   overflow: hidden;
-  padding: 14px 16px;
   border-radius: var(--radius-sm);
   background: linear-gradient(180deg, #fff, #fdfcfa);
   box-shadow: inset 0 0 0 1px rgba(30, 28, 25, 0.06);
+}
+
+.mini__paper::after {
+  content: '';
+  position: absolute;
+  inset: auto 0 0;
+  height: 28%;
+  background: linear-gradient(to bottom, transparent, rgba(255, 255, 255, 0.9));
+  pointer-events: none;
+}
+
+.mini__sketch {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 16px;
 }
 
 .mini__head {
@@ -110,6 +129,7 @@ const accent = computed(() => {
 
 .mini__open {
   position: absolute;
+  z-index: 1;
   right: 8px;
   top: 8px;
   width: 28px;

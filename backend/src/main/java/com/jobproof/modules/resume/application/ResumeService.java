@@ -645,6 +645,21 @@ public class ResumeService implements DeletionModuleHandler, AccountExportContri
                 .map(context -> new HtmlPdfJob(null, accountId, null, mode, readSnapshotTitle(snapshot), context));
     }
 
+    /**
+     * What the browser needs to draw this resume's first page with the real template: the same
+     * template, design and content an export would use. Empty when the resume has no editable layout yet.
+     */
+    @Transactional(readOnly = true)
+    public Optional<ThumbnailView> thumbnail(String accountId, String masterId) {
+        ResumeMasterEntity master = requireOwnMaster(accountId, masterId);
+        String snapshot = writeJson(snapshotOf(master));
+        return layoutCoordinator.previewContext(accountId, masterId, snapshot)
+                .filter(context -> context.html() != null)
+                .map(context -> new ThumbnailView(context.templateId(), context.html().design().toJson(objectMapper),
+                        context.html().content(), context.html().photoDataUrl(), context.html().pageLimit(),
+                        master.getUpdatedAt()));
+    }
+
     /** Step 3 of an HTML-template export: store the rendered PDF and its checks. */
     @Transactional
     public void completeHtmlPdfExport(HtmlPdfJob job, ResumeRenderPort.RenderedDocument pdf,
@@ -1468,6 +1483,15 @@ public class ResumeService implements DeletionModuleHandler, AccountExportContri
     }
 
     public record KeyOutcomeWrite(String id, String text, String evidenceId, Boolean waiveNoEvidence) {
+    }
+
+    public record ThumbnailView(
+            String templateId,
+            com.fasterxml.jackson.databind.JsonNode design,
+            com.fasterxml.jackson.databind.JsonNode content,
+            String photo,
+            int pageLimit,
+            Instant updatedAt) {
     }
 
     public record MasterSummary(

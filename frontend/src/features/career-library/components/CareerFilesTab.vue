@@ -18,6 +18,7 @@ import {
   fetchCareerFiles, fetchCareerFolders, fetchCareerStorage, restoreCareerFile,
   retryCareerFile, updateCareerFile, uploadCareerFile,
 } from '../services/careerLibraryApi'
+import { fileCategoryLabel, FILE_CATEGORIES, fileSize } from '../labels'
 import { usePagedList } from '../usePagedList'
 import type { CareerFile, CareerFileFolder, CareerOverview } from '../types'
 
@@ -62,13 +63,8 @@ const folderModal = ref(false)
 const folderName = ref('')
 const taskControllers = new Map<string, AbortController>()
 
-const categoryOptions = [
-  { value: '', label: '全部分类' }, { value: 'RESUME', label: '简历' },
-  { value: 'PORTFOLIO', label: '作品集' }, { value: 'WORK_SAMPLE', label: '工作样本' },
-  { value: 'CERTIFICATE', label: '证书' }, { value: 'TRANSCRIPT', label: '成绩单' },
-  { value: 'PROOF', label: '证明材料' }, { value: 'OTHER', label: '其他' },
-]
-const uploadCategories = categoryOptions.filter((item) => item.value)
+const categoryOptions = [{ value: '', label: '全部分类' }, ...FILE_CATEGORIES]
+const uploadCategories = FILE_CATEGORIES
 const statusOptions = [
   { value: 'ALL', label: '全部状态' }, { value: 'ACTIVE', label: '使用中' },
   { value: 'ARCHIVED', label: '已归档' }, { value: 'QUARANTINED', label: '处理失败' },
@@ -238,8 +234,6 @@ async function removeFolder(folder: CareerFileFolder): Promise<void> {
 }
 
 function fileExtension(file: CareerFile): string { return file.originalFilename.split('.').pop()?.toUpperCase() || 'FILE' }
-function fileSize(bytes: number): string { return bytes < 1024 * 1024 ? `${bytes > 0 ? Math.max(1, Math.round(bytes / 1024)) : 0} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB` }
-function categoryLabel(category: string): string { return categoryOptions.find((item) => item.value === category)?.label || category }
 function stateLabel(file: CareerFile): string {
   if (file.processingStatus === 'SCANNING') return '安全检查中'
   if (file.processingStatus === 'PREVIEWING') return '生成预览中'
@@ -317,7 +311,7 @@ defineExpose({ chooseFile, openFolder })
                 <FileImage v-if="/PNG|JPG|JPEG|WEBP/.test(fileExtension(file))" :size="27" />
                 <FileText v-else :size="27" /><small>{{ fileExtension(file) }}</small>
               </span>
-              <div class="file-card-copy"><strong :title="file.displayName">{{ file.displayName }}</strong><div><span>{{ categoryLabel(file.category) }}</span><em :class="{ bad: /FAILED|INFECTED/.test(file.processingStatus) }">{{ stateLabel(file) }}</em></div><p>{{ fileSize(file.sizeBytes) }}<b>·</b>{{ new Date(file.updatedAt).toLocaleString('zh-CN', { hour12: false }) }}</p></div>
+              <div class="file-card-copy"><strong :title="file.displayName">{{ file.displayName }}</strong><div><span>{{ fileCategoryLabel(file.category) }}</span><em :class="{ bad: /FAILED|INFECTED/.test(file.processingStatus) }">{{ stateLabel(file) }}</em></div><p>{{ fileSize(file.sizeBytes) }}<b>·</b>{{ new Date(file.updatedAt).toLocaleString('zh-CN', { hour12: false }) }}</p></div>
             </div>
             <div v-if="processing(file)" class="file-processing"><LoaderCircle :size="16" /><span><strong>{{ stateLabel(file) }}</strong><small>可以离开页面，处理会继续</small></span><i /></div>
             <div v-else-if="/FAILED|INFECTED/.test(file.processingStatus)" class="file-processing failed"><Info :size="16" /><span><strong>{{ stateLabel(file) }}</strong><small>{{ failureNote(file) }}</small></span><button v-if="file.processingStatus !== 'INFECTED'" type="button" @click="retry(file)"><RefreshCcw :size="14" />重试</button></div>
