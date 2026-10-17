@@ -67,7 +67,7 @@ onBeforeUnmount(() => {
 const STEPS: Array<{ title: string; text: string; art: IllustrationName }> = [
   { title: '聊出经历', text: 'AI 一次只问一个问题，把课程、实习、项目里的细节挖出来。', art: 'hero-chat' },
   { title: '逐条确认', text: '每条建议标注来源事实，你点对勾才写入，随时撤销。', art: 'hero-check' },
-  { title: '实时排版', text: '右侧预览即时成形，16 套模板一键换版，导出的 PDF 与预览一致。', art: 'hero-resume' },
+  { title: '实时排版', text: `右侧预览即时成形，${MANIFESTS.length} 套模板一键换版，导出的 PDF 与预览一致。`, art: 'hero-resume' },
   { title: '对照岗位', text: '粘贴真实 JD，逐条对照证据，补强后再去模拟面试。', art: 'hero-target' },
 ]
 
@@ -185,7 +185,7 @@ const year = new Date().getFullYear()
       <!-- ================= STATS ================= -->
       <section class="stats">
         <div class="stats__inner">
-          <div v-reveal class="stat"><strong>12</strong><span>款智能模板，一键换版</span></div>
+          <div v-reveal class="stat"><strong>{{ MANIFESTS.length }}</strong><span>款智能模板，一键换版</span></div>
           <div v-reveal="80" class="stat"><strong>2,000+</strong><span>份 Word 模板免费下载</span></div>
           <div v-reveal="160" class="stat"><strong>4</strong><span>大模块：简历 · 匹配 · 规划 · 面试</span></div>
           <div v-reveal="240" class="stat"><strong>0</strong><span>条编造的经历</span></div>
