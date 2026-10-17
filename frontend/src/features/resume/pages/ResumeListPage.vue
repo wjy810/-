@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useLocalStorage } from '@vueuse/core'
 import { useRouter } from 'vue-router'
 import { Search } from 'lucide-vue-next'
 import AppBanner from '@/shared/ui/AppBanner.vue'
@@ -16,6 +17,7 @@ import UiDialog from '@/shared/ui/UiDialog.vue'
 import UiEmptyState from '@/shared/ui/UiEmptyState.vue'
 import UiField from '@/shared/ui/UiField.vue'
 import UiInput from '@/shared/ui/UiInput.vue'
+import UiSelect from '@/shared/ui/UiSelect.vue'
 import UiSkeleton from '@/shared/ui/UiSkeleton.vue'
 import { useToastFeedback } from '@/shared/ui/toast'
 import ForbidState from '@/shared/ui/ForbidState.vue'
@@ -40,6 +42,7 @@ import {
 } from '../services/resumeApi'
 import type { KeyOutcome, ResumeMasterSummary, ResumeMasterView, ResumeVersionView } from '../types'
 import { RESUME_TITLE_MAX, normalizeResumeTitle, resumeTitleIssue, titleMatches } from '../utils/resumeTitle'
+import { RESUME_SORTS, isResumeSort, sortResumes } from '../utils/resumeSort'
 
 type RowType = '主简历' | '定制版' | '冻结版本'
 type RowTone = 'blue' | 'green' | 'orange'
@@ -78,6 +81,12 @@ useToastFeedback(notice, 'success', 'resume-list-notice')
 const actionForbidden = ref<unknown>(null)
 const tab = ref('ALL')
 const query = ref('')
+const storedSort = useLocalStorage<string>('jp:resumes:sort', 'updated-desc')
+const sort = computed({
+  get: () => (isResumeSort(storedSort.value) ? storedSort.value : 'updated-desc'),
+  set: (value: string) => { storedSort.value = value },
+})
+const sortOptions = RESUME_SORTS.map(item => ({ value: item.value, label: item.label }))
 const page = ref(0)
 const pageSize = ref(10)
 const archiveTarget = ref<ResumeRow | null>(null)
@@ -129,7 +138,7 @@ const filtered = computed(() => {
     }
   }
   items = items.filter((row) => titleMatches(row.title, query.value))
-  return [...items].sort((a, b) => (b.updatedAt ?? '').localeCompare(a.updatedAt ?? ''))
+  return sortResumes(items, sort.value)
 })
 
 const pageCount = computed(() => Math.max(1, Math.ceil(filtered.value.length / pageSize.value)))
@@ -501,7 +510,7 @@ function handleError(error: unknown): void {
   pageError.value = errorMessage(error, '简历操作失败')
 }
 
-watch([tab, pageSize, query], () => {
+watch([tab, pageSize, query, sort], () => {
   page.value = 0
 })
 
@@ -616,6 +625,9 @@ onBeforeUnmount(() => {
               />
             </div>
             <span v-if="searching" class="muted">找到 {{ filtered.length }} 条</span>
+            <div class="list-toolbar__sort">
+              <UiSelect v-model="sort" :options="sortOptions" size="sm" aria-label="排序方式" data-testid="resume-sort" />
+            </div>
           </div>
 
           <Transition name="resume-results" mode="out-in">
@@ -934,6 +946,7 @@ onBeforeUnmount(() => {
 
 .list-toolbar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 12px;
   padding: 12px 16px;
@@ -942,7 +955,14 @@ onBeforeUnmount(() => {
 }
 
 .list-toolbar__search {
-  width: min(320px, 100%);
+  flex: 0 1 320px;
+  min-width: 0;
+}
+
+.list-toolbar__sort {
+  width: 132px;
+  flex: none;
+  margin-left: auto;
 }
 
 .resume-results {
