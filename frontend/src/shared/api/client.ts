@@ -5,6 +5,7 @@
  * - Adds `X-Request-Id` to every request and surfaces it on errors.
  * - Applies a timeout (default 20s) and honours caller AbortSignals.
  * - Routes 401 responses to the registered session-expiry handler.
+ * - Routes plan-limit refusals (docs/phase2/02) to the registered upgrade handler.
  */
 import { ApiClientError, type ApiError, type ApiResponse } from './types'
 
@@ -14,6 +15,21 @@ let onUnauthenticated: UnauthenticatedHandler | null = null
 
 export function setUnauthenticatedHandler(handler: UnauthenticatedHandler | null): void {
   onUnauthenticated = handler
+}
+
+/** Refusals that mean "the current plan allows no more", which the app can answer with an upgrade path. */
+export const PLAN_LIMIT_REASONS: ReadonlySet<string> = new Set(['AI_QUOTA_INSUFFICIENT', 'RESUME_LINK_LIMIT'])
+
+type PlanLimitHandler = (error: ApiError) => void
+
+let onPlanLimit: PlanLimitHandler | null = null
+
+export function setPlanLimitHandler(handler: PlanLimitHandler | null): void {
+  onPlanLimit = handler
+}
+
+function notifyPlanLimit(error: ApiError): void {
+  if (PLAN_LIMIT_REASONS.has(error.reason)) onPlanLimit?.(error)
 }
 
 /** Reads should be quick; a stuck GET surfaces as a retryable timeout. */
@@ -168,6 +184,7 @@ export async function api<T>(path: string, init: ApiInit = {}): Promise<T> {
     if (response.status === 401 || error.category === 'UNAUTHENTICATED') {
       onUnauthenticated?.()
     }
+    notifyPlanLimit(error)
     throw new ApiClientError(error, response.status, requestId)
   }
 
@@ -184,6 +201,7 @@ export async function apiSse(path: string, init: RequestInit, onEvent: (event: S
       ? errorFromPayload(payload.error, response.status)
       : unparsedHttpError(response.status)
     if (response.status === 401 || error.category === 'UNAUTHENTICATED') onUnauthenticated?.()
+    notifyPlanLimit(error)
     throw new ApiClientError(error, response.status, requestId)
   }
   if (!response.body) throw new ApiClientError(DEFAULT_ERROR, response.status, requestId)

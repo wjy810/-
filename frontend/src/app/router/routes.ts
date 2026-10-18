@@ -146,6 +146,13 @@ export const routes: RouteRecordRaw[] = [
         component: () => import('@/features/resume/pages/ResumeTemplateAssetDetailPage.vue'),
       },
       {
+        // Plans and prices (docs/phase2/02): public, so the landing page and a signed-out visitor can see them.
+        path: 'pricing',
+        name: 'pricing',
+        meta: { title: '套餐与价格' },
+        component: () => import('@/features/membership/pages/PricingPage.vue'),
+      },
+      {
         path: 'updates',
         name: 'updates',
         meta: { title: '更新日志' },
@@ -278,6 +285,7 @@ export const routes: RouteRecordRaw[] = [
         children: [
           { path: '', name: 'account', meta: { title: '账号与安全' }, component: () => import('@/features/identity/pages/AccountPage.vue') },
           { path: 'appearance', name: 'account-appearance', meta: { title: '外观' }, component: () => import('@/features/identity/pages/AppearancePage.vue') },
+          { path: 'membership', name: 'account-membership', meta: { title: '会员与兑换' }, component: () => import('@/features/membership/pages/MembershipPage.vue') },
           { path: 'ai', name: 'account-ai', meta: { title: 'AI 用量' }, component: () => import('@/features/ai-resume/pages/AiResumeUsagePage.vue') },
           { path: 'data-rights', name: 'account-data-rights', meta: { title: '数据与隐私' }, component: () => import('@/features/datarights/pages/DataRightsPage.vue') },
         ],
@@ -293,6 +301,12 @@ export const routes: RouteRecordRaw[] = [
         name: 'admin-ai-channels',
         meta: { ...authed, adminOnly: true, title: 'AI 通道' },
         component: () => import('@/features/ai/pages/AiSystemChannelsPage.vue'),
+      },
+      {
+        path: 'admin/redeem-codes',
+        name: 'admin-redeem-codes',
+        meta: { ...authed, adminOnly: true, title: '兑换码' },
+        component: () => import('@/features/membership/pages/AdminRedeemCodesPage.vue'),
       },
       {
         path: 'admin/changelog',

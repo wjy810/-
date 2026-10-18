@@ -4,7 +4,8 @@ import { useRouter } from 'vue-router'
 import { pinyin } from 'pinyin-pro'
 import { DialogContent, DialogOverlay, DialogPortal, DialogRoot, DialogTitle, VisuallyHidden } from 'reka-ui'
 import {
-  ArrowRight, Compass, CornerDownLeft, Database, FileText, Keyboard, LogOut, Mic, Moon, Palette, Plus, Search, Send, Sparkles, Target,
+  ArrowRight, Compass, CornerDownLeft, Crown, Database, FileText, Keyboard, LogOut, Mic, Moon, Palette, Plus, Search, Send, Sparkles, Target,
+  Ticket,
 } from 'lucide-vue-next'
 import UiKbd from '@/shared/ui/UiKbd.vue'
 import { useCommandPaletteStore } from '@/stores/commandPalette'
@@ -56,10 +57,15 @@ const baseCommands = computed<Command[]>(() => {
     withPinyin({ id: 'nav:appearance', group: '页面', title: '外观设置', icon: Palette, keywords: ['主题', '深色', 'theme'], run: go('/account/appearance') }),
     withPinyin({ id: 'nav:ai-usage', group: '页面', title: 'AI 用量', icon: Sparkles, keywords: ['额度', 'quota'], run: go('/account/ai') }),
     withPinyin({ id: 'nav:data-rights', group: '页面', title: '数据与隐私', icon: Database, keywords: ['导出', '删除', '授权'], run: go('/account/data-rights') }),
+    withPinyin({ id: 'nav:pricing', group: '页面', title: '套餐与价格', icon: Crown, keywords: ['专业版', '会员', '价格', 'pro', 'pricing'], run: go('/pricing') }),
   ]
+  if (!session.isAdmin) {
+    extraPages.push(withPinyin({ id: 'nav:membership', group: '页面', title: '会员与兑换', icon: Crown, keywords: ['专业版', '会员', 'pro', 'vip'], run: go('/account/membership') }))
+  }
   const actions: Command[] = [
     withPinyin({ id: 'act:new-resume', group: '操作', title: '用 AI 新建简历', icon: Plus, keywords: ['create', 'resume'], run: go('/ai-resume/new') }),
     withPinyin({ id: 'act:new-application', group: '操作', title: '记录一次投递', icon: Send, keywords: ['投递', 'apply', 'track'], run: go('/applications?new=1') }),
+    ...(session.isAdmin ? [] : [withPinyin({ id: 'act:redeem', group: '操作', title: '使用兑换码', icon: Ticket, keywords: ['兑换', '激活', 'code', 'redeem'], run: go('/account/membership#redeem') })]),
     withPinyin({ id: 'act:new-match', group: '操作', title: '新建岗位匹配', icon: Target, keywords: ['JD', 'match'], run: go('/job-match/new') }),
     withPinyin({ id: 'act:new-interview', group: '操作', title: '开始模拟面试', icon: Mic, keywords: ['interview'], run: go('/mock-interviews/new') }),
     withPinyin({ id: 'act:new-canvas', group: '操作', title: '新建能力画布', icon: Compass, keywords: ['规划', 'career'], run: go('/career-planning/new') }),

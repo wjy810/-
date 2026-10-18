@@ -3,6 +3,8 @@ package com.jobproof.modules.jobapply.application;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.jobproof.modules.audit.application.AuditService;
 import com.jobproof.modules.jobapply.domain.ViewerAgent;
+import com.jobproof.modules.membership.application.MembershipService;
+import com.jobproof.modules.membership.application.MembershipService.Entitlements;
 import com.jobproof.modules.notification.application.NotificationService;
 import com.jobproof.modules.notification.domain.NotificationType;
 import com.jobproof.modules.resume.application.ResumeService;
@@ -38,8 +40,6 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class ResumeLinkService {
 
-    /** Active links one account may keep; plans (docs/phase2/01 §5) can raise it. */
-    static final int MAX_ACTIVE_LINKS = 20;
     private static final Set<Integer> EXPIRY_DAYS = Set.of(7, 30, 90);
     /** A reload within this window continues the same visit instead of counting a new one. */
     private static final Duration SAME_VISIT = Duration.ofMinutes(30);
@@ -59,15 +59,17 @@ public class ResumeLinkService {
     private final NotificationService notifications;
     private final ApplicationTimeline timeline;
     private final AuditService audit;
+    private final MembershipService memberships;
     private final ClockPort clock;
 
     public ResumeLinkService(JdbcTemplate jdbc, ResumeService resumes, NotificationService notifications,
-            ApplicationTimeline timeline, AuditService audit, ClockPort clock) {
+            ApplicationTimeline timeline, AuditService audit, MembershipService memberships, ClockPort clock) {
         this.jdbc = jdbc;
         this.resumes = resumes;
         this.notifications = notifications;
         this.timeline = timeline;
         this.audit = audit;
+        this.memberships = memberships;
         this.clock = clock;
     }
 
@@ -114,8 +116,11 @@ public class ResumeLinkService {
         }
         Integer active = jdbc.queryForObject("SELECT COUNT(*) FROM resume_share_links WHERE account_id=? AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at>?)",
                 Integer.class, accountId, now);
-        if (active != null && active >= MAX_ACTIVE_LINKS) {
-            throw AppException.conflict("RESUME_LINK_LIMIT", "有效链接已达 " + MAX_ACTIVE_LINKS + " 个，请先撤回不再使用的链接");
+        Entitlements plan = memberships.entitlements(accountId);
+        if (active != null && active >= plan.activeLinks()) {
+            throw AppException.conflict("RESUME_LINK_LIMIT", "FREE".equals(plan.plan())
+                    ? "免费版最多同时保留 " + plan.activeLinks() + " 条有效链接。撤回不再使用的链接，或升级专业版"
+                    : "有效链接已达 " + plan.activeLinks() + " 条，请先撤回不再使用的链接");
         }
         String id = Ids.newId();
         String finalLabel = clip(label == null ? resumeTitle : label, 120);

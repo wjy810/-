@@ -1,5 +1,6 @@
 package com.jobproof.modules.airesume.application;
 
+import com.jobproof.modules.membership.application.MembershipService;
 import com.jobproof.shared.error.AppException;
 import com.jobproof.shared.id.Ids;
 import com.jobproof.shared.time.ClockPort;
@@ -8,7 +9,6 @@ import java.sql.SQLException;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -21,27 +21,39 @@ public class AiQuotaService {
 
     private final JdbcTemplate jdbc;
     private final ClockPort clock;
-    private final int monthlyQuota;
+    private final MembershipService memberships;
 
-    public AiQuotaService(JdbcTemplate jdbc, ClockPort clock,
-            @Value("${jobproof.ai.workbench.monthly-quota:50}") int monthlyQuota) {
+    public AiQuotaService(JdbcTemplate jdbc, ClockPort clock, MembershipService memberships) {
         this.jdbc = jdbc;
         this.clock = clock;
-        this.monthlyQuota = Math.max(0, monthlyQuota);
+        this.memberships = memberships;
     }
 
+    /**
+     * This month's allowance. The plan decides how many units a month grants (docs/phase2/02); an upgrade
+     * during the month tops the current month up to the new plan, a lapsed plan never takes units back.
+     */
     @Transactional
     public QuotaView current(String accountId) {
         Instant now = clock.now();
         String period = PERIOD.format(now.atZone(ZONE));
+        int grant = memberships.entitlements(accountId).aiMonthlyUnits();
         QuotaRow row = jdbc.query("SELECT * FROM ai_quota_accounts WHERE account_id=? AND period_key=?",
                 this::row, accountId, period).stream().findFirst().orElse(null);
         if (row == null) {
             String id = Ids.newId();
             jdbc.update("INSERT INTO ai_quota_accounts(id,account_id,period_key,granted_units,used_units,held_units,version_no,created_at,updated_at) VALUES(?,?,?,?,0,0,0,?,?)",
-                    id, accountId, period, monthlyQuota, now, now);
-            row = new QuotaRow(id, period, monthlyQuota, 0, 0, 0);
-            ledger(accountId, null, "GRANT", monthlyQuota, monthlyQuota, "monthly:" + period, now);
+                    id, accountId, period, grant, now, now);
+            row = new QuotaRow(id, period, grant, 0, 0, 0);
+            ledger(accountId, null, "GRANT", grant, grant, "monthly:" + period, now);
+        } else if (row.grantedUnits() < grant) {
+            int topUp = grant - row.grantedUnits();
+            int updated = jdbc.update("UPDATE ai_quota_accounts SET granted_units=?,version_no=version_no+1,updated_at=? WHERE id=? AND granted_units<?",
+                    grant, now, row.id(), grant);
+            if (updated == 1) {
+                row = new QuotaRow(row.id(), row.periodKey(), grant, row.usedUnits(), row.heldUnits(), row.versionNo() + 1);
+                ledger(accountId, null, "GRANT", topUp, view(row).remainingUnits(), "plan-upgrade:" + period, now);
+            }
         }
         return view(row);
     }

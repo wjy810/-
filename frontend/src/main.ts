@@ -6,6 +6,7 @@ import router from './app/router'
 import { queryClient } from './app/queryClient'
 import { installErrorReporting } from './app/errorReporting'
 import { safeNextPath } from './features/identity/safeNext'
+import { installPlanLimitUpsell } from './features/membership/planLimit'
 import { setUnauthenticatedHandler } from './shared/api/client'
 import { useSessionStore } from './stores/session'
 import { usePreferencesStore } from './stores/preferences'
@@ -32,5 +33,8 @@ setUnauthenticatedHandler(() => {
     query: next === '/dashboard' ? { auth: 'login', reason: 'session_expired' } : { auth: 'login', reason: 'session_expired', next },
   })
 })
+
+// A free account that runs out of AI or links is shown the upgrade path once per refusal.
+installPlanLimitUpsell(router, () => session.signedIn && !session.isAdmin)
 
 app.mount('#app')

@@ -92,6 +92,9 @@ jobproof:
     workbench:
       enabled: true
       monthly-quota: 500
+  membership:
+    pro:
+      ai-monthly-units: 2000
   job-match:
     enabled: true
   career-planning:

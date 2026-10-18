@@ -1,4 +1,5 @@
 import { api, apiDownload } from '@/shared/api/client'
+import { saveBlob } from '@/shared/lib/download'
 import type {
   CareerFile,
   CareerAvatarUpload,
@@ -205,10 +206,5 @@ export async function downloadCareerHistory(format: 'json' | 'md'): Promise<void
 
 async function saveDownload(path: string, fallbackName: string): Promise<void> {
   const result = await apiDownload(path)
-  const url = URL.createObjectURL(result.blob)
-  const anchor = document.createElement('a')
-  anchor.href = url
-  anchor.download = result.filename || fallbackName
-  anchor.click()
-  setTimeout(() => URL.revokeObjectURL(url), 1000)
+  saveBlob(result.blob, result.filename || fallbackName)
 }

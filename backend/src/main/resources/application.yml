@@ -207,6 +207,13 @@ jobproof:
       enabled: ${JOBPROOF_AI_WORKBENCH_ENABLED:false}
       monthly-quota: ${JOBPROOF_AI_MONTHLY_QUOTA:50}
       prompt-version: resume-workbench-v1
+  # 会员 (docs/phase2/02)：免费版的 AI 次数即上面的 monthly-quota；专业版不会少于免费版。
+  membership:
+    free:
+      active-links: ${JOBPROOF_FREE_ACTIVE_LINKS:3}
+    pro:
+      ai-monthly-units: ${JOBPROOF_PRO_AI_MONTHLY_UNITS:300}
+      active-links: ${JOBPROOF_PRO_ACTIVE_LINKS:20}
   job-match:
     enabled: ${JOBPROOF_JOB_MATCH_ENABLED:false}
     model: ${JOBPROOF_JOB_MATCH_MODEL:qwen-plus}

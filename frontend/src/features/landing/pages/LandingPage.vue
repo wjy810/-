@@ -109,6 +109,7 @@ const year = new Date().getFullYear()
           <a href="#features" @click="mobileNav = false">功能</a>
           <a href="#templates" @click="mobileNav = false">模板</a>
           <a href="#faq" @click="mobileNav = false">常见问题</a>
+          <RouterLink to="/pricing">价格</RouterLink>
           <RouterLink to="/updates">更新日志</RouterLink>
         </nav>
         <div class="nav__actions">
@@ -344,6 +345,7 @@ const year = new Date().getFullYear()
         </div>
         <nav class="footer__links" aria-label="页脚导航">
           <RouterLink to="/resume-templates">模板中心</RouterLink>
+          <RouterLink to="/pricing">价格</RouterLink>
           <RouterLink to="/updates">更新日志</RouterLink>
           <RouterLink to="/terms">用户协议</RouterLink>
           <RouterLink to="/privacy">隐私政策</RouterLink>

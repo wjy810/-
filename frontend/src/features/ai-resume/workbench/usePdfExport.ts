@@ -6,6 +6,7 @@ import { computed, ref, shallowRef, watch } from 'vue'
 import { errorMessage } from '@/shared/api/types'
 import type { AtsTextCheck, TaskView } from '@/shared/api/task'
 import { isAbortError, pollTask } from '@/shared/lib/pollTask'
+import { saveBlob } from '@/shared/lib/download'
 import { downloadPrivateFile } from '@/features/resume/services/resumeApi'
 import { pdfDownloadDisabledReason } from '@/features/resume/labels'
 import { exportAiResumePdf, fetchAiResumeExportPreview, type AiResumeExportPreview } from '../services/aiResumeApi'
@@ -31,17 +32,6 @@ const ATS_LABELS: Record<string, string> = {
   SECTION_TITLES: '板块标题可读取',
   SECTION_ORDER: '阅读顺序与版面一致',
   ENTRY_TITLES: '经历与学校名称可读取',
-}
-
-function triggerBrowserDownload(blob: Blob, filename: string): void {
-  const href = URL.createObjectURL(blob)
-  const anchor = document.createElement('a')
-  anchor.href = href
-  anchor.download = filename
-  document.body.appendChild(anchor)
-  anchor.click()
-  anchor.remove()
-  setTimeout(() => URL.revokeObjectURL(href), 1000)
 }
 
 export interface ExportOutcome {
@@ -194,7 +184,7 @@ export function usePdfExport(session: WorkbenchSession, deps: {
         return
       }
       const file = await downloadPrivateFile(finished.fileId!.trim())
-      triggerBrowserDownload(file.blob, resumeFileName({
+      saveBlob(file.blob, resumeFileName({
         name: deps.previewBasics().name,
         target: deps.previewTarget(),
         title: session.conversation.value?.resume?.title,

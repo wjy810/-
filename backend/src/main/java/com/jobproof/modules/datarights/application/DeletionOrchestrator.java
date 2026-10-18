@@ -183,6 +183,7 @@ public class DeletionOrchestrator {
         collected.add(moduleReceipt("resume", request.getAccountId(), "简历暂未清除，删除申请会保持可重试"));
         collected.add(moduleReceipt("career-planning", request.getAccountId(), "职业规划暂未清除，删除申请会保持可重试"));
         collected.add(moduleReceipt("applications", request.getAccountId(), "投递记录与简历链接暂未清除，删除申请会保持可重试"));
+        collected.add(moduleReceipt("membership", request.getAccountId(), "会员记录暂未清除，删除申请会保持可重试"));
         return collected;
     }
 

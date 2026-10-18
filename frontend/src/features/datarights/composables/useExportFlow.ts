@@ -6,6 +6,7 @@ import { computed, onScopeDispose, ref, shallowRef } from 'vue'
 import { fetchTask, type TaskView } from '@/shared/api/task'
 import { errorMessage, isForbidden } from '@/shared/api/types'
 import { isAbortError, pollTask } from '@/shared/lib/pollTask'
+import { saveBlob } from '@/shared/lib/download'
 import { exportDownloadDisabledReason, exportPhase, timeLeft } from '../labels'
 import {
   cancelExport,
@@ -21,18 +22,6 @@ import {
 import type { ExportView } from '../types'
 
 export type ExportAction = '' | 'start' | 'cancel' | 'retry' | 'refresh' | 'download'
-
-function triggerBrowserDownload(blob: Blob, filename: string): void {
-  const href = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = href
-  link.download = filename
-  link.rel = 'noopener'
-  document.body.append(link)
-  link.click()
-  link.remove()
-  window.setTimeout(() => URL.revokeObjectURL(href), 1000)
-}
 
 export function useExportFlow(onForbidden: (error: unknown) => void) {
   const history = shallowRef<ExportView[]>([])
@@ -187,7 +176,7 @@ export function useExportFlow(onForbidden: (error: unknown) => void) {
       error.value = '导出文件暂不可下载，请刷新进度或重新导出。'
       return
     }
-    triggerBrowserDownload(file.blob, file.filename || 'jobproof-export.json')
+    saveBlob(file.blob, file.filename || 'jobproof-export.json')
     notice.value = '已开始下载导出文件。'
   }, '下载失败')
 

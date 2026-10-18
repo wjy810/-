@@ -13,7 +13,7 @@ import UiField from '@/shared/ui/UiField.vue'
 import UiInput from '@/shared/ui/UiInput.vue'
 import UiSelect, { type SelectOption } from '@/shared/ui/UiSelect.vue'
 import UiTextarea from '@/shared/ui/UiTextarea.vue'
-import { errorMessage } from '@/shared/api/types'
+import { errorMessage, isApiClientError } from '@/shared/api/types'
 import { listJobMatches } from '@/features/job-match/services/jobMatchApi'
 import { createApplication, fetchShareableVersions, updateApplication } from '../services/applicationsApi'
 import { CHANNELS, STAGES } from '../labels'
@@ -49,6 +49,8 @@ const matches = shallowRef<SelectOption[]>([])
 const touched = ref(false)
 const submitting = ref(false)
 const error = ref('')
+/** The free plan's link limit refused the link: offer to record the application without one. */
+const linkLimited = ref(false)
 
 const editing = computed(() => Boolean(props.application))
 const versionOptions = computed<SelectOption[]>(() => [
@@ -106,6 +108,7 @@ function reset(): void {
   })
   touched.value = false
   error.value = ''
+  linkLimited.value = false
 }
 
 async function loadOptions(): Promise<void> {
@@ -135,6 +138,7 @@ async function submit(): Promise<void> {
   if (missing.value || submitting.value) return
   submitting.value = true
   error.value = ''
+  linkLimited.value = false
   const write: ApplicationWrite = {
     company: form.company.trim(),
     positionTitle: form.positionTitle.trim(),
@@ -155,10 +159,16 @@ async function submit(): Promise<void> {
       : await createApplication({ ...write, stage: form.stage, createLink: hasVersion.value && form.createLink, hideContact: form.hideContact })
     emit('saved', saved)
   } catch (reason) {
+    linkLimited.value = isApiClientError(reason) && reason.reason === 'RESUME_LINK_LIMIT'
     error.value = errorMessage(reason, editing.value ? '保存失败' : '记录投递失败')
   } finally {
     submitting.value = false
   }
+}
+
+function recordWithoutLink(): void {
+  form.createLink = false
+  void submit()
 }
 
 watch(() => props.open, open => {
@@ -239,7 +249,13 @@ watch(() => props.open, open => {
         </div>
       </details>
 
-      <p v-if="error" class="app-form__error" role="alert">{{ error }}</p>
+      <div v-if="error" class="app-form__error" role="alert">
+        <p>{{ error }}</p>
+        <div v-if="linkLimited" class="app-form__error-actions">
+          <UiButton size="sm" variant="secondary" :disabled="submitting" @click="recordWithoutLink">先不附链接，直接记录</UiButton>
+          <UiButton size="sm" variant="link" to="/account/membership">了解专业版</UiButton>
+        </div>
+      </div>
     </form>
 
     <template #footer>
@@ -315,8 +331,17 @@ watch(() => props.open, open => {
 }
 
 .app-form__error {
+  display: grid;
+  gap: var(--space-2);
   color: var(--color-danger-text);
   font-size: var(--fs-sm);
+}
+
+.app-form__error-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
 }
 
 @media (max-width: 640px) {

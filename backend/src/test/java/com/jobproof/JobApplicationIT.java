@@ -207,6 +207,27 @@ class JobApplicationIT {
         assertThat(shared.path("photo").isNull() || shared.path("photo").isMissingNode()).isTrue();
     }
 
+    @Test
+    void theFreePlanKeepsThreeActiveLinksAndProRaisesTheLimit() throws Exception {
+        Session owner = seeker();
+        String versionId = frozenVersion(owner);
+        for (int i = 0; i < 3; i++) {
+            mockMvc.perform(post("/api/v1/resume-links").cookie(owner.cookie()).contentType(MediaType.APPLICATION_JSON)
+                            .content(mapper.writeValueAsString(Map.of("resumeVersionId", versionId, "label", "链接 " + i))))
+                    .andExpect(status().isOk());
+        }
+        String fourth = mapper.writeValueAsString(Map.of("resumeVersionId", versionId, "label", "第四条"));
+        mockMvc.perform(post("/api/v1/resume-links").cookie(owner.cookie()).contentType(MediaType.APPLICATION_JSON).content(fourth))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.reason").value("RESUME_LINK_LIMIT"))
+                .andExpect(jsonPath("$.error.message").value(org.hamcrest.Matchers.containsString("升级专业版")));
+
+        jdbc.update("INSERT INTO account_memberships(account_id,plan,expires_at,source,version_no,created_at,updated_at) VALUES(?,'PRO',?,'TEST',0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)",
+                owner.accountId(), java.sql.Timestamp.from(java.time.Instant.now().plus(Duration.ofDays(30))));
+        mockMvc.perform(post("/api/v1/resume-links").cookie(owner.cookie()).contentType(MediaType.APPLICATION_JSON).content(fourth))
+                .andExpect(status().isOk());
+    }
+
     private String frozenVersion(Session owner) throws Exception {
         JsonNode created = data(mockMvc.perform(post("/api/v1/ai-resume/conversations")
                         .cookie(owner.cookie()).contentType(MediaType.APPLICATION_JSON)

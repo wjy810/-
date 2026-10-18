@@ -11,6 +11,7 @@ const route = useRoute()
     <RouterLink to="/" class="public-topbar__brand" aria-label="JobProof AI 首页"><BrandMark :size="30" /></RouterLink>
     <nav class="public-topbar__nav" aria-label="公共导航">
       <RouterLink to="/resume-templates" class="public-topbar__link">模板中心</RouterLink>
+      <RouterLink to="/pricing" class="public-topbar__link">价格</RouterLink>
       <RouterLink to="/updates" class="public-topbar__link">更新日志</RouterLink>
       <UiButton variant="ghost" size="sm" :to="{ name: 'home', query: { auth: 'login', next: route.fullPath } }">登录</UiButton>
       <UiButton size="sm" :to="{ name: 'home', query: { auth: 'register', next: route.fullPath } }">免费注册</UiButton>

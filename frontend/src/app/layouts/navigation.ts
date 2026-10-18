@@ -2,6 +2,7 @@ import type { Component } from 'vue'
 import type { FeatureKey } from '@/shared/api/capabilities'
 import {
   Bell,
+  Ticket,
   Compass,
   Cpu,
   FileText,
@@ -69,6 +70,7 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { key: 'admin-templates', to: '/admin/resume-templates', label: '模板运营', icon: Shapes },
       { key: 'admin-ai', to: '/admin/ai-channels', label: 'AI 通道', icon: Cpu },
+      { key: 'admin-redeem', to: '/admin/redeem-codes', label: '兑换码', icon: Ticket },
       { key: 'admin-changelog', to: '/admin/changelog', label: '更新发布', icon: PenSquare },
     ],
   },

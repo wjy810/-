@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { useRoute } from 'vue-router'
-import { Database, Lock, Palette, Sparkles } from 'lucide-vue-next'
+import { Crown, Database, Lock, Palette, Sparkles } from 'lucide-vue-next'
 
 const route = useRoute()
 const items = [
   { to: '/account', label: '账号与安全', icon: Lock },
+  { to: '/account/membership', label: '会员', icon: Crown },
   { to: '/account/appearance', label: '外观', icon: Palette },
   { to: '/account/ai', label: 'AI 用量', icon: Sparkles },
   { to: '/account/data-rights', label: '数据与隐私', icon: Database },
@@ -69,7 +70,7 @@ function isActive(to: string): boolean {
 /* Narrow screens: every section stays visible (no tab hidden off the edge of a scroller). */
 @media (max-width: 860px) {
   .settings-nav {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
     gap: 4px;
     padding: 4px;
     border-radius: var(--radius-lg);
@@ -91,7 +92,7 @@ function isActive(to: string): boolean {
 
 @media (max-width: 560px) {
   .settings-nav {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .settings-nav__item {

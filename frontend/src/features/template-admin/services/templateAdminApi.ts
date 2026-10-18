@@ -1,4 +1,5 @@
 import { api, apiDownload } from '@/shared/api/client'
+import { saveBlob } from '@/shared/lib/download'
 import type {
   DraftInput,
   MalwareScannerStatus,
@@ -46,15 +47,7 @@ export function uploadTemplateEvidence(input: {
 
 export async function downloadTemplateEvidence(id: string): Promise<void> {
   const result = await apiDownload(`${BASE}/evidence-artifacts/${id}/download`)
-  const url = URL.createObjectURL(result.blob)
-  const link = document.createElement('a')
-  try {
-    link.href = url
-    link.download = result.filename || 'template-evidence'
-    link.click()
-  } finally {
-    URL.revokeObjectURL(url)
-  }
+  saveBlob(result.blob, result.filename || 'template-evidence')
 }
 
 export function importTemplateAsset(input: {
