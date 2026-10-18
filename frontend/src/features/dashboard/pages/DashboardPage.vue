@@ -194,7 +194,7 @@ function noticeVisual(type: string) {
             >
               <span class="progress-row__icon progress-row__icon--match"><Target :size="17" /></span>
               <span class="progress-row__main">
-                <strong>{{ match.title }}</strong>
+                <strong>{{ match.title || '岗位描述待解析' }}</strong>
                 <small>{{ match.company || '岗位匹配' }} · {{ formatRelative(match.updatedAt) }}</small>
               </span>
               <span v-if="match.score != null" class="progress-row__score num">{{ match.score }}<small>分</small></span>
