@@ -531,6 +531,80 @@ class AiResumeWorkbenchIT {
     }
 
     @Test
+    void restoresAnExportedVersionAsANewRevisionButNeverAnAnonymousOne() throws Exception {
+        Session owner = seeker();
+        Session other = seeker();
+        JsonNode created = data(mockMvc.perform(post("/api/v1/ai-resume/conversations")
+                        .cookie(owner.cookie()).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"identityType\":\"GRADUATE\",\"title\":\"版本恢复验收\"}"))
+                .andExpect(status().isOk()).andReturn());
+        String conversationId = created.path("id").asText();
+        String masterId = created.path("masterId").asText();
+        JsonNode target = card(created, "TARGET_JOB");
+        JsonNode withTarget = data(mockMvc.perform(post("/api/v1/ai-resume/conversations/{id}/cards/{card}/submit",
+                        conversationId, target.path("id").asText()).cookie(owner.cookie())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"payload\":{\"targetJob\":\"Java 后端工程师\"},\"expectedVersion\":0}"))
+                .andExpect(status().isOk()).andReturn());
+
+        startAndAwaitWorkbenchPdf(owner, conversationId);
+        startAndAwaitWorkbenchPdf(owner, conversationId, "ANONYMOUS");
+        JsonNode versions = data(mockMvc.perform(get("/api/v1/resumes/{id}/versions", masterId).cookie(owner.cookie()))
+                .andExpect(status().isOk()).andReturn());
+        String exported = null;
+        String anonymous = null;
+        for (JsonNode version : versions) {
+            if ("AI_WORKBENCH_PDF".equals(version.path("source").asText())) exported = version.path("id").asText();
+            if ("AI_WORKBENCH_PDF_ANONYMOUS".equals(version.path("source").asText())) anonymous = version.path("id").asText();
+        }
+        assertThat(exported).isNotNull();
+        assertThat(anonymous).isNotNull();
+
+        // Edit after exporting, then bring the exported content back.
+        JsonNode education = card(withTarget, "EDUCATION");
+        data(mockMvc.perform(post("/api/v1/ai-resume/conversations/{id}/cards/{card}/submit",
+                        conversationId, education.path("id").asText()).cookie(owner.cookie())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"payload":{"items":[{"school":"导出之后才填的大学","major":"软件工程","degree":"本科"}]},"expectedVersion":0}
+                        """))
+                .andExpect(status().isOk()).andReturn());
+        int masterVersion = data(mockMvc.perform(get("/api/v1/resumes/{id}", masterId).cookie(owner.cookie()))
+                .andExpect(status().isOk()).andReturn()).path("version").asInt();
+
+        mockMvc.perform(post("/api/v1/ai-resume/conversations/{id}/versions/{version}/restore", conversationId, exported)
+                        .cookie(owner.cookie()).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"expectedVersion\":" + (masterVersion - 1) + "}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.reason").value("VERSION_CONFLICT"));
+        JsonNode restored = data(mockMvc.perform(post("/api/v1/ai-resume/conversations/{id}/versions/{version}/restore",
+                        conversationId, exported).cookie(owner.cookie()).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"expectedVersion\":" + masterVersion + "}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.source").value("VERSION_RESTORED"))
+                .andExpect(jsonPath("$.data.sourceObjectId").value(exported))
+                .andReturn());
+        assertThat(restored.path("content").toString()).contains("Java 后端工程师").doesNotContain("导出之后才填的大学");
+        JsonNode master = data(mockMvc.perform(get("/api/v1/resumes/{id}", masterId).cookie(owner.cookie()))
+                .andExpect(status().isOk()).andReturn());
+        assertThat(master.path("version").asInt()).isEqualTo(masterVersion + 1);
+        assertThat(master.path("education").asText("")).doesNotContain("导出之后才填的大学");
+        // The edit that was replaced is still in the history.
+        JsonNode history = data(mockMvc.perform(get("/api/v1/ai-resume/conversations/{id}/revisions", conversationId)
+                        .cookie(owner.cookie()))
+                .andExpect(status().isOk()).andReturn());
+        assertThat(history.toString()).contains("导出之后才填的大学");
+
+        mockMvc.perform(post("/api/v1/ai-resume/conversations/{id}/versions/{version}/restore", conversationId, anonymous)
+                        .cookie(owner.cookie()))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.reason").value("RESUME_VERSION_ANONYMOUS"));
+        mockMvc.perform(post("/api/v1/ai-resume/conversations/{id}/versions/{version}/restore", conversationId, exported)
+                        .cookie(other.cookie()))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
     void everyBuiltInTemplateExportsThroughTheRendererWithItsFrozenDesign() throws Exception {
         Session owner = seeker();
         JsonNode created = data(mockMvc.perform(post("/api/v1/ai-resume/conversations")

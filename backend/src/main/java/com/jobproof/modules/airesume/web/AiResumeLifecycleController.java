@@ -97,6 +97,14 @@ public class AiResumeLifecycleController {
         return ApiResponse.ok(lifecycle.restore(SecurityConfig.currentAccount(), conversationId, revisionId));
     }
 
+    @PostMapping("/conversations/{conversationId}/versions/{versionId}/restore")
+    public ApiResponse<RevisionView> restoreVersion(@PathVariable String conversationId, @PathVariable String versionId,
+            @RequestBody(required = false) RestoreVersionRequest request) {
+        return ApiResponse.ok(lifecycle.restoreFrozenVersion(SecurityConfig.currentAccount(), conversationId, versionId,
+                request == null ? null : request.expectedVersion()));
+    }
+
+    public record RestoreVersionRequest(Integer expectedVersion) {}
     public record LanguageBranchRequest(@Size(max = 255) String title, @NotBlank String languageCode) {}
     public record VersionRequest(@Min(0) int expectedVersion) {}
     public record TranslateRequest(@NotBlank @Size(max = 128) String requestId) {}

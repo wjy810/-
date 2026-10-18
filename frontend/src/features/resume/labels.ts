@@ -99,6 +99,17 @@ export function isPdfExportable(status?: string | null): boolean {
   return status === 'FROZEN'
 }
 
+/**
+ * A frozen version whose content can come back into the resume: not an anonymous export (its name and
+ * contact details were removed) and not a legacy version saved without structured content.
+ */
+export function isRestorableVersion(item: Pick<ResumeVersionView, 'status' | 'source' | 'snapshot'>): boolean {
+  if (item.status !== 'FROZEN') return false
+  if (item.source?.endsWith('_ANONYMOUS') || item.snapshot?.exportMode === 'ANONYMOUS') return false
+  const content = item.snapshot?.content
+  return Boolean(content && typeof content === 'object' && Object.keys(content).length)
+}
+
 const TASK_STATE: Record<string, string> = {
   PENDING: '排队中',
   RUNNING: '正在生成',

@@ -425,6 +425,14 @@ export function restoreAiResumeRevision(conversationId: string, revisionId: stri
   )
 }
 
+/** Bring a frozen (exported) version's content back as a new revision; the replaced content stays in history. */
+export function restoreAiResumeVersion(conversationId: string, versionId: string, expectedVersion: number): Promise<AiResumeRevision> {
+  return api<AiResumeRevision>(
+    `${ROOT}/conversations/${encodeURIComponent(conversationId)}/versions/${encodeURIComponent(versionId)}/restore`,
+    { method: 'POST', body: JSON.stringify({ expectedVersion }) },
+  )
+}
+
 export function listAiResumeBranches(conversationId: string): Promise<AiResumeBranch[]> {
   return api<AiResumeBranch[]>(`${ROOT}/conversations/${encodeURIComponent(conversationId)}/branches`)
 }

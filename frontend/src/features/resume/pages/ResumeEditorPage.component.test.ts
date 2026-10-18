@@ -12,6 +12,10 @@ vi.mock('../services/resumeApi', async (importOriginal) => ({
   ...api,
 }))
 vi.mock('@/features/career-library/services/careerLibraryApi', () => career)
+const ai = vi.hoisted(() => ({ ensureAiResume: vi.fn(), restoreAiResumeVersion: vi.fn() }))
+vi.mock('@/features/ai-resume/services/aiResumeApi', () => ai)
+const dialogs = vi.hoisted(() => ({ confirm: vi.fn() }))
+vi.mock('@/shared/ui/confirm', () => dialogs)
 vi.mock('vue-router', () => ({
   useRoute: () => ({ params: { id: 'resume-1' }, query: {}, hash: '' }),
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
@@ -51,6 +55,8 @@ async function openFreeze(patch: Partial<ResumeMasterView>) {
 
 beforeEach(() => {
   Object.values(api).forEach((mock) => mock.mockReset())
+  Object.values(ai).forEach((mock) => mock.mockReset())
+  dialogs.confirm.mockReset()
   career.fetchCareerRecords.mockReset().mockResolvedValue({ items: [], total: 0, page: 0, size: 100 })
   api.fetchCurrentResumeLayout.mockResolvedValue({ selected: false, layout: null })
 })
@@ -85,5 +91,30 @@ describe('ResumeEditorPage (版本与导出)', () => {
     expect(await openFreeze({ pendingCandidateIds: ['c-1', 'c-2'] })).toContain('2 条未处理')
     expect(await openFreeze({ pendingCandidateIds: [] })).toContain('没有')
     expect(await openFreeze({ pendingCandidateIds: undefined })).toContain('无法确认')
+  })
+
+  it('restores a version with its content through the workbench, and offers nothing for anonymous exports', async () => {
+    const content = { basics: { name: '张三' }, education: [{ school: '示例大学' }] }
+    api.fetchResume.mockResolvedValue(master({
+      versions: [
+        { id: 'v-anon', masterId: 'resume-1', status: 'FROZEN', source: 'AI_WORKBENCH_PDF_ANONYMOUS', snapshot: { content, exportMode: 'ANONYMOUS' }, immutable: true, version: 1, createdAt: '2026-09-03T08:00:00Z' },
+        { id: 'v-full', masterId: 'resume-1', status: 'FROZEN', source: 'AI_WORKBENCH_PDF', snapshot: { content }, immutable: true, version: 1, createdAt: '2026-09-02T08:00:00Z' },
+        { id: 'v-legacy', masterId: 'resume-1', status: 'FROZEN', source: 'USER_FREEZE', snapshot: { content: {} }, immutable: true, version: 1, createdAt: '2026-09-01T08:00:00Z' },
+      ],
+    }))
+    ai.ensureAiResume.mockResolvedValue({ id: 'conv-1' })
+    ai.restoreAiResumeVersion.mockResolvedValue({ id: 'rev-9', source: 'VERSION_RESTORED' })
+    dialogs.confirm.mockResolvedValue(true)
+    const wrapper = mount(ResumeEditorPage, { global: { stubs } })
+    await flushPromises()
+    const rows = wrapper.findAll('[data-testid="version-row"]')
+    expect(rows.map((row) => row.find('[data-testid="restore-version"]').exists())).toEqual([false, true, false])
+
+    await rows[1]!.get('[data-testid="restore-version"]').trigger('click')
+    await flushPromises()
+    expect(dialogs.confirm).toHaveBeenCalledWith(expect.objectContaining({ title: '把简历内容恢复到版本 2？' }))
+    expect(ai.ensureAiResume).toHaveBeenCalledWith('resume-1')
+    expect(ai.restoreAiResumeVersion).toHaveBeenCalledWith('conv-1', 'v-full', 7)
+    expect(api.fetchResume).toHaveBeenCalledTimes(2)
   })
 })

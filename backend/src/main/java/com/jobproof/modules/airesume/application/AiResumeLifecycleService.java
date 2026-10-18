@@ -15,6 +15,7 @@ import com.jobproof.modules.resume.infra.ResumeMasterEntity;
 import com.jobproof.modules.resume.infra.ResumeMasterJpaRepository;
 import com.jobproof.modules.resume.domain.ResumeStructuredContent;
 import com.jobproof.shared.auth.CurrentAccount;
+import com.jobproof.shared.concurrency.Versions;
 import com.jobproof.shared.error.AppException;
 import com.jobproof.shared.id.Ids;
 import com.jobproof.shared.time.ClockPort;
@@ -356,17 +357,55 @@ public class AiResumeLifecycleService {
         }
         ResumeMasterEntity master = masters.findById(owner.masterId())
                 .orElseThrow(() -> AppException.user("RESUME_NOT_FOUND", "简历主档不存在"));
-        Map<String, Object> content = readMap(source.contentJson());
-        projectLegacy(master, content);
+        return restoreContent(owner, master, source.contentJson(), revisionId);
+    }
+
+    /**
+     * Brings back the content of a frozen version (one that was exported or submitted) as a new revision
+     * of the base branch. Nothing is lost: the content it replaces stays in the revision history.
+     */
+    @Transactional
+    public RevisionView restoreFrozenVersion(CurrentAccount current, String conversationId, String versionId,
+            Integer expectedVersion) {
+        ConversationOwner owner = owner(current, conversationId);
+        String branchType = jdbc.query("SELECT branch_type FROM resume_branches WHERE id=?",
+                (rs, n) -> rs.getString("branch_type"), owner.branchId()).stream().findFirst().orElse("");
+        // Frozen versions hold the main resume; restoring one into a language branch would mix languages.
+        if (!"BASE".equals(branchType)) {
+            throw AppException.conflict("AI_REVISION_BRANCH_MISMATCH", "请先切回主简历，再恢复历史版本");
+        }
+        FrozenVersion version = jdbc.query("SELECT source,snapshot_json FROM resume_versions WHERE id=? AND account_id=? AND master_id=?",
+                (rs, n) -> new FrozenVersion(rs.getString("source"), rs.getString("snapshot_json")),
+                versionId, owner.accountId(), owner.masterId()).stream().findFirst()
+                .orElseThrow(() -> AppException.user("RESUME_VERSION_NOT_FOUND", "简历版本不存在"));
+        Map<String, Object> snapshot = readMapNullable(version.snapshotJson());
+        if (String.valueOf(version.source()).endsWith("_ANONYMOUS") || "ANONYMOUS".equals(snapshot.get("exportMode"))) {
+            throw AppException.conflict("RESUME_VERSION_ANONYMOUS", "匿名导出的版本去掉了姓名和联系方式，不能用来恢复");
+        }
+        if (!(snapshot.get("content") instanceof Map<?, ?> content) || content.isEmpty()) {
+            throw AppException.conflict("RESUME_VERSION_NO_CONTENT", "这个版本没有保存结构化内容，无法恢复");
+        }
+        ResumeMasterEntity master = masters.findById(owner.masterId())
+                .orElseThrow(() -> AppException.user("RESUME_NOT_FOUND", "简历主档不存在"));
+        if ("ARCHIVED".equals(master.getStatus())) {
+            throw AppException.conflict("RESUME_ARCHIVED", "已归档简历不能恢复版本，请先恢复简历");
+        }
+        Versions.assertExpected(expectedVersion, master.getVersionNo());
+        return restoreContent(owner, master, json(content), versionId);
+    }
+
+    private RevisionView restoreContent(ConversationOwner owner, ResumeMasterEntity master, String contentJson,
+            String sourceObjectId) {
+        projectLegacy(master, readMap(contentJson));
         Instant now = clock.now();
         master.setContentSchemaVersion(SCHEMA);
-        master.setContentJson(source.contentJson());
+        master.setContentJson(contentJson);
         master.setVersionNo(master.getVersionNo() + 1);
         master.setUpdatedAt(now);
         masters.save(master);
-        String newId = createRevision(owner, source.contentJson(), "VERSION_RESTORED", revisionId, now);
+        String newId = createRevision(owner, contentJson, "VERSION_RESTORED", sourceObjectId, now);
         return new RevisionView(newId, owner.branchId(), nextRevisionNo(owner.branchId()) - 1,
-                "VERSION_RESTORED", revisionId, readNode(source.contentJson()), sha256(source.contentJson()), now);
+                "VERSION_RESTORED", sourceObjectId, readNode(contentJson), sha256(contentJson), now);
     }
 
     private ConversationOwner owner(CurrentAccount current, String conversationId) {
@@ -623,6 +662,7 @@ public class AiResumeLifecycleService {
             String jobVersionId, String currentRevisionId, String sourceRevisionId, String status,
             String reviewMetadataJson, int versionNo) {}
     private record RevisionContent(String branchId, String contentJson) {}
+    private record FrozenVersion(String source, String snapshotJson) {}
     private record TranslationResult(Map<String, Object> fields, List<String> unconfirmedProperNames) {}
 
     public record RevisionView(String id, String branchId, int revisionNo, String source, String sourceObjectId,

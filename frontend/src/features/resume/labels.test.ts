@@ -3,6 +3,7 @@ import test from 'node:test'
 import {
   glossMasterStatus,
   glossVersionStatus,
+  isRestorableVersion,
   masterSourceLabel,
   pdfDownloadDisabledReason,
   versionOrdinals,
@@ -32,4 +33,14 @@ test('download reasons are plain sentences without task enums or field names', (
   assert.doesNotMatch(pdfDownloadDisabledReason({ status: 'RUNNING' }) ?? '', /RUNNING/)
   assert.doesNotMatch(pdfDownloadDisabledReason({ status: 'SUCCEEDED', fileId: '' }) ?? '', /fileId/)
   assert.equal(pdfDownloadDisabledReason({ status: 'SUCCEEDED', fileId: 'file-1' }), null)
+})
+
+test('only frozen versions that still hold the full content can be restored', () => {
+  const content = { basics: { name: '张三' }, education: [] }
+  assert.equal(isRestorableVersion({ status: 'FROZEN', source: 'AI_WORKBENCH_PDF', snapshot: { content } }), true)
+  assert.equal(isRestorableVersion({ status: 'FROZEN', source: 'AI_WORKBENCH_PDF_ANONYMOUS', snapshot: { content } }), false)
+  assert.equal(isRestorableVersion({ status: 'FROZEN', source: 'USER_FREEZE', snapshot: { content, exportMode: 'ANONYMOUS' } }), false)
+  assert.equal(isRestorableVersion({ status: 'FROZEN', source: 'USER_FREEZE', snapshot: { content: {} } }), false)
+  assert.equal(isRestorableVersion({ status: 'FROZEN', source: 'USER_FREEZE', snapshot: null }), false)
+  assert.equal(isRestorableVersion({ status: 'PENDING_USER_CONFIRMATION', source: 'CUSTOMIZE', snapshot: { content } }), false)
 })

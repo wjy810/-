@@ -17,6 +17,7 @@ import PageState from '@/shared/ui/PageState.vue'
 import UiButton from '@/shared/ui/UiButton.vue'
 import UiEmptyState from '@/shared/ui/UiEmptyState.vue'
 import UiSkeleton from '@/shared/ui/UiSkeleton.vue'
+import { confirm } from '@/shared/ui/confirm'
 import { useToastFeedback } from '@/shared/ui/toast'
 import { errorMessage, isApiClientError, isForbidden, isVersionConflict } from '@/shared/api/types'
 import type { TaskView } from '@/shared/api/task'
@@ -24,6 +25,7 @@ import { isAbortError, pollTask } from '@/shared/lib/pollTask'
 import { formatWhen } from '@/shared/lib/datetime'
 import { useLoadState } from '@/shared/lib/useLoadState'
 import type { IconName } from '@/shared/ui/icons'
+import { ensureAiResume, restoreAiResumeVersion } from '@/features/ai-resume/services/aiResumeApi'
 import { fetchCareerRecords } from '@/features/career-library/services/careerLibraryApi'
 import type { CareerRecord } from '@/features/career-library/types'
 import ResumeCompareModal from '../components/ResumeCompareModal.vue'
@@ -34,6 +36,7 @@ import {
   glossMasterStatus,
   glossVersionStatus,
   isPdfExportable,
+  isRestorableVersion,
   masterSourceLabel,
   outcomeResolved,
   pdfDownloadDisabledReason,
@@ -349,6 +352,28 @@ async function onRestoreMaster(): Promise<void> {
   }
 }
 
+/** Put a frozen version's content back into the resume; what it replaces stays in the workbench history. */
+async function onRestoreVersion(item: ResumeVersionView): Promise<void> {
+  if (!master.value) return
+  const ok = await confirm({
+    title: `把简历内容恢复到${versionLabel(item)}？`,
+    message: '简历会换成这个版本冻结时的内容，排版与模板不变。现在的内容会保留在工作台的修订历史里，随时可以再恢复回来。',
+    confirmText: '恢复内容',
+  })
+  if (!ok || !master.value) return
+  pending.value = `${item.id}-restore`
+  try {
+    const conversation = await ensureAiResume(master.value.id)
+    await restoreAiResumeVersion(conversation.id, item.id, master.value.version)
+    notice.value = `已恢复到${versionLabel(item)}，原内容保留在修订历史中。`
+    await reload()
+  } catch (error) {
+    handleWriteError(error, '恢复版本失败')
+  } finally {
+    pending.value = ''
+  }
+}
+
 async function onConfirmVersion(item: ResumeVersionView): Promise<void> {
   pending.value = `${item.id}-confirm`
   try {
@@ -534,6 +559,17 @@ onUnmounted(stopPoll)
                     >
                       <AppIcon name="download" :size="13" />
                       导出 Word
+                    </AppButton>
+                    <AppButton
+                      v-if="isRestorableVersion(item) && !archived"
+                      variant="ghost"
+                      :disabled="Boolean(pending)"
+                      :pending="pending === `${item.id}-restore`"
+                      data-testid="restore-version"
+                      @click="onRestoreVersion(item)"
+                    >
+                      <AppIcon name="rotate-ccw" :size="13" />
+                      恢复此版本
                     </AppButton>
                     <button
                       v-if="item.status !== 'ARCHIVED'"
