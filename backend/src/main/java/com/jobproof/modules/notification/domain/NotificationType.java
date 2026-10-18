@@ -7,5 +7,6 @@ public enum NotificationType {
     DATA_DELETION_PROGRESS,
     PRODUCT_UPDATE,
     SECURITY,
-    DATA_RIGHTS
+    DATA_RIGHTS,
+    APPLICATION_ACTIVITY
 }

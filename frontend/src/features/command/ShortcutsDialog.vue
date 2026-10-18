@@ -13,6 +13,7 @@ const SECTIONS: Array<{ title: string; items: Array<{ keys: string[]; label: str
       { keys: ['?'], label: '显示快捷键' },
       { keys: ['g', 'd'], label: '前往工作台', then: true },
       { keys: ['g', 'r'], label: '前往我的简历', then: true },
+      { keys: ['g', 'a'], label: '前往投递追踪', then: true },
       { keys: ['g', 'm'], label: '前往岗位匹配', then: true },
       { keys: ['g', 'p'], label: '前往职业规划', then: true },
       { keys: ['g', 'i'], label: '前往模拟面试', then: true },

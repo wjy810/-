@@ -53,6 +53,13 @@ export const routes: RouteRecordRaw[] = [
     props: { kind: 'terms' },
   },
   {
+    // A shared resume link (docs/phase2/01): public, no app chrome, never indexed.
+    path: '/r/:token',
+    name: 'shared-resume',
+    meta: { title: '简历' },
+    component: () => import('@/features/applications/pages/SharedResumePage.vue'),
+  },
+  {
     path: '/privacy',
     name: 'privacy',
     meta: { title: '隐私政策' },
@@ -173,6 +180,12 @@ export const routes: RouteRecordRaw[] = [
         name: 'resume-editor',
         meta: authed,
         component: () => import('@/features/ai-resume/pages/AiResumeResumeRedirectPage.vue'),
+      },
+      {
+        path: 'applications',
+        name: 'applications',
+        meta: { ...authed, title: '投递追踪' },
+        component: () => import('@/features/applications/pages/ApplicationsPage.vue'),
       },
       {
         path: 'job-match',

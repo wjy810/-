@@ -15,7 +15,7 @@ class FlywayMigrationIT {
     void freshDatabaseMigratesThroughLatestVersion() {
         Flyway flyway = flyway("fresh-" + UUID.randomUUID(), null);
 
-        assertThat(flyway.migrate().targetSchemaVersion).isEqualTo("72");
+        assertThat(flyway.migrate().targetSchemaVersion).isEqualTo("73");
     }
 
     @Test
@@ -25,7 +25,7 @@ class FlywayMigrationIT {
         assertThat(version39.migrate().targetSchemaVersion).isEqualTo("39");
 
         Flyway latest = flyway(database, null);
-        assertThat(latest.migrate().targetSchemaVersion).isEqualTo("72");
+        assertThat(latest.migrate().targetSchemaVersion).isEqualTo("73");
     }
 
     @Test
@@ -91,7 +91,7 @@ class FlywayMigrationIT {
         jdbc.update(insert, "f1", "p1", "____.pdf", "____.pdf");
         jdbc.update(insert, "f2", "p2", "resume_2026.pdf", "resume_2026.pdf");
 
-        assertThat(flyway(database, null).migrate().targetSchemaVersion).isEqualTo("72");
+        assertThat(flyway(database, MigrationVersion.fromVersion("72")).migrate().targetSchemaVersion).isEqualTo("72");
 
         assertThat(jdbc.queryForObject("SELECT display_name FROM career_library_files WHERE id='f1'", String.class)).isEqualTo("未命名文件.pdf");
         assertThat(jdbc.queryForObject("SELECT display_name FROM career_library_files WHERE id='f2'", String.class)).isEqualTo("resume_2026.pdf");

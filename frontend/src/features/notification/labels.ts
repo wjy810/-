@@ -17,6 +17,7 @@ export const NOTIFICATION_TYPE_GLOSS: Record<string, string> = {
   PRODUCT_UPDATE: '产品更新',
   SECURITY: '安全通知',
   DATA_RIGHTS: '数据权利',
+  APPLICATION_ACTIVITY: '简历回执',
 }
 
 export function glossNotificationStatus(status?: string | null): string {

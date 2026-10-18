@@ -44,3 +44,11 @@ test('all Vue date controls use the shared calendar instead of native picker pop
   scan(sourceRoot)
   assert.deepEqual(offenders, [])
 })
+
+test('a plain date parses only real days and reads as a Chinese date', async () => {
+  const { formatDateDisplay, parseDateValue } = await import('./datePicker.ts')
+  assert.deepEqual(parseDateValue('2026-10-18'), { year: 2026, month: 9, day: 18, hour: 0, minute: 0 })
+  assert.equal(parseDateValue('2026-02-30'), null)
+  assert.equal(parseDateValue('2026-10-18T09:00'), null)
+  assert.equal(formatDateDisplay('2026-10-18'), '2026年10月18日')
+})

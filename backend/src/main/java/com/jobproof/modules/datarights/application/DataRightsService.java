@@ -380,7 +380,7 @@ public class DataRightsService {
             root.put(contributor.moduleKey(), contributor.contribute(accountId));
             included.add(contributor.moduleKey());
         }
-        List<String> pending = new ArrayList<>(List.of("careerLibrary", "careerPlanning", "job", "resume"));
+        List<String> pending = new ArrayList<>(List.of("careerLibrary", "careerPlanning", "job", "resume", "applications"));
         pending.removeAll(included);
         root.put("included", included);
         root.put("pendingModules", pending);

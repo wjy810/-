@@ -8,6 +8,7 @@ export type NotificationType =
   | 'PRODUCT_UPDATE'
   | 'SECURITY'
   | 'DATA_RIGHTS'
+  | 'APPLICATION_ACTIVITY'
 
 export type NotificationView = {
   id: string

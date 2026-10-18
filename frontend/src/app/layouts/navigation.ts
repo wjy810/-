@@ -11,6 +11,7 @@ import {
   LayoutTemplate,
   Mic,
   PenSquare,
+  Send,
   Settings,
   Shapes,
   Target,
@@ -38,6 +39,7 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { key: 'dashboard', to: '/dashboard', label: '工作台', icon: LayoutDashboard, shortcut: 'G D' },
       { key: 'resumes', to: '/resumes', label: '简历', icon: FileText, match: ['/ai-resume', '/resume-home'], shortcut: 'G R' },
+      { key: 'applications', to: '/applications', label: '投递追踪', icon: Send, shortcut: 'G A' },
       { key: 'job-match', to: '/job-match', label: '岗位匹配', icon: Target, shortcut: 'G M', feature: 'jobMatch' },
       { key: 'career-planning', to: '/career-planning', label: '职业规划', icon: Compass, shortcut: 'G P', feature: 'careerPlanning' },
       { key: 'mock-interviews', to: '/mock-interviews', label: '模拟面试', icon: Mic, shortcut: 'G I' },

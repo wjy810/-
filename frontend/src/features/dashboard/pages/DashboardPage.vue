@@ -2,7 +2,7 @@
 import { computed, type Component } from 'vue'
 import { useQuery } from '@tanstack/vue-query'
 import {
-  ArrowRight, Bell, CheckCircle2, ChevronRight, Circle, CircleAlert, Compass, Download, FileText, Megaphone, Mic, Plus,
+  ArrowRight, Bell, CalendarClock, CheckCircle2, ChevronRight, Circle, CircleAlert, Compass, Download, Eye, FileText, Megaphone, Mic, Plus,
   ShieldCheck, Sparkles, Target, Trash2,
 } from 'lucide-vue-next'
 import UiButton from '@/shared/ui/UiButton.vue'
@@ -12,7 +12,7 @@ import UiProgressRing from '@/shared/ui/UiProgressRing.vue'
 import UiSkeleton from '@/shared/ui/UiSkeleton.vue'
 import UiBadge from '@/shared/ui/UiBadge.vue'
 import type { IllustrationName } from '@/shared/ui/illustrations'
-import { formatRelative, greeting } from '@/shared/lib/datetime'
+import { formatRelative, formatWhen, greeting } from '@/shared/lib/datetime'
 import { useSessionStore } from '@/stores/session'
 import { listNotifications } from '@/features/notification/services/notificationApi'
 import { notificationKeys } from '@/features/notification/queries'
@@ -48,8 +48,10 @@ const START_STEPS: Array<{ title: string; text: string; art: IllustrationName; t
 const QUICK: Array<{ title: string; text: string; art: IllustrationName; to: string }> = [
   { title: '新建简历', text: 'AI 引导 · 实时 A4', art: 'empty-resume', to: '/ai-resume/new' },
   { title: '岗位匹配', text: '粘贴 JD 逐条对照', art: 'dash-match', to: '/job-match/new' },
+  { title: '记录投递', text: '专属链接 · 查看回执', art: 'resume-receipt', to: '/applications?new=1' },
   { title: '模拟面试', text: '文字 / 语音作答', art: 'empty-interview', to: '/mock-interviews/new' },
   { title: '能力画布', text: '规划成长路径', art: 'dash-planning', to: '/career-planning/new' },
+  { title: '模板中心', text: '挑一套合适的版式', art: 'empty-templates', to: '/resume-templates' },
 ]
 
 const MATCH_STATUS: Record<string, { label: string; tone: 'success' | 'primary' | 'warning' | 'neutral' | 'danger' }> = {
@@ -76,6 +78,7 @@ const NOTICE_VISUAL: Record<string, { icon: Component; tone: string }> = {
   DATA_RIGHTS: { icon: ShieldCheck, tone: 'primary' },
   PRODUCT_UPDATE: { icon: Megaphone, tone: 'accent' },
   SECURITY: { icon: ShieldCheck, tone: 'warning' },
+  APPLICATION_ACTIVITY: { icon: Eye, tone: 'success' },
 }
 
 function noticeVisual(type: string) {
@@ -187,6 +190,32 @@ function noticeVisual(type: string) {
           <header class="block__head"><h2>进行中</h2></header>
           <div class="surface-card progress-list">
             <RouterLink
+              v-for="open in data.applications?.recentOpens.slice(0, 2) ?? []"
+              :key="`open-${open.id}`"
+              :to="`/applications?focus=${encodeURIComponent(open.id)}`"
+              class="progress-row"
+            >
+              <span class="progress-row__icon progress-row__icon--receipt"><Eye :size="17" /></span>
+              <span class="progress-row__main">
+                <strong>{{ open.company }}打开了你的简历</strong>
+                <small>{{ open.positionTitle }} · {{ formatRelative(open.lastViewedAt) }} · 共 {{ open.viewCount }} 次</small>
+              </span>
+              <UiBadge tone="success" size="sm">回执</UiBadge>
+            </RouterLink>
+            <RouterLink
+              v-for="step in data.applications?.nextSteps.slice(0, 2) ?? []"
+              :key="`step-${step.id}`"
+              :to="`/applications?focus=${encodeURIComponent(step.id)}`"
+              class="progress-row"
+            >
+              <span class="progress-row__icon progress-row__icon--step"><CalendarClock :size="17" /></span>
+              <span class="progress-row__main">
+                <strong>{{ step.nextStep }}</strong>
+                <small>{{ step.company }} · {{ formatWhen(step.nextStepAt) }}</small>
+              </span>
+              <UiBadge :tone="new Date(step.nextStepAt).getTime() < Date.now() ? 'danger' : 'warning'" size="sm">{{ new Date(step.nextStepAt).getTime() < Date.now() ? '已逾期' : '待办' }}</UiBadge>
+            </RouterLink>
+            <RouterLink
               v-for="match in data.jobMatches?.recent.slice(0, 3) ?? []"
               :key="match.id"
               :to="matchLink(match)"
@@ -226,11 +255,11 @@ function noticeVisual(type: string) {
               <span class="progress-row__bar" :style="{ '--p': (canvas.progress || 0) / 100 }" />
             </RouterLink>
             <div
-              v-if="!(data.jobMatches?.recent.length) && !data.mockInterviews?.resumable && !(data.careerCanvases?.recent.length)"
+              v-if="!(data.jobMatches?.recent.length) && !data.mockInterviews?.resumable && !(data.careerCanvases?.recent.length) && !(data.applications?.recentOpens.length) && !(data.applications?.nextSteps.length)"
               class="progress-empty"
             >
               <UiIllustration name="empty-progress" :size="80" />
-              <p>还没有进行中的匹配、面试或规划。</p>
+              <p>还没有进行中的投递、匹配、面试或规划。</p>
             </div>
           </div>
         </section>
@@ -634,6 +663,16 @@ function noticeVisual(type: string) {
 .progress-row__icon--interview {
   background: var(--color-accent-soft);
   color: var(--color-accent-text);
+}
+
+.progress-row__icon--receipt {
+  color: var(--color-success-text);
+  background: var(--color-success-soft);
+}
+
+.progress-row__icon--step {
+  color: var(--color-warning-text);
+  background: var(--color-warning-soft);
 }
 
 .progress-row__icon--plan {

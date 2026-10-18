@@ -660,6 +660,43 @@ public class ResumeService implements DeletionModuleHandler, AccountExportContri
                         master.getUpdatedAt()));
     }
 
+    /**
+     * Render input of one frozen version for a public resume link (docs/phase2/01 投递追踪). The link's own
+     * module has already checked the token; this only refuses versions that are no longer frozen.
+     * With {@code hideContact} the phone, email, links and photo are left out.
+     */
+    @Transactional(readOnly = true)
+    public Optional<SharedRenderView> sharedRender(String accountId, String versionId, boolean hideContact) {
+        ResumeVersionEntity version = versions.findById(versionId)
+                .filter(found -> found.getAccountId().equals(accountId))
+                .filter(found -> ResumeVersionStatus.parse(found.getStatus()).pdfExportable())
+                .orElse(null);
+        if (version == null) return Optional.empty();
+        try {
+            return layoutCoordinator.renderContext(accountId, version)
+                    .filter(context -> context.html() != null)
+                    .map(context -> new SharedRenderView(context.templateId(),
+                            context.html().design().toJson(objectMapper),
+                            hideContact ? withoutContact(context.html().content()) : context.html().content(),
+                            hideContact ? null : context.html().photoDataUrl(),
+                            context.html().pageLimit(), readSnapshotTitle(version.getSnapshotJson())));
+        } catch (AppException missingLayout) {
+            return Optional.empty();
+        }
+    }
+
+    private JsonNode withoutContact(JsonNode content) {
+        JsonNode copy = content == null ? objectMapper.createObjectNode() : content.deepCopy();
+        if (copy.path("basics") instanceof com.fasterxml.jackson.databind.node.ObjectNode basics) {
+            for (String key : List.of("phone", "email", "wechat", "qq", "links", "personalLinks", "website",
+                    "url", "github", "linkedin")) {
+                basics.remove(key);
+            }
+        }
+        if (copy instanceof com.fasterxml.jackson.databind.node.ObjectNode root) root.putNull("photoFileId");
+        return copy;
+    }
+
     /** Step 3 of an HTML-template export: store the rendered PDF and its checks. */
     @Transactional
     public void completeHtmlPdfExport(HtmlPdfJob job, ResumeRenderPort.RenderedDocument pdf,
@@ -1483,6 +1520,10 @@ public class ResumeService implements DeletionModuleHandler, AccountExportContri
     }
 
     public record KeyOutcomeWrite(String id, String text, String evidenceId, Boolean waiveNoEvidence) {
+    }
+
+    public record SharedRenderView(String templateId, JsonNode design, JsonNode content, String photo,
+            int pageLimit, String title) {
     }
 
     public record ThumbnailView(

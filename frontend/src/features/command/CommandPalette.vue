@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router'
 import { pinyin } from 'pinyin-pro'
 import { DialogContent, DialogOverlay, DialogPortal, DialogRoot, DialogTitle, VisuallyHidden } from 'reka-ui'
 import {
-  ArrowRight, Compass, CornerDownLeft, Database, FileText, Keyboard, LogOut, Mic, Moon, Palette, Plus, Search, Sparkles, Target,
+  ArrowRight, Compass, CornerDownLeft, Database, FileText, Keyboard, LogOut, Mic, Moon, Palette, Plus, Search, Send, Sparkles, Target,
 } from 'lucide-vue-next'
 import UiKbd from '@/shared/ui/UiKbd.vue'
 import { useCommandPaletteStore } from '@/stores/commandPalette'
@@ -59,6 +59,7 @@ const baseCommands = computed<Command[]>(() => {
   ]
   const actions: Command[] = [
     withPinyin({ id: 'act:new-resume', group: '操作', title: '用 AI 新建简历', icon: Plus, keywords: ['create', 'resume'], run: go('/ai-resume/new') }),
+    withPinyin({ id: 'act:new-application', group: '操作', title: '记录一次投递', icon: Send, keywords: ['投递', 'apply', 'track'], run: go('/applications?new=1') }),
     withPinyin({ id: 'act:new-match', group: '操作', title: '新建岗位匹配', icon: Target, keywords: ['JD', 'match'], run: go('/job-match/new') }),
     withPinyin({ id: 'act:new-interview', group: '操作', title: '开始模拟面试', icon: Mic, keywords: ['interview'], run: go('/mock-interviews/new') }),
     withPinyin({ id: 'act:new-canvas', group: '操作', title: '新建能力画布', icon: Compass, keywords: ['规划', 'career'], run: go('/career-planning/new') }),

@@ -64,6 +64,18 @@ export function parseDateTimeValue(value?: string | null): DateTimeParts | null 
   return parts
 }
 
+/** "2026-08-24" → parts at midnight; null when it is not a real day. */
+export function parseDateValue(value?: string | null): DateTimeParts | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value ?? '')
+  if (!match) return null
+  return parseDateTimeValue(`${match[1]}-${match[2]}-${match[3]}T00:00`)
+}
+
+export function formatDateDisplay(value?: string | null): string {
+  const parsed = parseDateValue(value)
+  return parsed ? `${parsed.year}年${parsed.month + 1}月${parsed.day}日` : ''
+}
+
 export function formatMonthDisplay(value?: string | null): string {
   const parsed = parseMonthValue(value)
   return parsed ? `${parsed.year}年${parsed.month + 1}月` : ''

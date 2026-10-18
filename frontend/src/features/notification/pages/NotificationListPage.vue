@@ -113,6 +113,8 @@ function typeMeta(type?: string): RowMeta {
       return { icon: 'notification-permission', cls: 'ink' }
     case 'DATA_RIGHTS':
       return { icon: 'notification-data-rights', cls: 'ink' }
+    case 'APPLICATION_ACTIVITY':
+      return { icon: 'notification-task-success', cls: 'green' }
     default:
       return { icon: 'notification-system-update', cls: 'blue' }
   }

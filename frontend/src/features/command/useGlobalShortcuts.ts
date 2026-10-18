@@ -1,6 +1,6 @@
 /**
  * App-wide keyboard shortcuts (docs/04 §7.4):
- *   mod+K command palette · ? shortcut help · "G then D/R/M/P/I" quick navigation.
+ *   mod+K command palette · ? shortcut help · "G then D/R/A/M/P/I" quick navigation.
  */
 import { onBeforeUnmount, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
@@ -11,6 +11,7 @@ import { useSessionStore } from '@/stores/session'
 const GO_TARGETS: Record<string, string> = {
   d: '/dashboard',
   r: '/resumes',
+  a: '/applications',
   m: '/job-match',
   p: '/career-planning',
   i: '/mock-interviews',

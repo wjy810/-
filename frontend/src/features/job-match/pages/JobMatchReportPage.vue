@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { AlertTriangle, ArrowRight, BookOpenCheck, Check, CheckCircle2, ChevronRight, Download, FilePenLine, FileSearch, GitCompareArrows, GraduationCap, History, LoaderCircle, MessageCircle, RefreshCw, ShieldCheck, Target, ThumbsDown, ThumbsUp, TriangleAlert } from 'lucide-vue-next'
+import { AlertTriangle, ArrowRight, BookOpenCheck, Check, CheckCircle2, ChevronRight, Download, FilePenLine, FileSearch, GitCompareArrows, GraduationCap, History, LoaderCircle, MessageCircle, RefreshCw, Send, ShieldCheck, Target, ThumbsDown, ThumbsUp, TriangleAlert } from 'lucide-vue-next'
 import AppDrawer from '@/shared/ui/AppDrawer.vue'
 import AppModal from '@/shared/ui/AppModal.vue'
 import AppSelect from '@/shared/ui/AppSelect.vue'
@@ -184,6 +184,14 @@ function claimMark(claim?: JobMatchClaim | null) {
   return null
 }
 const markedClaims = computed(() => (report.value?.claims ?? []).filter(claim => claimMark(claim)).length)
+/** Carry this job into the application tracker, linked to the report so its score shows on the card. */
+function recordApplication() {
+  const current = match.value
+  if (!current) return
+  void router.push({ path: '/applications', query: {
+    new: '1', company: current.company || '', position: current.title || '', location: current.location || '', jobMatchId: current.id,
+  } })
+}
 function openStep(step: NextStep) {
   if (step.key === 'resume') void optimize()
   else if (step.key === 'plan') void setActiveTab('plan', true)
@@ -294,6 +302,7 @@ onMounted(() => {
           <button class="jm-secondary" type="button" aria-label="重新分析" @click="router.push({ name: 'job-match-new', query: { id: match?.id } })"><RefreshCw :size="16" /><span>重新分析</span></button>
           <button class="jm-secondary" type="button" aria-label="版本记录" @click="openVersions"><History :size="16" /><span>版本</span></button>
           <button class="jm-secondary" type="button" aria-label="导出报告" @click="exportOpen = true"><Download :size="16" /><span>导出报告</span></button>
+          <button class="jm-secondary" type="button" aria-label="记录投递" @click="recordApplication"><Send :size="16" /><span>记录投递</span></button>
           <button class="jm-primary" type="button" :disabled="pending" @click="optimize"><FilePenLine :size="16" />优化简历</button>
         </div>
       </div>

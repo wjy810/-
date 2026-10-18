@@ -7,14 +7,16 @@ import {
   buildCalendarDays,
   datetimeValue,
   dayValue,
+  formatDateDisplay,
   formatDateTimeDisplay,
   formatMonthDisplay,
   monthValue,
   parseDateTimeValue,
+  parseDateValue,
   parseMonthValue,
 } from './datePicker'
 
-type PickerMode = 'month' | 'datetime'
+type PickerMode = 'month' | 'date' | 'datetime'
 type PickerPanel = 'days' | 'months' | 'years'
 
 const props = withDefaults(defineProps<{
@@ -61,8 +63,9 @@ let positionFrame = 0
 
 const displayValue = computed(() => props.mode === 'month'
   ? formatMonthDisplay(props.modelValue)
-  : formatDateTimeDisplay(props.modelValue))
-const displayPlaceholder = computed(() => props.placeholder || (props.mode === 'month' ? '请选择月份' : '请选择日期和时间'))
+  : props.mode === 'date' ? formatDateDisplay(props.modelValue) : formatDateTimeDisplay(props.modelValue))
+const displayPlaceholder = computed(() => props.placeholder
+  || (props.mode === 'month' ? '请选择月份' : props.mode === 'date' ? '请选择日期' : '请选择日期和时间'))
 const selectedMonth = computed(() => parseMonthValue(props.modelValue))
 const yearStart = computed(() => Math.floor(viewYear.value / 12) * 12)
 const years = computed(() => Array.from({ length: 12 }, (_, index) => yearStart.value + index))
@@ -87,7 +90,7 @@ function syncDraft(): void {
     panel.value = 'months'
     return
   }
-  const parsed = parseDateTimeValue(props.modelValue)
+  const parsed = props.mode === 'date' ? parseDateValue(props.modelValue) : parseDateTimeValue(props.modelValue)
   viewYear.value = parsed?.year ?? now.getFullYear()
   viewMonth.value = parsed?.month ?? now.getMonth()
   selectedDay.value = parsed ? dayValue(parsed.year, parsed.month, parsed.day) : ''
@@ -157,6 +160,11 @@ function selectCalendarDay(day: (typeof calendarDays.value)[number]): void {
   selectedDay.value = day.value
   viewYear.value = day.year
   viewMonth.value = day.month
+  // A plain date needs no time: picking the day is the choice.
+  if (props.mode === 'date') {
+    emitValue(day.value)
+    closePicker(true)
+  }
 }
 
 function clearValue(): void {
@@ -174,6 +182,11 @@ function chooseCurrent(): void {
     return
   }
   selectedDay.value = dayValue(now.getFullYear(), now.getMonth(), now.getDate())
+  if (props.mode === 'date') {
+    emitValue(selectedDay.value)
+    closePicker(true)
+    return
+  }
   hour.value = String(now.getHours()).padStart(2, '0')
   minute.value = String(now.getMinutes()).padStart(2, '0')
   panel.value = 'days'
@@ -246,7 +259,7 @@ function updatePosition(): void {
   )
   const roomBelow = window.innerHeight - rect.bottom - popupGap - viewportGap
   const roomAbove = rect.top - popupGap - viewportGap
-  const expectedHeight = props.mode === 'datetime' ? 466 : 322
+  const expectedHeight = props.mode === 'datetime' ? 466 : props.mode === 'date' ? 410 : 322
   const overlay = roomBelow < expectedHeight
     && roomAbove < expectedHeight
     && window.innerHeight - viewportGap * 2 >= expectedHeight
@@ -389,7 +402,7 @@ onBeforeUnmount(() => {
                 @click="selectCalendarDay(day)"
               >{{ day.day }}</button>
             </div>
-            <div class="app-date-picker__time">
+            <div v-if="mode === 'datetime'" class="app-date-picker__time">
               <AppIcon name="clock" :size="16" />
               <span>时间</span>
               <input :value="hour" inputmode="numeric" maxlength="2" aria-label="小时" @input="timeInput('hour', $event)" @blur="normalizeTime('hour')" />

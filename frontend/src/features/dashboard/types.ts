@@ -36,12 +36,19 @@ export type RecentCanvas = {
   updatedAt: string | null
 }
 
+export type ApplicationsSummary = {
+  stats: { total: number; active: number; applied: number; opened: number; interviews: number; offers: number; overdue: number; upcoming: number }
+  recentOpens: Array<{ id: string; company: string; positionTitle: string; lastViewedAt: string; viewCount: number }>
+  nextSteps: Array<{ id: string; company: string; nextStep: string; nextStepAt: string }>
+}
+
 export type WorkspaceOverview = {
   profile: { completeness: number; missing: string[] } | null
   resumes: { total: number; exportable: number; recent: RecentResume[] } | null
   jobMatches: { total: number; completed: number; recent: RecentMatch[] } | null
   mockInterviews: { total: number; completed: number; averageScore: number | null; resumable: ResumableInterview | null } | null
   careerCanvases: { total: number; recent: RecentCanvas[] } | null
+  applications?: ApplicationsSummary | null
   unreadNotifications: number | null
   /** Modules whose data could not be loaded; the rest of the overview is still valid. */
   degraded: string[]
