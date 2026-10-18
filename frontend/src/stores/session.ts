@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import { errorMessage, isUnauthenticated } from '@/shared/api/types'
 import { fetchMe, logoutAccount } from '@/features/identity/services/authApi'
+import { clearLocalDrafts } from '@/shared/lib/localDrafts'
 import type { AccountView } from '@/features/identity/types'
 import { queryClient } from '@/app/queryClient'
 
@@ -57,6 +58,7 @@ export const useSessionStore = defineStore('session', () => {
       await logoutAccount()
     } finally {
       clear()
+      clearLocalDrafts()
     }
   }
 

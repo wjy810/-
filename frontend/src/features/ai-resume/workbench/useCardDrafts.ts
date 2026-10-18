@@ -2,6 +2,8 @@
  * Per-card drafts with an independent save queue each (docs/03 §4.8):
  * one request in flight per card, local revisions never move backwards, and a response only
  * clears "dirty" when nothing was typed while it was in flight.
+ * Unsaved drafts are mirrored locally (draftMirror.ts): they come back after a closed tab, and a
+ * version conflict keeps both copies for the user to choose from.
  */
 import { computed, nextTick, reactive } from 'vue'
 import { errorMessage, isApiClientError } from '@/shared/api/types'
@@ -11,6 +13,17 @@ import { credentialDescriptionIssue, mergeCredentialSuggestions } from '../utils
 import { contactSubmitIssue } from '../utils/contactDetails'
 import { mergeSkillGroups } from '../utils/skillSuggestions'
 import { cardMeta } from './cardConfig'
+import {
+  conflictMirrorKey,
+  draftMirrorKey,
+  localDraftStorage,
+  readDraftMirror,
+  reconcileDraftMirror,
+  removeDraftMirror,
+  samePayload,
+  writeDraftMirror,
+  type MirroredDraft,
+} from './draftMirror'
 import { blankStructuredItem, clonePayload, itemsOf, parseSkillItems, reorder, seedPayloadFromContent } from './structured'
 import type { DraftState, StructuredItem } from './types'
 import type { WorkbenchSession } from './useWorkbenchSession'
@@ -23,6 +36,8 @@ export type CardDraftHooks = {
 }
 
 const DRAFT_DEBOUNCE_MS = 1000
+/** Contact details are short to retype and too personal to leave in browser storage. */
+const UNMIRRORED = new Set(['CONTACT'])
 
 export function useCardDrafts(session: WorkbenchSession, hooks: CardDraftHooks) {
   const payloads = reactive<Record<string, Record<string, unknown>>>({})
@@ -32,6 +47,10 @@ export function useCardDrafts(session: WorkbenchSession, hooks: CardDraftHooks) 
   const localRevisions: Record<string, number> = {}
   const timers = new Map<string, ReturnType<typeof setTimeout>>()
   const flights = new Map<string, Promise<boolean>>()
+  /** Drafts the server refused because the card changed elsewhere, waiting for the user's choice. */
+  const conflicts = reactive<Record<string, MirroredDraft>>({})
+  const storage = localDraftStorage()
+  const reconciledScopes = new Set<string>()
 
   session.onApply((next) => {
     for (const card of next.cards) {
@@ -40,7 +59,74 @@ export function useCardDrafts(session: WorkbenchSession, hooks: CardDraftHooks) 
       draftStates[card.id] ||= 'idle'
       localRevisions[card.id] ||= 0
     }
+    restoreMirrors(next.id, next.activeBranchId, next.cards)
   })
+
+  function mirrorKey(cardId: string): string {
+    const conversation = session.conversation.value
+    return conversation ? draftMirrorKey(conversation.id, conversation.activeBranchId, cardId) : ''
+  }
+
+  function mirrorDraft(card: AiResumeCard): void {
+    const key = mirrorKey(card.id)
+    if (!key || UNMIRRORED.has(card.cardType)) return
+    const baseVersion = findCard(card.id)?.versionNo ?? card.versionNo
+    writeDraftMirror(storage, key, { payload: clonePayload(payloads[card.id]), baseVersion, savedAt: new Date().toISOString() })
+  }
+
+  /** Once per card and branch: pick up unsent edits, surface conflicts, forget the rest. */
+  function restoreMirrors(conversationId: string, branchId: string, cards: AiResumeCard[]): void {
+    let resumed = 0
+    for (const card of cards) {
+      const scope = `${conversationId}:${branchId}:${card.id}`
+      if (reconciledScopes.has(scope) || UNMIRRORED.has(card.cardType)) continue
+      reconciledScopes.add(scope)
+      const key = draftMirrorKey(conversationId, branchId, card.id)
+      const refused = readDraftMirror(storage, conflictMirrorKey(key))
+      if (refused) {
+        if (samePayload(refused.payload, payloads[card.id])) removeDraftMirror(storage, conflictMirrorKey(key))
+        else conflicts[card.id] = refused
+      }
+      const mirror = dirty.has(card.id) ? null : readDraftMirror(storage, key)
+      if (!mirror) continue
+      const decision = reconcileDraftMirror(mirror, card.versionNo, payloads[card.id] ?? {})
+      if (decision === 'resume') {
+        payloads[card.id] = clonePayload(mirror.payload)
+        dirty.add(card.id)
+        localRevisions[card.id] = (localRevisions[card.id] ?? 0) + 1
+        draftStates[card.id] = 'waiting'
+        scheduleDraft(card.id, 250)
+        resumed += 1
+      } else {
+        if (decision === 'conflict' && !conflicts[card.id]) {
+          conflicts[card.id] = mirror
+          writeDraftMirror(storage, conflictMirrorKey(key), mirror)
+        }
+        removeDraftMirror(storage, key)
+      }
+    }
+    if (resumed) session.notify(`已找回 ${resumed} 个模块上次没来得及保存的草稿，正在保存。`)
+  }
+
+  /** The user's copy wins: it becomes the draft and is saved against the latest version. */
+  function keepLocalDraft(card: AiResumeCard): void {
+    const mirror = conflicts[card.id]
+    if (!mirror) return
+    delete conflicts[card.id]
+    removeDraftMirror(storage, conflictMirrorKey(mirrorKey(card.id)))
+    hooks.onRecordsRestructured(card.id)
+    payloads[card.id] = clonePayload(mirror.payload)
+    dirty.add(card.id)
+    localRevisions[card.id] = (localRevisions[card.id] ?? 0) + 1
+    draftStates[card.id] = 'waiting'
+    mirrorDraft(card)
+    scheduleDraft(card.id, 0)
+  }
+
+  function discardLocalDraft(card: AiResumeCard): void {
+    delete conflicts[card.id]
+    removeDraftMirror(storage, conflictMirrorKey(mirrorKey(card.id)))
+  }
 
   /** Worst state across all cards, for the header save indicator. */
   const aggregateState = computed<DraftState>(() => {
@@ -65,6 +151,7 @@ export function useCardDrafts(session: WorkbenchSession, hooks: CardDraftHooks) 
     dirty.add(card.id)
     localRevisions[card.id] = (localRevisions[card.id] ?? 0) + 1
     draftStates[card.id] = 'waiting'
+    mirrorDraft(card)
     scheduleDraft(card.id)
   }
 
@@ -210,16 +297,46 @@ export function useCardDrafts(session: WorkbenchSession, hooks: CardDraftHooks) 
         if (localRevisions[cardId] === capturedRevision) dirty.delete(cardId)
         session.applyConversation(next)
         draftStates[cardId] = dirty.has(cardId) ? 'waiting' : 'saved'
+        settleMirror(cardId)
       } catch (reason) {
-        if (isSameScope(conversationId, branchId)) {
-          draftStates[cardId] = 'error'
-          session.fail(errorMessage(reason, '卡片草稿保存失败'))
-          if (isApiClientError(reason) && reason.category === 'CONFLICT') await session.load()
+        if (!isSameScope(conversationId, branchId)) return false
+        if (isApiClientError(reason) && reason.category === 'CONFLICT') {
+          await keepRefusedDraft(cardId)
+          return false
         }
+        draftStates[cardId] = 'error'
+        session.fail(errorMessage(reason, '卡片草稿保存失败'))
         return false
       }
     }
     return !session.isDisposed()
+  }
+
+  /** A saved draft needs no mirror; one still being typed is re-based on the card's new version. */
+  function settleMirror(cardId: string): void {
+    const card = findCard(cardId)
+    if (!card) return
+    if (dirty.has(cardId)) mirrorDraft(card)
+    else removeDraftMirror(storage, mirrorKey(cardId))
+  }
+
+  /**
+   * The card changed elsewhere (another tab or device). Show the latest copy and keep the refused one
+   * aside, instead of re-sending it over the other change on the next keystroke.
+   */
+  async function keepRefusedDraft(cardId: string): Promise<void> {
+    const mine = clonePayload(payloads[cardId])
+    const key = mirrorKey(cardId)
+    dirty.delete(cardId)
+    removeDraftMirror(storage, key)
+    await session.load()
+    const fresh = findCard(cardId)
+    draftStates[cardId] = 'idle'
+    if (!fresh || samePayload(mine, payloads[cardId])) return
+    const refused = { payload: mine, baseVersion: fresh.versionNo, savedAt: new Date().toISOString() }
+    conflicts[cardId] = refused
+    if (!UNMIRRORED.has(fresh.cardType)) writeDraftMirror(storage, conflictMirrorKey(key), refused)
+    session.warn(`“${cardMeta(fresh.cardType).label}”在别处更新过，已显示最新内容；你的修改另存在卡片上，可以选择改用。`)
   }
 
   function isSameScope(conversationId: string, branchId: string): boolean {
@@ -249,6 +366,7 @@ export function useCardDrafts(session: WorkbenchSession, hooks: CardDraftHooks) 
       if (localRevisions[card.id] === capturedRevision) dirty.delete(card.id)
       session.applyConversation(next)
       draftStates[card.id] = dirty.has(card.id) ? 'waiting' : 'saved'
+      settleMirror(card.id)
       // Edits typed while the confirmation was in flight stay as a new draft.
       if (dirty.has(card.id)) scheduleDraft(card.id, 250)
       return true
@@ -303,6 +421,9 @@ export function useCardDrafts(session: WorkbenchSession, hooks: CardDraftHooks) 
     draftStates,
     dirty,
     confirming,
+    conflicts,
+    keepLocalDraft,
+    discardLocalDraft,
     aggregateState,
     payloadOf,
     updateField,

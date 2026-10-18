@@ -162,6 +162,62 @@ describe('workbench persistence', () => {
     expect(restored.get('.design-panel__head').text()).not.toContain('已保存')
   })
 
+  it('brings back a draft that never reached the server after re-entering the workbench', async () => {
+    api.saveAiResumeCardDraft.mockReturnValue(new Promise(() => {}))
+    const first = mountWorkbench()
+    await flushPromises()
+    await openTab(first, '编辑')
+    await first.findAll('.card-nav button')[1]!.trigger('click')
+    await first.get('.card-editor textarea').setValue('断网前写下的简介')
+    first.unmount()
+    expect(window.localStorage.getItem('jp:card-draft:conversation-1:branch-1:summary-1')).toContain('断网前写下的简介')
+
+    api.saveAiResumeCardDraft.mockReset().mockImplementation(async (_id, cardId, payload) => {
+      const next = conversation()
+      next.cards.find((card) => card.id === cardId)!.payload = payload
+      next.cards.find((card) => card.id === cardId)!.versionNo = 2
+      return next
+    })
+    const second = mountWorkbench()
+    await flushPromises()
+    await openTab(second, '编辑')
+    await second.findAll('.card-nav button')[1]!.trigger('click')
+    expect(second.get<HTMLTextAreaElement>('.card-editor textarea').element.value).toBe('断网前写下的简介')
+    await vi.advanceTimersByTimeAsync(300)
+    expect(api.saveAiResumeCardDraft).toHaveBeenCalledWith('conversation-1', 'summary-1', expect.objectContaining({ text: '断网前写下的简介' }), 1)
+    expect(window.localStorage.getItem('jp:card-draft:conversation-1:branch-1:summary-1')).toBeNull()
+  })
+
+  it('keeps a refused draft aside on a version conflict and saves it only when chosen', async () => {
+    api.saveAiResumeCardDraft.mockRejectedValueOnce(new ApiClientError({ category: 'CONFLICT', reason: 'VERSION_CONFLICT', message: '版本冲突' }, 409))
+    const elsewhere = conversation()
+    elsewhere.cards[1]!.payload = { text: '另一台设备上改的简介' }
+    elsewhere.cards[1]!.versionNo = 2
+    const wrapper = mountWorkbench()
+    await flushPromises()
+    api.fetchAiResume.mockResolvedValue(elsewhere)
+    await openTab(wrapper, '编辑')
+    await wrapper.findAll('.card-nav button')[1]!.trigger('click')
+    await wrapper.get('.card-editor textarea').setValue('我在这台电脑上写的简介')
+    await vi.advanceTimersByTimeAsync(1000)
+    await flushPromises()
+    expect(wrapper.get('[data-testid="draft-conflict"]').text()).toContain('这个模块在别处更新过')
+    expect(wrapper.get<HTMLTextAreaElement>('.card-editor textarea').element.value).toBe('另一台设备上改的简介')
+    expect(api.saveAiResumeCardDraft).toHaveBeenCalledTimes(1)
+
+    api.saveAiResumeCardDraft.mockImplementation(async (_id, cardId, payload) => {
+      const next = conversation()
+      next.cards.find((card) => card.id === cardId)!.payload = payload
+      next.cards.find((card) => card.id === cardId)!.versionNo = 3
+      return next
+    })
+    await wrapper.get('[data-testid="draft-conflict"]').findAll('button').find((button) => button.text() === '改用我的修改')!.trigger('click')
+    expect(wrapper.get<HTMLTextAreaElement>('.card-editor textarea').element.value).toBe('我在这台电脑上写的简介')
+    expect(wrapper.find('[data-testid="draft-conflict"]').exists()).toBe(false)
+    await vi.advanceTimersByTimeAsync(50)
+    expect(api.saveAiResumeCardDraft).toHaveBeenLastCalledWith('conversation-1', 'summary-1', expect.objectContaining({ text: '我在这台电脑上写的简介' }), 2)
+  })
+
   it('confirming one card retains both another dirty card and later edits to the submitted card', async () => {
     const confirmation = deferred<AiResumeConversation>()
     api.submitAiResumeCard.mockReturnValue(confirmation.promise)

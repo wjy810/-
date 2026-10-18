@@ -69,6 +69,11 @@ export function useWorkbenchSession(conversationId: () => string) {
     if (!disposed) toast.error(message, { dedupeKey: ERROR_KEY })
   }
 
+  /** Something needs the user's attention but nothing was lost (e.g. a draft conflict). */
+  function warn(message: string): void {
+    if (!disposed) toast.warning(message, { dedupeKey: ERROR_KEY })
+  }
+
   function clearError(): void {
     toast.dismiss(ERROR_KEY)
   }
@@ -276,6 +281,7 @@ export function useWorkbenchSession(conversationId: () => string) {
     isDisposed: () => disposed,
     notify,
     fail,
+    warn,
     clearError,
     onApply,
     onChatScroll: chatScroll.on,
