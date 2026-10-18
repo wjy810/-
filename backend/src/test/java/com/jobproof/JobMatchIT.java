@@ -8,6 +8,7 @@ import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -99,12 +100,40 @@ class JobMatchIT {
                 .andExpect(jsonPath("$.data.status").value("RESUME_CONFIRMED"))
                 .andReturn());
 
-        JsonNode authorized = data(mockMvc.perform(post("/api/v1/job-matches/{id}/authorization", matchId)
+        JsonNode firstAuthorization = data(mockMvc.perform(post("/api/v1/job-matches/{id}/authorization", matchId)
                         .cookie(owner).contentType(MediaType.APPLICATION_JSON)
                         .content(mapper.writeValueAsString(Map.of(
                                 "mode", "NONE", "recordIds", List.of(), "fileIds", List.of(),
                                 "scope", "CURRENT_MATCH", "rememberPreference", false,
                                 "expectedVersion", resumeConfirmed.path("version").asInt()))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("EVIDENCE_AUTHORIZED"))
+                .andReturn());
+
+        JsonNode preview = data(mockMvc.perform(get("/api/v1/job-matches/{id}/redaction-preview", matchId).cookie(owner))
+                .andExpect(status().isOk()).andReturn());
+        assertThat(preview.path("excludedFields").toString()).contains("phone", "email", "identityNumber");
+        assertThat(preview.path("includedSources")).isEmpty();
+        mockMvc.perform(get("/api/v1/job-matches/{id}/redaction-preview", matchId).cookie(other))
+                .andExpect(status().isForbidden());
+
+        // Revoking before analysis rewinds the match to the evidence step; it can then be authorised again.
+        JsonNode revoked = data(mockMvc.perform(delete("/api/v1/job-matches/{id}/authorization", matchId)
+                        .cookie(owner).contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(Map.of(
+                                "requestId", "revoke-" + UUID.randomUUID(),
+                                "expectedVersion", firstAuthorization.path("version").asInt()))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("RESUME_CONFIRMED"))
+                .andReturn());
+        assertThat(revoked.path("authorizationId").asText(null)).isNull();
+
+        JsonNode authorized = data(mockMvc.perform(post("/api/v1/job-matches/{id}/authorization", matchId)
+                        .cookie(owner).contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(Map.of(
+                                "mode", "NONE", "recordIds", List.of(), "fileIds", List.of(),
+                                "scope", "CURRENT_MATCH", "rememberPreference", false,
+                                "expectedVersion", revoked.path("version").asInt()))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("EVIDENCE_AUTHORIZED"))
                 .andReturn());
@@ -125,12 +154,45 @@ class JobMatchIT {
         assertThat(repeatedAnalysis.path("task").path("id").asText()).isEqualTo(taskId);
         assertThat(repeatedAnalysis.path("match").path("status").asText()).isEqualTo("COMPLETED");
 
-        mockMvc.perform(get("/api/v1/job-matches/{id}/report", matchId).cookie(owner))
+        JsonNode report = data(mockMvc.perform(get("/api/v1/job-matches/{id}/report", matchId).cookie(owner))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.report.score").isNumber())
                 .andExpect(jsonPath("$.data.report.ai.summary").exists())
                 .andExpect(jsonPath("$.data.evidenceSources").isArray())
-                .andExpect(jsonPath("$.data.status").value("COMPLETED"));
+                .andExpect(jsonPath("$.data.status").value("COMPLETED"))
+                .andReturn());
+
+        // The report was built from the authorised material: the authorisation can no longer be withdrawn.
+        mockMvc.perform(delete("/api/v1/job-matches/{id}/authorization", matchId).cookie(owner))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.reason").value("JOB_MATCH_AUTHORIZATION_LOCKED"));
+
+        // The stubbed model names no strengths or gaps, so give the report one conclusion to judge.
+        String claimId = UUID.randomUUID().toString();
+        jdbc.update("INSERT INTO job_match_claims(id,match_id,report_id,requirement_id,conclusion_type,score,confidence,evidence_ids_json,reasoning_summary,feedback_status,created_at,updated_at) VALUES(?,?,?,?,'STRENGTH',NULL,70,'[]','项目经历直接对应',NULL,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)",
+                claimId, matchId, report.path("id").asText(), completed.path("requirements").path(0).path("id").asText());
+        JsonNode claim = data(mockMvc.perform(get("/api/v1/job-matches/{id}/report/claims/{claimId}", matchId, claimId)
+                        .cookie(owner))
+                .andExpect(status().isOk()).andReturn());
+        assertThat(claim.path("feedback").asText(null)).isNull();
+        String feedbackRequest = "feedback-" + UUID.randomUUID();
+        Map<String, Object> feedback = Map.of("feedback", "INACCURATE", "requestId", feedbackRequest,
+                "expectedVersion", claim.path("version").asInt());
+        JsonNode marked = data(mockMvc.perform(post("/api/v1/job-matches/{id}/report/claims/{claimId}/feedback",
+                        matchId, claim.path("id").asText()).cookie(owner).contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(feedback)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.feedback").value("INACCURATE"))
+                .andReturn());
+        mockMvc.perform(post("/api/v1/job-matches/{id}/report/claims/{claimId}/feedback",
+                        matchId, claim.path("id").asText()).cookie(owner).contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(feedback)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.version").value(marked.path("version").asInt()));
+        mockMvc.perform(post("/api/v1/job-matches/{id}/report/claims/{claimId}/feedback",
+                        matchId, claim.path("id").asText()).cookie(other).contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(Map.of("feedback", "ACCURATE"))))
+                .andExpect(status().isForbidden());
 
         JsonNode optimization = data(mockMvc.perform(post("/api/v1/job-matches/{id}/actions/resume-optimization", matchId)
                         .cookie(owner))

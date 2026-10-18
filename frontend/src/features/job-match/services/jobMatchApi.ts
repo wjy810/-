@@ -1,7 +1,7 @@
 import { api, apiDownload } from '@/shared/api/client'
 import type { TaskView } from '@/shared/api/task'
 import type {
-  AnalysisStart, EvidenceCandidate, ImprovementTask, JobMatch, JobMatchDashboard,
+  AnalysisStart, ClaimFeedback, EvidenceCandidate, ImprovementTask, JobMatch, JobMatchClaim, JobMatchDashboard,
   JobMatchHistoryPage, JobMatchReport, JobMatchReportComparison, JobMatchReportVersion, JobMatchSummary,
   MatchCapabilities, RedactionPreview, ResumeImportSession, ResumeOption, SimilarDirections,
 } from '../types'
@@ -59,7 +59,7 @@ export const fetchMatchReport = (id: string) => api<JobMatchReport>(`${ROOT}/${e
 export const fetchMatchReportVersions = (id: string) => api<JobMatchReportVersion[]>(`${ROOT}/${encoded(id)}/report/versions`)
 export const compareMatchReportVersions = (id: string, fromVersion: number, toVersion: number) =>
   api<JobMatchReportComparison>(`${ROOT}/${encoded(id)}/report/compare?fromVersion=${fromVersion}&toVersion=${toVersion}`)
-export const sendClaimFeedback = (id: string, claimId: string, feedback: string, expectedVersion: number) => api(`${ROOT}/${encoded(id)}/report/claims/${encoded(claimId)}/feedback`, { method: 'POST', body: JSON.stringify({ feedback, expectedVersion, requestId: mutationId(`claim-${claimId}`, id, expectedVersion) }) })
+export const sendClaimFeedback = (id: string, claimId: string, feedback: ClaimFeedback, expectedVersion: number) => api<JobMatchClaim>(`${ROOT}/${encoded(id)}/report/claims/${encoded(claimId)}/feedback`, { method: 'POST', body: JSON.stringify({ feedback, expectedVersion, requestId: mutationId(`claim-${claimId}`, id, expectedVersion) }) })
 export const updateImprovement = (id: string, taskId: string, status: string, expectedVersion: number) => api<ImprovementTask>(`${ROOT}/${encoded(id)}/learning-tasks/${encoded(taskId)}`, { method: 'PATCH', body: JSON.stringify({ status, expectedVersion, requestId: mutationId(`learning-${taskId}`, id, expectedVersion) }) })
 export const createResumeOptimization = (id: string, expectedVersion: number) => api<{ path: string }>(`${ROOT}/${encoded(id)}/actions/resume-optimization`, { method: 'POST', body: JSON.stringify({ expectedVersion, requestId: mutationId('resume-optimization', id, expectedVersion) }) })
 export const fetchCareerDirections = (id: string) => api<SimilarDirections>(`${ROOT}/${encoded(id)}/similar-jobs`)

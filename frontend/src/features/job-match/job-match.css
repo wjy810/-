@@ -306,3 +306,117 @@ button.jm-list__row:hover { background: var(--surface-2); }
   .jm-wizard__footer { flex-wrap: wrap; }
   .jm-wizard__footer .jm-field-hint { order: -1; flex-basis: 100%; margin-left: 0; text-align: right; }
 }
+
+/* Confirm step: what goes to the model, and withdrawing the library authorisation. */
+.jm-confirm-actions {
+  margin-top: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.jm-text-btn.is-danger {
+  color: var(--color-danger-text);
+}
+
+.jm-text-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* Claim feedback in the evidence drawer. */
+.jm-feedback {
+  display: grid;
+  gap: 10px;
+}
+
+.jm-feedback__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.jm-feedback__head strong {
+  font-size: 14px;
+}
+
+.jm-feedback__choices {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.jm-feedback__choices button {
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid var(--border-default);
+  border-radius: 7px;
+  color: var(--text-secondary);
+  background: var(--surface-1);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+}
+
+.jm-feedback__choices button:hover:not(:disabled) {
+  border-color: var(--color-primary-border);
+  color: var(--text-primary);
+}
+
+.jm-feedback__choices button.is-accurate[aria-pressed='true'] {
+  border-color: color-mix(in srgb, var(--color-success) 45%, var(--border-subtle));
+  color: var(--color-success-text);
+  background: var(--color-success-soft);
+}
+
+.jm-feedback__choices button.is-inaccurate[aria-pressed='true'] {
+  border-color: color-mix(in srgb, var(--color-warning) 45%, var(--border-subtle));
+  color: var(--color-warning-text);
+  background: var(--color-warning-soft);
+}
+
+.jm-feedback__choices button:disabled {
+  cursor: progress;
+  opacity: 0.7;
+}
+
+.jm-feedback small {
+  color: var(--text-tertiary);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.jm-claim-mark {
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.jm-claim-mark.is-accurate {
+  color: var(--color-success-text);
+}
+
+.jm-claim-mark.is-inaccurate {
+  color: var(--color-warning-text);
+}
+
+.jm-confirm-list em {
+  color: var(--text-tertiary);
+  font-size: 12px;
+  font-style: normal;
+}
+
+@media (max-width: 640px) {
+  /* Label on top, value and its note on one line: half the height of three stacked rows. */
+  .jm-confirm-list > div { grid-template-columns: minmax(0, 1fr) auto; gap: 3px 12px; padding: 12px 14px; }
+  .jm-confirm-list > div > span { grid-column: 1 / -1; font-size: 12px; }
+  .jm-confirm-list em { align-self: center; }
+}

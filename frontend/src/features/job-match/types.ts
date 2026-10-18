@@ -135,6 +135,9 @@ export type RedactionPreview = {
   notice: string
 }
 
+/** IGNORE withdraws an earlier mark. */
+export type ClaimFeedback = 'ACCURATE' | 'INACCURATE' | 'IGNORE'
+
 export type JobMatchClaim = {
   id: string
   requirementId: string

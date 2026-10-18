@@ -1,19 +1,21 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Check, FileText, Globe2, LoaderCircle, ShieldCheck, TriangleAlert, Upload, UserRoundCheck } from 'lucide-vue-next'
+import { Check, Eye, FileText, Globe2, LoaderCircle, ShieldCheck, TriangleAlert, Undo2, Upload, UserRoundCheck } from 'lucide-vue-next'
 import AppSelect from '@/shared/ui/AppSelect.vue'
 import PageState from '@/shared/ui/PageState.vue'
 import { useLoadState } from '@/shared/lib/useLoadState'
-import { useToastFeedback } from '@/shared/ui/toast'
+import { confirm } from '@/shared/ui/confirm'
+import { toast, useToastFeedback } from '@/shared/ui/toast'
 import { errorMessage } from '@/shared/api/types'
 import { fetchTask } from '@/shared/api/task'
 import JobMatchContext from '../components/JobMatchContext.vue'
 import JobMatchStepper from '../components/JobMatchStepper.vue'
+import RedactionPreviewDialog from '../components/RedactionPreviewDialog.vue'
 import {
   authorizeEvidence, confirmResumeImport, createResumeImport, createTextMatch, createUrlMatch,
-  fetchEvidenceRecommendations, fetchJobMatch, fetchMatchCapabilities, fetchResumeImport,
-  fetchResumeOptions, selectMatchResume, startAnalysis, updateJdStructure, uploadJd, uploadMatchResume,
+  fetchEvidenceRecommendations, fetchJobMatch, fetchMatchCapabilities, fetchRedactionPreview, fetchResumeImport,
+  fetchResumeOptions, revokeEvidence, selectMatchResume, startAnalysis, updateJdStructure, uploadJd, uploadMatchResume,
 } from '../services/jobMatchApi'
 import { fileCategoryLabel } from '@/features/career-library/labels'
 import type { EvidenceCandidate, JobMatch, MatchCapabilities, MatchRequirement, ResumeImportSession, ResumeOption } from '../types'
@@ -60,6 +62,7 @@ const evidence = ref<EvidenceCandidate[]>([])
 const evidenceMode = ref<'AUTO' | 'MANUAL' | 'NONE'>('AUTO')
 const selectedEvidence = ref(new Set<string>())
 const consent = ref(false)
+const previewOpen = ref(false)
 const wizardTransition = ref('jm-stage-fade')
 const transientPageError = computed({
   get: () => stage.value === 'jd' && !match.value ? '' : pageError.value,
@@ -121,7 +124,20 @@ async function loadStageData() {
     evidence.value = await fetchEvidenceRecommendations(match.value.id)
     if (match.value.evidenceMode === 'NONE') evidenceMode.value = 'NONE'
     else if (match.value.evidenceMode === 'MANUAL') evidenceMode.value = 'MANUAL'
-    if (!match.value.authorizationId) setRecommendedEvidence()
+    if (match.value.authorizationId) await restoreAuthorizedEvidence()
+    else setRecommendedEvidence()
+  }
+}
+
+/** Tick what the current authorisation already covers, so going back shows the real scope. */
+async function restoreAuthorizedEvidence() {
+  if (!match.value) return
+  try {
+    const preview = await fetchRedactionPreview(match.value.id)
+    selectedEvidence.value = new Set(preview.includedSources.map(item =>
+      `${String(item.source_type ?? item.sourceType)}:${String(item.source_id ?? item.sourceId)}`))
+  } catch {
+    setRecommendedEvidence()
   }
 }
 
@@ -220,6 +236,8 @@ async function confirmImportedResume() {
 }
 
 function toggleEvidence(item: EvidenceCandidate) {
+  // The server re-adds every recommendation in AUTO mode; changing a tick makes the choice manual.
+  if (evidenceMode.value === 'AUTO') evidenceMode.value = 'MANUAL'
   const key = `${item.sourceType}:${item.sourceId}`
   const next = new Set(selectedEvidence.value)
   if (next.has(key)) next.delete(key); else next.add(key)
@@ -239,6 +257,27 @@ async function confirmEvidence() {
     })
     syncFromMatch(updated); stage.value = 'confirm'
   } catch (reason) { pageError.value = errorMessage(reason, '证据授权确认失败') }
+  finally { pending.value = false }
+}
+
+/** Withdraw the library authorisation before analysis; the match goes back to choosing its evidence. */
+async function revokeAuthorization() {
+  if (!match.value) return
+  const ok = await confirm({
+    title: '撤销资料授权？',
+    message: '本次匹配将不再读取已授权的资料库内容。撤销后可以重新选择范围，或改为不使用资料库。',
+    confirmText: '撤销授权',
+    tone: 'danger',
+  })
+  if (!ok || !match.value) return
+  pending.value = true; pageError.value = ''
+  try {
+    const updated = await revokeEvidence(match.value.id, match.value.version)
+    syncFromMatch(updated)
+    consent.value = false
+    evidence.value = await fetchEvidenceRecommendations(updated.id)
+    toast.success('已撤销资料授权，请重新确认资料范围')
+  } catch (reason) { pageError.value = errorMessage(reason, '撤销授权失败') }
   finally { pending.value = false }
 }
 
@@ -348,6 +387,10 @@ onMounted(load)
         <template v-else>
           <div class="jm-wizard__body"><header><h2>确认并开始完整分析</h2><p>系统将冻结当前输入，先运行规则引擎，再由真实 AI 完成语义判断、澄清和行动计划。</p></header>
             <section class="jm-confirm-list"><div><span>目标岗位</span><strong>{{ match?.title }} · {{ match?.company || '未填写公司' }}</strong><em>{{ requirements.length }} 条要求</em></div><div><span>投递简历</span><strong>{{ match?.resume?.title }}</strong><em>正式修订</em></div><div><span>证据范围</span><strong>{{ match?.evidenceMode==='NONE' ? '不使用资料库' : match?.evidenceMode==='AUTO' ? '自动选择相关证据' : '手动选择证据' }}</strong><em>敏感字段排除</em></div><div><span>AI 额度</span><strong>成功分析消耗 1 次</strong><em>剩余 {{ capabilities?.quota.remainingUnits ?? '—' }} 次</em></div></section>
+            <div class="jm-confirm-actions">
+              <button class="jm-text-btn" type="button" @click="previewOpen = true"><Eye :size="15" />查看发送给 AI 的内容</button>
+              <button v-if="match?.authorizationId && match.evidenceMode !== 'NONE'" class="jm-text-btn is-danger" type="button" :disabled="pending" @click="revokeAuthorization"><Undo2 :size="15" />撤销资料授权</button>
+            </div>
             <label class="jm-consent"><input v-model="consent" type="checkbox"><span>我确认本次分析读取已确认的 JD、当前简历修订和上述授权证据；AI 不会自动修改简历，也不会生成录用概率。</span></label>
           </div><footer class="jm-wizard__footer">
             <button class="jm-secondary" type="button" @click="goBack">返回</button>
@@ -361,5 +404,14 @@ onMounted(load)
       <JobMatchContext :match="match" :capabilities="capabilities" />
     </div>
     </PageState>
+    <RedactionPreviewDialog
+      v-if="match"
+      :open="previewOpen"
+      :match-id="match.id"
+      :job-title="match.title"
+      :requirement-count="requirements.length"
+      :resume-title="match.resume?.title"
+      @close="previewOpen = false"
+    />
   </div></main>
 </template>

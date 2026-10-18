@@ -12,6 +12,7 @@ const api = vi.hoisted(() => ({
   createResumeOptimization: vi.fn(),
   downloadReportExport: vi.fn(),
   updateImprovement: vi.fn(),
+  sendClaimFeedback: vi.fn(),
 }))
 const route = vi.hoisted(() => ({ params: { id: 'match-1' }, query: {} as Record<string, string> }))
 vi.mock('../services/jobMatchApi', () => api)
@@ -109,5 +110,28 @@ describe('job match report', () => {
     await flushPromises()
     expect(wrapper.text()).toContain('岗位匹配报告读取失败')
     expect(wrapper.find('.jm-report-overview').exists()).toBe(false)
+  })
+
+  it('records a verdict on a conclusion and withdraws it on a second press', async () => {
+    api.fetchMatchReport.mockResolvedValue(report())
+    api.sendClaimFeedback.mockImplementation(async (_id: string, claimId: string, feedback: string, version: number) => (
+      { ...report().claims[0], id: claimId, feedback, version: version + 1 }
+    ))
+    const wrapper = mount(JobMatchReportPage, { global: { stubs: {
+      UiIllustration: true, AppModal: true, Transition: false,
+      AppDrawer: { props: ['open'], template: '<div v-if="open"><slot /></div>' },
+    } } })
+    await flushPromises()
+    await wrapper.get('.jm-privacy .jm-secondary').trigger('click')
+    const inaccurate = () => wrapper.get('.jm-feedback .is-inaccurate')
+    await inaccurate().trigger('click')
+    await flushPromises()
+    expect(api.sendClaimFeedback).toHaveBeenCalledWith('match-1', 'claim-1', 'INACCURATE', 0)
+    expect(inaccurate().attributes('aria-pressed')).toBe('true')
+    expect(wrapper.text()).toContain('你已反馈 1 项')
+    await inaccurate().trigger('click')
+    await flushPromises()
+    expect(api.sendClaimFeedback).toHaveBeenLastCalledWith('match-1', 'claim-1', 'IGNORE', 1)
+    expect(inaccurate().attributes('aria-pressed')).toBe('false')
   })
 })

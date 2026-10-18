@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { AlertTriangle, ArrowRight, BookOpenCheck, Check, CheckCircle2, ChevronRight, Download, FilePenLine, FileSearch, GitCompareArrows, GraduationCap, History, LoaderCircle, MessageCircle, RefreshCw, ShieldCheck, Target, ThumbsUp, TriangleAlert } from 'lucide-vue-next'
+import { AlertTriangle, ArrowRight, BookOpenCheck, Check, CheckCircle2, ChevronRight, Download, FilePenLine, FileSearch, GitCompareArrows, GraduationCap, History, LoaderCircle, MessageCircle, RefreshCw, ShieldCheck, Target, ThumbsDown, ThumbsUp, TriangleAlert } from 'lucide-vue-next'
 import AppDrawer from '@/shared/ui/AppDrawer.vue'
 import AppModal from '@/shared/ui/AppModal.vue'
 import AppSelect from '@/shared/ui/AppSelect.vue'
@@ -11,8 +11,8 @@ import UiErrorState from '@/shared/ui/UiErrorState.vue'
 import { useLoadState } from '@/shared/lib/useLoadState'
 import { toast, useToastFeedback } from '@/shared/ui/toast'
 import { errorMessage } from '@/shared/api/types'
-import { compareMatchReportVersions, createReportExport, createResumeOptimization, downloadReportExport, fetchJobMatch, fetchMatchReport, fetchMatchReportVersions, updateImprovement } from '../services/jobMatchApi'
-import type { ImprovementTask, JobMatch, JobMatchClaim, JobMatchReport, JobMatchReportComparison, JobMatchReportVersion } from '../types'
+import { compareMatchReportVersions, createReportExport, createResumeOptimization, downloadReportExport, fetchJobMatch, fetchMatchReport, fetchMatchReportVersions, sendClaimFeedback, updateImprovement } from '../services/jobMatchApi'
+import type { ClaimFeedback, ImprovementTask, JobMatch, JobMatchClaim, JobMatchReport, JobMatchReportComparison, JobMatchReportVersion } from '../types'
 import { displayJobMatchText, evidenceSourceLabel, jobMatchDisplayLabels, jobMatchStatusTone, recommendationLabel } from '../utils/reportPresentation'
 import { clampMatchScore, JOB_MATCH_REPORT_TABS, reportTabFromQuery, type JobMatchReportTab } from '../utils/uiPresentation'
 import '../job-match.css'
@@ -38,6 +38,7 @@ const comparison = ref<JobMatchReportComparison | null>(null)
 const compareFrom = ref(0)
 const compareTo = ref(0)
 const selectedClaim = ref<JobMatchClaim | null>(null)
+const feedbackPending = ref(false)
 const exportFormat = ref('PDF')
 useToastFeedback(actionError, 'error', 'job-match-report-error')
 const tabs = JOB_MATCH_REPORT_TABS
@@ -162,6 +163,27 @@ function openClaim(claim?: JobMatchClaim | null) {
   selectedClaim.value = claim ?? report.value?.claims[0] ?? null
   evidenceOpen.value = true
 }
+/** The user's verdict on one conclusion; pressing the active choice again withdraws it. */
+async function markClaim(value: Exclude<ClaimFeedback, 'IGNORE'>) {
+  const claim = selectedClaim.value
+  if (!match.value || !claim || feedbackPending.value) return
+  feedbackPending.value = true
+  try {
+    const updated = await sendClaimFeedback(match.value.id, claim.id, claim.feedback === value ? 'IGNORE' : value, claim.version)
+    if (report.value) report.value.claims = report.value.claims.map(item => (item.id === updated.id ? updated : item))
+    if (selectedClaim.value?.id === updated.id) selectedClaim.value = updated
+  } catch (reason) {
+    actionError.value = errorMessage(reason, '反馈提交失败')
+  } finally {
+    feedbackPending.value = false
+  }
+}
+function claimMark(claim?: JobMatchClaim | null) {
+  if (claim?.feedback === 'ACCURATE') return { tone: 'is-accurate', label: '已确认准确' }
+  if (claim?.feedback === 'INACCURATE') return { tone: 'is-inaccurate', label: '已标记不准确' }
+  return null
+}
+const markedClaims = computed(() => (report.value?.claims ?? []).filter(claim => claimMark(claim)).length)
 function openStep(step: NextStep) {
   if (step.key === 'resume') void optimize()
   else if (step.key === 'plan') void setActiveTab('plan', true)
@@ -353,7 +375,7 @@ onMounted(() => {
                 </button>
                 <button class="jm-conclusion-item is-evidence" type="button" @click="setActiveTab('evidence', true)">
                   <span><FileSearch :size="17" /></span>
-                  <p><strong>{{ report?.claims.length ?? 0 }} 项可溯源结论</strong><small>逐条查看岗位要求、简历和资料库引用</small></p>
+                  <p><strong>{{ report?.claims.length ?? 0 }} 项可溯源结论</strong><small>逐条查看岗位要求、简历和资料库引用<template v-if="markedClaims"> · 你已反馈 {{ markedClaims }} 项</template></small></p>
                   <ChevronRight :size="18" />
                 </button>
               </div>
@@ -375,7 +397,7 @@ onMounted(() => {
 
           <div v-if="report?.claims.length" class="jm-privacy">
             <FileSearch :size="18" />
-            <p><strong>每项结论都可以查看依据</strong><span>查看对应的岗位要求原文、分析理由和引用的资料。</span></p>
+            <p><strong>每项结论都可以查看依据</strong><span>查看对应的岗位要求原文、分析理由和引用的资料，并告诉我们结论是否准确。</span></p>
             <button class="jm-secondary" type="button" @click="openClaim()">查看依据 <ArrowRight :size="15" /></button>
           </div>
         </template>
@@ -401,6 +423,7 @@ onMounted(() => {
               </div>
               <aside>
                 <AppTag v-if="numberOrNull(item, 'score') !== null" tone="green">{{ numberOrNull(item, 'score') }} 分</AppTag>
+                <span v-if="claimMark(claimFor(item, true))" class="jm-claim-mark" :class="claimMark(claimFor(item, true))?.tone">{{ claimMark(claimFor(item, true))?.label }}</span>
                 <button v-if="claimFor(item, true)" class="jm-text-btn" type="button" @click="openClaim(claimFor(item, true))">查看依据</button>
               </aside>
             </article>
@@ -421,7 +444,10 @@ onMounted(() => {
                   <span v-if="optionalStr(item, 'estimatedTime')" class="jm-chip">{{ optionalStr(item, 'estimatedTime') }}</span>
                 </div>
               </div>
-              <aside><button v-if="claimFor(item, false)" class="jm-text-btn" type="button" @click="openClaim(claimFor(item, false))">查看依据</button></aside>
+              <aside>
+                <span v-if="claimMark(claimFor(item, false))" class="jm-claim-mark" :class="claimMark(claimFor(item, false))?.tone">{{ claimMark(claimFor(item, false))?.label }}</span>
+                <button v-if="claimFor(item, false)" class="jm-text-btn" type="button" @click="openClaim(claimFor(item, false))">查看依据</button>
+              </aside>
             </article>
             <div v-if="!gaps.length" class="jm-empty">
               <div><span><CheckCircle2 :size="30" /></span><h3>这份报告没有列出需要处理的缺口</h3><p>仍建议对照岗位原文确认关键要求。</p></div>
@@ -492,6 +518,17 @@ onMounted(() => {
           <li v-for="evidence in selectedClaim.evidenceIds" :key="evidence">{{ sourceLabel(evidence) }}</li>
         </ul>
         <small v-else>这条结论没有引用资料库内容。</small>
+      </section>
+      <section v-if="selectedClaim" class="jm-source-block jm-feedback" aria-labelledby="jm-feedback-title">
+        <div class="jm-feedback__head">
+          <strong id="jm-feedback-title">这条结论准确吗？</strong>
+          <LoaderCircle v-if="feedbackPending" class="jm-spin" :size="15" />
+        </div>
+        <div class="jm-feedback__choices">
+          <button class="is-accurate" type="button" :aria-pressed="selectedClaim.feedback === 'ACCURATE'" :disabled="feedbackPending" @click="markClaim('ACCURATE')"><ThumbsUp :size="15" />准确</button>
+          <button class="is-inaccurate" type="button" :aria-pressed="selectedClaim.feedback === 'INACCURATE'" :disabled="feedbackPending" @click="markClaim('INACCURATE')"><ThumbsDown :size="15" />不准确</button>
+        </div>
+        <small>{{ selectedClaim.feedback === 'INACCURATE' ? '已记录。重新分析前，可以在简历或资料库补充对应经历。' : selectedClaim.feedback === 'ACCURATE' ? '已记录，感谢确认。再次点击可撤回。' : '反馈只用于改进分析质量，不会改变这份报告的分数。' }}</small>
       </section>
       <div class="jm-privacy"><ShieldCheck :size="17" /><span>技能标签不会被当作强证据；联系方式和敏感字段已从模型输入排除。</span></div>
     </div>

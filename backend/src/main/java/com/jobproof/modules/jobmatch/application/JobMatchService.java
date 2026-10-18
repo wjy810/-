@@ -342,6 +342,11 @@ public class JobMatchService {
         MatchRow row = owned(current, matchId, true);
         assertMutationVersion(command, row);
         if (row.authorizationId() == null) return get(current, matchId);
+        // Once analysis has read the authorised material, the report depends on it: rewinding the
+        // match to "resume confirmed" would orphan that report. Deleting the match removes both.
+        if (!"EVIDENCE_AUTHORIZED".equals(row.status())) {
+            throw AppException.conflict("JOB_MATCH_AUTHORIZATION_LOCKED", "分析已经开始，本次授权随报告保留；如需移除，请删除这条匹配记录");
+        }
         Instant now = clock.now();
         jdbc.update("UPDATE job_match_authorizations SET status='REVOKED',revoked_at=? WHERE id=? AND match_id=? AND account_id=? AND status='ACTIVE'",
                 now, row.authorizationId(), matchId, current.accountId());
@@ -451,9 +456,9 @@ public class JobMatchService {
         if (command != null && command.expectedVersion() != null) {
             Versions.assertExpected(command.expectedVersion(), before.version());
         }
-        String feedback = enumValue(command.feedback(), Set.of("ACCURATE", "INACCURATE", "IGNORE"), "IGNORE");
+        String feedback = enumValue(command == null ? null : command.feedback(), Set.of("ACCURATE", "INACCURATE", "IGNORE"), "IGNORE");
         int updated = jdbc.update("UPDATE job_match_claims SET feedback_status=?,feedback_request_id=?,version_no=version_no+1,updated_at=? WHERE id=? AND match_id=? AND version_no=?",
-                feedback, clean(command.requestId()), clock.now(), claimId, matchId, before.version());
+                feedback, command == null ? null : clean(command.requestId()), clock.now(), claimId, matchId, before.version());
         if (updated == 0) throw AppException.user("JOB_MATCH_CLAIM_NOT_FOUND", "报告结论不存在");
         return claim(matchId, claimId);
     }
