@@ -1,20 +1,18 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useLocalStorage } from '@vueuse/core'
 import { useRouter } from 'vue-router'
-import { Archive, ArchiveRestore, Copy, LayoutGrid, Layers, List, Lock, MoreHorizontal, PenLine, Search, Trash2 } from 'lucide-vue-next'
+import { Archive, ArchiveRestore, Copy, LayoutGrid, List, PenLine, Search, Trash2 } from 'lucide-vue-next'
 import AppBanner from '@/shared/ui/AppBanner.vue'
 import AppButton from '@/shared/ui/AppButton.vue'
-import AppField from '@/shared/ui/AppField.vue'
 import AppIcon from '@/shared/ui/AppIcon.vue'
 import JobProofIcon from '@/shared/ui/JobProofIcon.vue'
 import AppModal from '@/shared/ui/AppModal.vue'
 import AppSelect from '@/shared/ui/AppSelect.vue'
-import AppTag from '@/shared/ui/AppTag.vue'
 import PageState from '@/shared/ui/PageState.vue'
 import UiButton from '@/shared/ui/UiButton.vue'
 import UiDialog from '@/shared/ui/UiDialog.vue'
-import UiDropdownMenu, { type MenuItem } from '@/shared/ui/UiDropdownMenu.vue'
+import type { MenuItem } from '@/shared/ui/UiDropdownMenu.vue'
 import UiEmptyState from '@/shared/ui/UiEmptyState.vue'
 import UiField from '@/shared/ui/UiField.vue'
 import UiInput from '@/shared/ui/UiInput.vue'
@@ -24,16 +22,8 @@ import UiSkeleton from '@/shared/ui/UiSkeleton.vue'
 import { useToastFeedback } from '@/shared/ui/toast'
 import ForbidState from '@/shared/ui/ForbidState.vue'
 import { errorMessage, isForbidden, isVersionConflict } from '@/shared/api/types'
-import { formatRelative, formatWhen } from '@/shared/lib/datetime'
 import { useLoadState } from '@/shared/lib/useLoadState'
-import type { JobProofIconName } from '@/shared/ui/jobProofIcons'
-import {
-  fetchDeletion,
-  fetchDeletionPreview,
-  submitDeletion,
-} from '@/features/datarights/services/dataRightsApi'
-import type { DeletionPreview, DeletionView } from '@/features/datarights/types'
-import { glossMasterStatus, glossVersionStatus, outcomeResolved, versionOrdinals } from '../labels'
+import { glossMasterStatus } from '../labels'
 import {
   archiveResume,
   copyResume,
@@ -42,38 +32,12 @@ import {
   restoreResume,
   updateResume,
 } from '../services/resumeApi'
-import type { KeyOutcome, ResumeMasterSummary, ResumeMasterView, ResumeVersionView } from '../types'
 import { RESUME_TITLE_MAX, normalizeResumeTitle, resumeTitleIssue, titleMatches } from '../utils/resumeTitle'
 import { RESUME_SORTS, groupUnderMasters, isResumeSort, sortResumes } from '../utils/resumeSort'
-import ResumeThumbnail from '../components/ResumeThumbnail.vue'
-
-type RowType = '主简历' | '定制版' | '冻结版本'
-type RowTone = 'blue' | 'green' | 'orange'
-type StatusTone = 'green' | 'orange' | 'red' | 'gray' | 'blue'
-
-type ResumeRow = {
-  key: string
-  kind: 'MASTER' | 'VERSION'
-  masterId: string
-  versionId: string
-  title: string
-  /** 1, 2, 3… by creation order within its resume; masters have none. */
-  ordinal: number | null
-  rowType: RowType
-  rowTone: RowTone
-  rowIcon: JobProofIconName
-  statusLabel: string
-  statusTone: StatusTone
-  statusSub: string
-  coverage: number | null
-  updatedAt?: string | null
-  archived: boolean
-  lockNote: boolean
-  pendingConfirm: boolean
-  expectedVersion: number
-}
-
-type ResumeRows = { rows: ResumeRow[]; detailGap: number }
+import ResumeCardGrid from '../components/ResumeCardGrid.vue'
+import ResumeDeleteDialog from '../components/ResumeDeleteDialog.vue'
+import ResumeTable from '../components/ResumeTable.vue'
+import { buildRows, type ResumeRow, type ResumeRows } from '../utils/resumeRows'
 
 const router = useRouter()
 const pending = ref('')
@@ -108,12 +72,6 @@ const renameValue = ref('')
 const renameError = ref('')
 const renaming = ref(false)
 const deleteTarget = ref<ResumeRow | null>(null)
-const deletePreview = ref<DeletionPreview | null>(null)
-const deleteRequest = ref<DeletionView | null>(null)
-const deleteConfirmation = ref('')
-const deleteLoading = ref(false)
-const deleteError = ref('')
-let deletePollGeneration = 0
 
 const list = useLoadState((signal) => loadRows(signal))
 const rows = computed(() => list.data.value?.rows ?? [])
@@ -192,154 +150,21 @@ const emptyState = computed(() => {
 })
 const renameCount = computed(() => `${Array.from(normalizeResumeTitle(renameValue.value)).length}/${RESUME_TITLE_MAX}`)
 
-const deleteTargetType = computed(() =>
-  deleteTarget.value?.kind === 'MASTER' ? 'RESUME_MASTER' : 'RESUME_VERSION',
-)
-const deleteCanSubmit = computed(
-  () =>
-    deleteConfirmation.value.trim() === '永久删除' &&
-    deletePreview.value?.canProceed === true &&
-    !deleteLoading.value,
-)
-
-function coverageOf(outcomes?: KeyOutcome[] | null): number | null {
-  const items = (outcomes ?? []).filter((item) => (item.text ?? '').trim())
-  if (!items.length) {
-    return null
-  }
-  const done = items.filter((item) => outcomeResolved(item)).length
-  return Math.round((done / items.length) * 100)
-}
-
-function coverageSub(value: number): string {
-  if (value >= 80) {
-    return '覆盖充分'
-  }
-  if (value >= 60) {
-    return '覆盖良好'
-  }
-  return '待补充'
-}
-
-function snapshotOutcomes(version: ResumeVersionView): KeyOutcome[] {
-  const raw = version.snapshot?.keyOutcomes
-  return Array.isArray(raw) ? (raw as KeyOutcome[]) : []
-}
-
-function versionTitle(item: ResumeMasterSummary, version: ResumeVersionView): string {
-  const raw = version.snapshot?.title
-  if (typeof raw === 'string' && raw.trim()) {
-    return raw.trim()
-  }
-  return `${item.title?.trim() || '未命名简历'} · 快照`
-}
-
-function masterRow(item: ResumeMasterSummary, detail: ResumeMasterView | null): ResumeRow {
-  const archived = item.status === 'ARCHIVED'
-  const pendingConfirm = item.status === 'PENDING_CONFIRMATION'
-  return {
-    key: `m-${item.id}`,
-    kind: 'MASTER',
-    masterId: item.id,
-    versionId: '',
-    title: item.title?.trim() || '未命名简历',
-    ordinal: null,
-    rowType: '主简历',
-    rowTone: 'blue',
-    rowIcon: 'resume-master-resume',
-    statusLabel: glossMasterStatus(item.status),
-    statusTone: archived ? 'gray' : pendingConfirm ? 'orange' : 'green',
-    statusSub: archived ? '恢复后可编辑' : pendingConfirm ? '有待确认的内容' : '可编辑',
-    coverage: coverageOf(detail?.keyOutcomes),
-    updatedAt: item.updatedAt,
-    archived,
-    lockNote: false,
-    pendingConfirm,
-    expectedVersion: item.version,
-  }
-}
-
-function versionRow(item: ResumeMasterSummary, version: ResumeVersionView, ordinal: number | null): ResumeRow {
-  const archived = version.status === 'ARCHIVED'
-  const isSnapshot =
-    version.status === 'FROZEN' || (archived && version.immutable)
-  const pendingConfirm = version.status === 'PENDING_USER_CONFIRMATION'
-  return {
-    key: `v-${version.id}`,
-    kind: 'VERSION',
-    masterId: item.id,
-    versionId: version.id,
-    title: versionTitle(item, version),
-    ordinal,
-    rowType: isSnapshot ? '冻结版本' : '定制版',
-    rowTone: isSnapshot ? 'orange' : 'green',
-    rowIcon: isSnapshot ? 'resume-frozen-version' : 'resume-tailored-resume',
-    statusLabel: glossVersionStatus(version.status),
-    statusTone: archived
-      ? 'gray'
-      : version.status === 'FROZEN'
-          ? 'red'
-          : pendingConfirm
-            ? 'orange'
-            : 'gray',
-    statusSub: version.immutable || isSnapshot ? '不可修改' : '确认后冻结',
-    coverage: coverageOf(snapshotOutcomes(version)),
-    updatedAt: version.frozenAt || version.createdAt,
-    archived,
-    lockNote: version.immutable,
-    pendingConfirm,
-    expectedVersion: version.version,
-  }
-}
-
 async function loadRows(signal: AbortSignal): Promise<ResumeRows> {
   const masters = await listResumes(signal)
   // 列表接口只回主档摘要；类型统计与覆盖度需要每个主档的版本，小列表内并发拉取
   const settled = await Promise.allSettled(masters.map((item) => fetchResume(item.id, signal)))
-  const next: ResumeRow[] = []
-  let gap = 0
-  settled.forEach((result, index) => {
-    const master = masters[index]
-    if (!master) {
-      return
-    }
-    if (result.status === 'fulfilled') {
-      next.push(masterRow(master, result.value))
-      const versions = result.value.versions ?? []
-      const ordinals = versionOrdinals(versions)
-      for (const version of versions) {
-        next.push(versionRow(master, version, ordinals.get(version.id) ?? null))
-      }
-    } else {
-      gap += 1
-      next.push(masterRow(master, null))
-    }
-  })
-  return { rows: next, detailGap: gap }
+  return buildRows(masters, settled.map((result) => (result.status === 'fulfilled' ? result.value : null)))
 }
 
 function openCreate(): void {
   void router.push('/ai-resume/new')
 }
 
-function rowLink(row: ResumeRow): string {
-  if (row.kind === 'VERSION') {
-    return `/resumes/${row.masterId}?versionId=${row.versionId}`
-  }
-  return row.archived ? `/resumes/${row.masterId}/manual` : `/resumes/${row.masterId}`
-}
-
-function rowAction(row: ResumeRow): string {
-  if (row.kind === 'MASTER') {
-    return row.archived ? '打开' : '编辑'
-  }
-  return row.pendingConfirm ? '去确认' : '查看版本'
-}
-
 function rowMenu(row: ResumeRow): MenuItem[] {
   if (row.kind === 'VERSION') {
     return row.rowType === '冻结版本'
-      ? [{ label: '永久删除', icon: Trash2, danger: true, onSelect: () => void openPermanentDelete(row) }]
+      ? [{ label: '永久删除', icon: Trash2, danger: true, onSelect: () => openPermanentDelete(row) }]
       : []
   }
   const items: MenuItem[] = []
@@ -348,7 +173,7 @@ function rowMenu(row: ResumeRow): MenuItem[] {
   items.push(row.archived
     ? { label: '恢复', icon: ArchiveRestore, onSelect: () => void onRestore(row) }
     : { label: '归档', icon: Archive, onSelect: () => { archiveTarget.value = row } })
-  items.push({ type: 'separator' }, { label: '永久删除', icon: Trash2, danger: true, onSelect: () => void openPermanentDelete(row) })
+  items.push({ type: 'separator' }, { label: '永久删除', icon: Trash2, danger: true, onSelect: () => openPermanentDelete(row) })
   return items
 }
 
@@ -457,93 +282,14 @@ async function onRestore(row: ResumeRow): Promise<void> {
   }
 }
 
-async function openPermanentDelete(row: ResumeRow): Promise<void> {
-  deletePollGeneration += 1
+function openPermanentDelete(row: ResumeRow): void {
   deleteTarget.value = row
-  deletePreview.value = null
-  deleteRequest.value = null
-  deleteConfirmation.value = ''
-  deleteError.value = ''
-  deleteLoading.value = true
-  try {
-    deletePreview.value = await fetchDeletionPreview({
-      scope: 'OBJECT',
-      targetType: row.kind === 'MASTER' ? 'RESUME_MASTER' : 'RESUME_VERSION',
-      targetId: row.kind === 'MASTER' ? row.masterId : row.versionId,
-    })
-  } catch (error) {
-    deleteError.value = errorMessage(error, '无法读取永久删除影响范围')
-  } finally {
-    deleteLoading.value = false
-  }
 }
 
-function closePermanentDelete(): void {
-  if (deleteLoading.value || (deleteRequest.value && !deletionFinished(deleteRequest.value))) {
-    return
-  }
-  deletePollGeneration += 1
+function onDeleted(title: string): void {
   deleteTarget.value = null
-  deletePreview.value = null
-  deleteRequest.value = null
-  deleteConfirmation.value = ''
-  deleteError.value = ''
-}
-
-function deletionFinished(view: DeletionView): boolean {
-  return view.status === 'COMPLETED' || view.status === 'FAILED'
-}
-
-async function pollDeletion(requestId: string, generation: number): Promise<DeletionView> {
-  let current = deleteRequest.value
-  for (let attempt = 0; attempt < 120; attempt += 1) {
-    if (generation !== deletePollGeneration) {
-      throw new Error('删除状态检查已取消')
-    }
-    if (current && deletionFinished(current)) {
-      return current
-    }
-    await new Promise((resolve) => window.setTimeout(resolve, 500))
-    current = await fetchDeletion(requestId)
-    deleteRequest.value = current
-  }
-  throw new Error('删除仍在后台处理中，请稍后刷新列表确认结果')
-}
-
-async function onPermanentDeleteConfirm(): Promise<void> {
-  const target = deleteTarget.value
-  if (!target || !deleteCanSubmit.value) {
-    return
-  }
-  deleteLoading.value = true
-  deleteError.value = ''
-  pageError.value = ''
-  const generation = ++deletePollGeneration
-  try {
-    const submitted = await submitDeletion({
-      scope: 'OBJECT',
-      targetType: deleteTargetType.value,
-      targetId: target.kind === 'MASTER' ? target.masterId : target.versionId,
-      confirmationAck: true,
-    })
-    deleteRequest.value = submitted
-    const completed = await pollDeletion(submitted.id, generation)
-    if (completed.status !== 'COMPLETED') {
-      const receipt = completed.receipts?.find((item) => item.status === 'FAILED')
-      throw new Error(receipt?.message || '永久删除失败，数据未从列表移除')
-    }
-    const title = target.title
-    deleteTarget.value = null
-    deletePreview.value = null
-    deleteRequest.value = null
-    deleteConfirmation.value = ''
-    notice.value = `「${title}」及其关联数据已永久删除，无法恢复。`
-    await load()
-  } catch (error) {
-    deleteError.value = errorMessage(error, '永久删除失败，数据未从列表移除')
-  } finally {
-    deleteLoading.value = false
-  }
+  notice.value = `「${title}」及其关联数据已永久删除，无法恢复。`
+  void load()
 }
 
 function handleError(error: unknown): void {
@@ -567,9 +313,6 @@ onMounted(() => {
   void load()
 })
 
-onBeforeUnmount(() => {
-  deletePollGeneration += 1
-})
 </script>
 
 <template>
@@ -683,153 +426,26 @@ onBeforeUnmount(() => {
           <Transition name="resume-results" mode="out-in">
             <div :key="`${tab}-${page}-${pageSize}`" class="resume-results">
               <template v-if="paged.length">
-                <ul v-if="view === 'grid'" class="rgrid">
-                  <li
-                    v-for="(row, index) in paged"
-                    :key="row.key"
-                    class="rcard"
-                    :class="[`rcard--${row.rowTone}`, { 'is-archived': row.archived }]"
-                    :style="{ '--i': index }"
-                    data-testid="resume-row"
-                  >
-                    <RouterLink class="rcard__paper" :to="rowLink(row)" :aria-label="`${rowAction(row)}：${row.title}`">
-                      <ResumeThumbnail v-if="row.kind === 'MASTER'" :resume-id="row.masterId" :updated-at="row.updatedAt" :title="row.title">
-                        <span class="rcard__sketch" aria-hidden="true"><i /><i /><i /><i /><i /></span>
-                      </ResumeThumbnail>
-                      <span v-else class="rcard__sketch" aria-hidden="true"><i /><i /><i /><i /><i /></span>
-                      <span v-if="row.lockNote" class="rcard__lock"><Lock :size="12" />内容不可修改</span>
-                      <span class="rcard__open">{{ rowAction(row) }}</span>
-                    </RouterLink>
-                    <div class="rcard__body">
-                      <div class="rcard__title">
-                        <strong :title="row.title">{{ row.title }}</strong>
-                        <UiDropdownMenu v-if="rowMenu(row).length" :items="rowMenu(row)">
-                          <button class="rcard__more" type="button" :disabled="Boolean(pending)" :aria-label="`${row.title} 的更多操作`">
-                            <MoreHorizontal :size="17" />
-                          </button>
-                        </UiDropdownMenu>
-                      </div>
-                      <div class="rcard__meta">
-                        <AppTag :tone="row.rowTone">{{ row.rowType }}<template v-if="row.ordinal"> · 第 {{ row.ordinal }} 版</template></AppTag>
-                        <span class="rcard__status"><span class="dot" :class="`dot--${row.statusTone}`" />{{ row.statusLabel }}</span>
-                      </div>
-                      <div class="rcard__foot">
-                        <span :title="formatWhen(row.updatedAt)">{{ formatRelative(row.updatedAt) }}更新</span>
-                        <button
-                          v-if="row.kind === 'MASTER' && tab === 'ALL' && snapshotCounts.get(row.masterId)"
-                          class="rcard__versions"
-                          type="button"
-                          @click="showSnapshots(row)"
-                        >
-                          <Layers :size="13" />{{ snapshotCounts.get(row.masterId) }} 个冻结版本
-                        </button>
-                      </div>
-                    </div>
-                  </li>
-                </ul>
-                <div v-else class="tbl-wrap">
-                  <table class="tbl">
-                    <thead>
-                      <tr>
-                        <th>简历名称</th>
-                        <th>状态</th>
-                        <th v-if="hasCoverage">证据覆盖度</th>
-                        <th>更新时间</th>
-                        <th class="ops-col">操作</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <tr v-for="row in paged" :key="row.key" :class="{ 'is-child': tab === 'ALL' && row.kind === 'VERSION' }" data-testid="resume-row">
-                        <td data-label="简历名称">
-                          <div class="rname">
-                            <span class="rtype" :class="`rtype--${row.rowTone}`">
-                              <JobProofIcon :name="row.rowIcon" :size="16" />
-                            </span>
-                            <div class="rname__body">
-                              <div class="rname__line">
-                                <span class="rname__title" :title="row.title">{{ row.title }}</span>
-                                <AppTag :tone="row.rowTone">{{ row.rowType }}<template v-if="row.ordinal"> · 第 {{ row.ordinal }} 版</template></AppTag>
-                              </div>
-                              <p v-if="row.lockNote" class="rname__lock">
-                                <AppIcon name="lock" :size="12" />
-                                内容不可修改
-                              </p>
-                            </div>
-                          </div>
-                        </td>
-                        <td data-label="状态">
-                          <div class="rcell">
-                            <span class="rcell__line">
-                              <span class="dot" :class="`dot--${row.statusTone}`" />
-                              {{ row.statusLabel }}
-                            </span>
-                            <span class="fine">{{ row.statusSub }}</span>
-                          </div>
-                        </td>
-                        <td v-if="hasCoverage" data-label="证据覆盖度">
-                          <div v-if="row.coverage !== null" class="rcell">
-                            <span class="rcell__line">
-                              <span class="dot" :class="row.coverage >= 60 ? 'dot--green' : 'dot--orange'" />
-                              {{ row.coverage }}%
-                            </span>
-                            <span class="fine">{{ coverageSub(row.coverage) }}</span>
-                          </div>
-                          <span v-else class="muted">—</span>
-                        </td>
-                        <td class="muted" data-label="更新时间">{{ formatWhen(row.updatedAt) }}</td>
-                        <td data-label="操作">
-                          <div class="ops">
-                            <RouterLink class="text-link" :to="rowLink(row)">{{ rowAction(row) }}</RouterLink>
-                            <template v-if="row.kind === 'MASTER'">
-                              <button
-                                v-if="!row.archived"
-                                class="text-link"
-                                type="button"
-                                :disabled="Boolean(pending)"
-                                data-testid="rename-resume"
-                                @click="openRename(row)"
-                              >
-                                重命名
-                              </button>
-                              <button class="text-link" type="button" :disabled="Boolean(pending)" @click="onCopy(row)">
-                                复制
-                              </button>
-                              <button
-                                v-if="!row.archived"
-                                class="text-link text-link--danger"
-                                type="button"
-                                :disabled="Boolean(pending)"
-                                @click="archiveTarget = row"
-                              >
-                                归档
-                              </button>
-                              <button v-else class="text-link" type="button" :disabled="Boolean(pending)" @click="onRestore(row)">
-                                恢复
-                              </button>
-                              <button
-                                class="text-link text-link--danger"
-                                type="button"
-                                :disabled="Boolean(pending)"
-                                @click="openPermanentDelete(row)"
-                              >
-                                永久删除
-                              </button>
-                            </template>
-                            <button
-                              v-else-if="row.rowType === '冻结版本'"
-                              class="text-link text-link--danger"
-                              type="button"
-                              :disabled="Boolean(pending)"
-                              @click="openPermanentDelete(row)"
-                            >
-                              永久删除
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
+                <ResumeCardGrid
+                  v-if="view === 'grid'"
+                  :rows="paged"
+                  :menu="rowMenu"
+                  :snapshot-counts="tab === 'ALL' ? snapshotCounts : undefined"
+                  :busy="Boolean(pending)"
+                  @snapshots="showSnapshots"
+                />
+                <ResumeTable
+                  v-else
+                  :rows="paged"
+                  :nested="tab === 'ALL'"
+                  :show-coverage="hasCoverage"
+                  :busy="Boolean(pending)"
+                  @rename="openRename"
+                  @copy="onCopy"
+                  @archive="archiveTarget = $event"
+                  @restore="onRestore"
+                  @delete="openPermanentDelete"
+                />
                 <footer class="tbl-foot">
                   <span class="muted">共 {{ viewItems.length }} 条</span>
                   <div class="pager">
@@ -911,70 +527,14 @@ onBeforeUnmount(() => {
     </template>
   </AppModal>
 
-  <AppModal
-    :open="Boolean(deleteTarget)"
-    :title="deleteTarget?.kind === 'MASTER' ? '永久删除简历' : '永久删除冻结版本'"
-    :width="520"
-    @close="closePermanentDelete"
-  >
-    <div class="delete-dialog">
-      <AppBanner tone="bad">
-        删除后不会进入「已归档」，也无法恢复。简历内容和导出的文件都会被清除。
-      </AppBanner>
-      <div class="delete-dialog__target">
-        <span class="delete-dialog__icon"><AppIcon name="trash" :size="18" /></span>
-        <div>
-          <strong>{{ deleteTarget?.title }}</strong>
-          <span>{{ deleteTarget?.kind === 'MASTER' ? '这份简历及其全部版本和关联数据' : '仅这个冻结版本及其关联数据' }}</span>
-        </div>
-      </div>
-      <p v-if="deleteLoading && !deletePreview" class="muted">正在核对关联数据与运行中任务…</p>
-      <template v-else-if="deletePreview">
-        <p class="delete-dialog__summary">{{ deletePreview.impactSummary }}</p>
-        <ul v-if="deletePreview.impacts?.length" class="delete-impact" aria-label="永久删除影响范围">
-          <li v-for="(item, index) in deletePreview.impacts" :key="`${item.kind}-${index}`">
-            <AppIcon name="x-circle" :size="14" />
-            <span>{{ item.label || '关联数据' }}</span>
-          </li>
-        </ul>
-        <AppBanner v-if="deletePreview.canProceed === false" tone="warn">
-          当前不能删除：该简历仍有任务运行中。请等待导出、定制或匹配任务结束后重试。
-        </AppBanner>
-      </template>
-      <AppBanner v-if="deleteError" tone="bad">{{ deleteError }}</AppBanner>
-      <AppBanner v-if="deleteRequest && !deletionFinished(deleteRequest)" tone="warn">
-        删除申请已提交，正在清理关联数据。完成前不会从列表移除，请勿关闭此窗口。
-      </AppBanner>
-      <AppField id="permanent-delete-confirmation" label="输入“永久删除”确认" hint="必须完整输入四个字，避免误操作。">
-        <input
-          id="permanent-delete-confirmation"
-          v-model="deleteConfirmation"
-          class="input"
-          type="text"
-          autocomplete="off"
-          placeholder="永久删除"
-          :disabled="deleteLoading || deletePreview?.canProceed !== true"
-          @keydown.enter.prevent="onPermanentDeleteConfirm"
-        />
-      </AppField>
-    </div>
-    <template #footer>
-      <AppButton variant="ghost" :disabled="deleteLoading" @click="closePermanentDelete">取消</AppButton>
-      <AppButton
-        variant="danger"
-        :pending="deleteLoading && Boolean(deleteRequest)"
-        :disabled="!deleteCanSubmit"
-        @click="onPermanentDeleteConfirm"
-      >
-        {{ deleteRequest ? '正在永久删除…' : '永久删除' }}
-      </AppButton>
-    </template>
-  </AppModal>
+  <ResumeDeleteDialog :target="deleteTarget" @close="deleteTarget = null" @deleted="onDeleted" />
 </template>
 
 <style scoped>
 .page,
-.page > * { min-width: 0; }
+.page > * {
+  min-width: 0;
+}
 
 .tabs {
   position: relative;
@@ -999,8 +559,8 @@ onBeforeUnmount(() => {
   margin-bottom: -1px;
   white-space: nowrap;
   transition:color var(--motion-base) ease,
-    background-color var(--motion-fast) ease,
-    transform var(--motion-fast) var(--motion-ease);
+  background-color var(--motion-fast) ease,
+  transform var(--motion-fast) var(--motion-ease);
 }
 
 .tabs__item:hover {
@@ -1066,244 +626,7 @@ onBeforeUnmount(() => {
 }
 
 /* ---------- Card view ---------- */
-.rgrid {
-  list-style: none;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
-  gap: 18px;
-  padding: 18px;
-}
-
-.rcard {
-  display: grid;
-  grid-template-rows: auto 1fr;
-  min-width: 0;
-  overflow: hidden;
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-lg);
-  background: var(--surface-1);
-  box-shadow: var(--shadow-xs);
-  animation: jp-rise-in var(--dur-slow) var(--ease-out) both;
-  animation-delay: calc(min(var(--i, 0), 8) * 35ms);
-  transition: transform var(--dur-base) var(--ease-out), box-shadow var(--dur-base) var(--ease-out), border-color var(--dur-base) var(--ease-out);
-}
-
-.rcard:hover,
-.rcard:focus-within {
-  transform: translateY(-3px);
-  border-color: var(--border-default);
-  box-shadow: var(--shadow-md);
-}
-
-.rcard.is-archived .rcard__paper {
-  filter: grayscale(0.85);
-  opacity: 0.7;
-}
-
-.rcard__paper {
-  position: relative;
-  display: block;
-  aspect-ratio: 210 / 168;
-  overflow: hidden;
-  margin: 10px 10px 0;
-  border-radius: var(--radius-sm);
-  background: var(--sheet-bg);
-  box-shadow: inset 0 0 0 1px var(--border-subtle);
-}
-
-.rcard__paper::after {
-  content: '';
-  position: absolute;
-  inset: auto 0 0;
-  height: 30%;
-  background: linear-gradient(to bottom, transparent, color-mix(in srgb, var(--sheet-bg) 92%, transparent));
-  pointer-events: none;
-}
-
-.rcard__sketch {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  align-content: start;
-  gap: 8px;
-  padding: 18px 20px;
-}
-
-.rcard__sketch i {
-  display: block;
-  height: 6px;
-  border-radius: 3px;
-  background: var(--surface-3);
-}
-
-.rcard__sketch i:first-child {
-  width: 46%;
-  height: 10px;
-  margin-bottom: 6px;
-  background: color-mix(in srgb, var(--color-primary) 40%, var(--surface-3));
-}
-
-.rcard--orange .rcard__sketch i:first-child {
-  background: color-mix(in srgb, var(--color-warning) 45%, var(--surface-3));
-}
-
-.rcard__sketch i:nth-child(2) { width: 86%; }
-.rcard__sketch i:nth-child(3) { width: 72%; }
-.rcard__sketch i:nth-child(4) { width: 80%; }
-.rcard__sketch i:nth-child(5) { width: 54%; }
-
-.rcard__lock {
-  position: absolute;
-  z-index: 1;
-  left: 8px;
-  bottom: 8px;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 3px 8px;
-  border-radius: var(--radius-full);
-  background: var(--surface-glass);
-  color: var(--color-warning-text);
-  font-size: 11.5px;
-  font-weight: 600;
-  backdrop-filter: blur(6px);
-}
-
-.rcard__open {
-  position: absolute;
-  z-index: 1;
-  right: 8px;
-  bottom: 8px;
-  padding: 5px 12px;
-  border-radius: var(--radius-full);
-  background: var(--color-primary);
-  color: var(--text-on-primary);
-  font-size: 12px;
-  font-weight: 600;
-  box-shadow: var(--shadow-primary);
-  opacity: 0;
-  transform: translateY(4px);
-  transition: opacity var(--dur-base) var(--ease-out), transform var(--dur-base) var(--ease-out);
-}
-
-.rcard:hover .rcard__open,
-.rcard__paper:focus-visible .rcard__open {
-  opacity: 1;
-  transform: none;
-}
-
-.rcard__paper:focus-visible {
-  outline: 2px solid var(--color-primary);
-  outline-offset: 2px;
-}
-
-.rcard__body {
-  display: grid;
-  align-content: start;
-  gap: 8px;
-  padding: 12px 14px 14px;
-  min-width: 0;
-}
-
-.rcard__title {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-}
-
-.rcard__title strong {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  font-size: 14.5px;
-  font-weight: 650;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.rcard__more {
-  width: 28px;
-  height: 28px;
-  flex: none;
-  display: grid;
-  place-items: center;
-  border: 0;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--text-tertiary);
-  cursor: pointer;
-  transition: background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
-}
-
-.rcard__more:hover,
-.rcard__more[data-state='open'] {
-  background: var(--surface-3);
-  color: var(--text-primary);
-}
-
-.rcard__meta {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-}
-
-.rcard__status {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--text-secondary);
-  font-size: 12.5px;
-}
-
-.rcard__foot {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 6px;
-  color: var(--text-tertiary);
-  font-size: 12px;
-}
-
-.rcard__versions {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 8px;
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-full);
-  background: var(--surface-2);
-  color: var(--text-secondary);
-  font-size: 12px;
-  cursor: pointer;
-  transition: border-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
-}
-
-.rcard__versions:hover {
-  border-color: var(--color-warning);
-  color: var(--color-warning-text);
-}
-
 /* Versions listed under their resume in the "全部" table. */
-.tbl tr.is-child td:first-child {
-  padding-left: 38px;
-  position: relative;
-}
-
-.tbl tr.is-child td:first-child::before {
-  content: '';
-  position: absolute;
-  left: 22px;
-  top: 0;
-  bottom: 50%;
-  width: 10px;
-  border-left: 1.5px solid var(--border-default);
-  border-bottom: 1.5px solid var(--border-default);
-  border-bottom-left-radius: 6px;
-}
-
 .resume-results {
   min-height: 132px;
 }
@@ -1332,139 +655,6 @@ onBeforeUnmount(() => {
   padding: 20px;
 }
 
-.tbl-wrap {
-  overflow-x: auto;
-}
-
-.rname {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  min-width: 220px;
-}
-
-.rtype {
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
-  display: grid;
-  place-items: center;
-  flex-shrink: 0;
-}
-
-.rtype--blue {
-  background: var(--color-primary-soft);
-  color: var(--color-primary);
-}
-
-.rtype--green {
-  background: var(--success-soft);
-  color: var(--color-success);
-}
-
-.rtype--orange {
-  background: var(--warning-soft);
-  color: var(--color-warning);
-}
-
-.rname__body {
-  display: grid;
-  gap: 2px;
-  min-width: 0;
-}
-
-.rname__line {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.rname__title {
-  font-weight: 500;
-  max-width: 240px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.rname__lock {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 12px;
-  color: var(--color-danger);
-}
-
-.rcell {
-  display: grid;
-  gap: 2px;
-  justify-items: start;
-}
-
-.rcell__line {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 13px;
-}
-
-.dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-
-.dot--green {
-  background: var(--color-success);
-}
-
-.dot--orange {
-  background: var(--color-warning);
-}
-
-.dot--red {
-  background: var(--color-danger);
-}
-
-.dot--gray {
-  background: var(--text-tertiary);
-}
-
-.dot--blue {
-  background: var(--color-primary);
-}
-
-.bound-text {
-  color: var(--color-primary);
-  font-size: 13px;
-}
-
-.ops {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  white-space: nowrap;
-}
-
-.ops-col {
-  width: 1%;
-}
-
-.text-link--danger {
-  color: var(--color-danger);
-}
-
-.text-link--danger:hover {
-  color: var(--color-danger);
-}
-
-.text-link:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
 .tbl-foot {
   display: flex;
   align-items: center;
@@ -1481,81 +671,8 @@ onBeforeUnmount(() => {
   padding: 0;
 }
 
-.pager__size:deep(.app-select__trigger) { height: 34px; }
-
-.delete-dialog {
-  display: grid;
-  gap: 14px;
-}
-
-.delete-dialog__target {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 12px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--surface-2);
-}
-
-.delete-dialog__target > div {
-  min-width: 0;
-  display: grid;
-  gap: 2px;
-}
-
-.delete-dialog__target strong {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.delete-dialog__target span:not(.delete-dialog__icon) {
-  color: var(--text-tertiary);
-  font-size: 12px;
-}
-
-.delete-dialog__icon {
-  width: 34px;
+.pager__size:deep(.app-select__trigger) {
   height: 34px;
-  display: grid;
-  place-items: center;
-  flex: 0 0 auto;
-  border-radius: 8px;
-  color: var(--color-danger);
-  background: var(--danger-soft);
-}
-
-.delete-dialog__summary {
-  color: var(--text-secondary);
-  font-size: 13px;
-  line-height: 1.7;
-}
-
-.delete-impact {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.delete-impact li {
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 8px 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-s);
-  color: var(--text-secondary);
-  font-size: 12px;
-}
-
-.delete-impact svg {
-  flex: 0 0 auto;
-  color: var(--color-danger);
 }
 
 @media (max-width: 560px) {
@@ -1570,7 +687,6 @@ onBeforeUnmount(() => {
   .page-head__actions,
   .grid-stats,
   .card,
-  .tbl-wrap,
   .tbl-foot {
     min-width: 0;
     max-width: 100%;
@@ -1634,20 +750,6 @@ onBeforeUnmount(() => {
     display: none;
   }
 
-  .rgrid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 10px;
-    padding: 10px;
-  }
-
-  .rcard__body {
-    padding: 10px;
-  }
-
-  .rcard__open {
-    display: none;
-  }
-
   .tabs {
     padding-inline: 4px;
     scrollbar-width: none;
@@ -1666,93 +768,26 @@ onBeforeUnmount(() => {
   .tabs::-webkit-scrollbar {
     display: none;
   }
+
 }
 
 @media (prefers-reduced-motion: reduce) {
   .tabs__item,
   .tabs__indicator,
   .resume-results-enter-active,
-  .resume-results-leave-active { transition: none; }
+  .resume-results-leave-active {
+    transition: none;
+  }
 
   .tabs__item:active,
   .resume-results-enter-from,
-  .resume-results-leave-to { transform: none; }
+  .resume-results-leave-to {
+    transform: none;
+  }
+
 }
 
 @media (max-width: 560px) {
-  .tbl-wrap {
-    overflow: visible;
-    padding: 10px;
-  }
-
-  .tbl,
-  .tbl tbody {
-    width: 100%;
-    min-width: 0;
-    display: grid;
-    gap: 10px;
-  }
-
-  .tbl thead {
-    display: none;
-  }
-
-  .tbl tbody tr {
-    min-width: 0;
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 12px;
-    padding: 14px;
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    background: var(--surface);
-  }
-
-  .tbl td {
-    min-width: 0;
-    display: grid;
-    align-content: start;
-    gap: 4px;
-    padding: 0;
-    border: 0;
-    overflow-wrap: anywhere;
-  }
-
-  .tbl td::before {
-    content: attr(data-label);
-    color: var(--text-tertiary);
-    font-size: 12px;
-    line-height: 1.4;
-  }
-
-  .tbl td:first-child,
-  .tbl td:last-child {
-    grid-column: 1 / -1;
-  }
-
-  .tbl td:first-child::before,
-  .tbl td:last-child::before {
-    display: none;
-  }
-
-  .rname {
-    min-width: 0;
-  }
-
-  .rname__title {
-    max-width: 100%;
-    white-space: normal;
-    overflow-wrap: anywhere;
-  }
-
-  .ops {
-    width: 100%;
-    flex-wrap: wrap;
-    gap: 8px 14px;
-    padding-top: 2px;
-    white-space: normal;
-  }
-
   .tbl-foot {
     display: grid;
     align-items: start;
@@ -1767,8 +802,5 @@ onBeforeUnmount(() => {
     padding-bottom: 2px;
   }
 
-  .delete-impact {
-    grid-template-columns: 1fr;
-  }
 }
 </style>
