@@ -8,6 +8,7 @@ import com.jobproof.modules.mockinterview.application.MockInterviewAiService.Gen
 import com.jobproof.modules.mockinterview.application.MockInterviewAiService.QuestionInput;
 import com.jobproof.shared.auth.CurrentAccount;
 import com.jobproof.shared.error.AppException;
+import com.jobproof.shared.page.PageResult;
 import com.jobproof.shared.id.Ids;
 import com.jobproof.shared.time.ClockPort;
 import java.time.Instant;
@@ -212,22 +213,35 @@ public class MockInterviewService {
 
     @Transactional(readOnly = true)
     public List<SessionSummary> list(CurrentAccount current, String status, String mode, String type, int limit) {
+        return page(current, status, mode, type, 0, Math.max(1, Math.min(100, limit))).items();
+    }
+
+    /** One page of the user's sessions, newest first, with the total so the list can say how many remain. */
+    @Transactional(readOnly = true)
+    public PageResult<SessionSummary> page(CurrentAccount current, String status, String mode, String type, int page, int size) {
         assertSeeker(current);
-        StringBuilder sql = new StringBuilder("SELECT s.*,r.overall_score FROM mock_interview_sessions s LEFT JOIN mock_interview_reports r ON r.session_id=s.id WHERE s.account_id=?");
+        int safeSize = Math.max(1, Math.min(100, size));
+        int safePage = Math.max(0, page);
+        StringBuilder where = new StringBuilder(" WHERE s.account_id=?");
         List<Object> args = new ArrayList<>();
         args.add(current.accountId());
-        if (status != null && !status.isBlank()) { sql.append(" AND s.status=?"); args.add(status.trim().toUpperCase(Locale.ROOT)); }
-        if (mode != null && !mode.isBlank()) { sql.append(" AND s.mode=?"); args.add(mode.trim().toUpperCase(Locale.ROOT)); }
-        if (type != null && !type.isBlank()) { sql.append(" AND s.interview_type=?"); args.add(type.trim().toUpperCase(Locale.ROOT)); }
-        sql.append(" ORDER BY s.updated_at DESC");
-        int safeLimit = Math.max(1, Math.min(100, limit));
-        return jdbc.query(sql.toString(), (rs, rowNum) -> new SessionSummary(
-                rs.getString("id"), rs.getString("title"), rs.getString("position_name"), rs.getString("company_name"),
-                rs.getString("mode"), rs.getString("interview_type"), rs.getString("difficulty"), rs.getString("status"),
-                rs.getInt("current_question_index"), rs.getInt("question_count"), (Integer) rs.getObject("overall_score"),
-                instant(rs.getTimestamp("updated_at")), instant(rs.getTimestamp("completed_at")),
-                listElapsed(rs.getInt("elapsed_seconds"), instant(rs.getTimestamp("resumed_at"))), rs.getInt("duration_minutes")),
-                args.toArray()).stream().limit(safeLimit).toList();
+        if (status != null && !status.isBlank()) { where.append(" AND s.status=?"); args.add(status.trim().toUpperCase(Locale.ROOT)); }
+        if (mode != null && !mode.isBlank()) { where.append(" AND s.mode=?"); args.add(mode.trim().toUpperCase(Locale.ROOT)); }
+        if (type != null && !type.isBlank()) { where.append(" AND s.interview_type=?"); args.add(type.trim().toUpperCase(Locale.ROOT)); }
+        Long total = jdbc.queryForObject("SELECT COUNT(*) FROM mock_interview_sessions s" + where, Long.class, args.toArray());
+        List<Object> pageArgs = new ArrayList<>(args);
+        pageArgs.add(safeSize);
+        pageArgs.add((long) safePage * safeSize);
+        List<SessionSummary> items = jdbc.query("SELECT s.*,r.overall_score FROM mock_interview_sessions s LEFT JOIN mock_interview_reports r ON r.session_id=s.id"
+                        + where + " ORDER BY s.updated_at DESC, s.id LIMIT ? OFFSET ?",
+                (rs, rowNum) -> new SessionSummary(
+                        rs.getString("id"), rs.getString("title"), rs.getString("position_name"), rs.getString("company_name"),
+                        rs.getString("mode"), rs.getString("interview_type"), rs.getString("difficulty"), rs.getString("status"),
+                        rs.getInt("current_question_index"), rs.getInt("question_count"), (Integer) rs.getObject("overall_score"),
+                        instant(rs.getTimestamp("updated_at")), instant(rs.getTimestamp("completed_at")),
+                        listElapsed(rs.getInt("elapsed_seconds"), instant(rs.getTimestamp("resumed_at"))), rs.getInt("duration_minutes")),
+                pageArgs.toArray());
+        return new PageResult<>(items, total == null ? 0 : total, safePage, safeSize);
     }
 
     @Transactional(readOnly = true)

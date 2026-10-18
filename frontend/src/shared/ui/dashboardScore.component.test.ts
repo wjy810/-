@@ -2,13 +2,13 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import MockInterviewHomePage from '@/features/mock-interview/pages/MockInterviewHomePage.vue'
 import JobMatchHomePage from '@/features/job-match/pages/JobMatchHomePage.vue'
-import { fetchMockInterviewDashboard, listMockInterviews } from '@/features/mock-interview/services/mockInterviewApi'
+import { fetchMockInterviewDashboard, pageMockInterviews } from '@/features/mock-interview/services/mockInterviewApi'
 import { fetchMatchDashboard } from '@/features/job-match/services/jobMatchApi'
 
 vi.mock('vue-router', () => ({ useRouter: () => ({ push: vi.fn() }) }))
 vi.mock('@/shared/ui/toast', () => ({ useToastFeedback: vi.fn() }))
 vi.mock('@/features/mock-interview/services/mockInterviewApi', () => ({
-  fetchMockInterviewDashboard: vi.fn(), listMockInterviews: vi.fn(),
+  fetchMockInterviewDashboard: vi.fn(), pageMockInterviews: vi.fn(),
 }))
 vi.mock('@/features/job-match/services/jobMatchApi', () => ({ fetchMatchDashboard: vi.fn() }))
 
@@ -20,7 +20,7 @@ describe('dashboard score presentation', () => {
     vi.mocked(fetchMockInterviewDashboard).mockResolvedValue({
       total: 1, completed: 1, textCount: 1, voiceCount: 0, averageScore: score, recent: [], resumable: null,
     })
-    vi.mocked(listMockInterviews).mockResolvedValue([])
+    vi.mocked(pageMockInterviews).mockResolvedValue({ items: [], total: 0, page: 0, size: 20 })
     const wrapper = mount(MockInterviewHomePage, { global: { stubs } })
     await flushPromises()
     expect(wrapper.findAll('.mi-home-stats strong')[1]?.text()).toBe(score == null ? '待评估' : String(score))

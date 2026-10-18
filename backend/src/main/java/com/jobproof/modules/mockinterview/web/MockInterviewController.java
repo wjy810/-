@@ -14,6 +14,7 @@ import com.jobproof.modules.mockinterview.application.MockInterviewService.Sessi
 import com.jobproof.modules.mockinterview.application.MockInterviewService.SessionView;
 import java.util.List;
 import java.util.Map;
+import com.jobproof.shared.page.PageResult;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -53,6 +54,16 @@ public class MockInterviewController {
     public ApiResponse<DraftView> saveDraft(@PathVariable String draftId, @RequestBody DraftRequest request) {
         return ApiResponse.ok(service.saveDraft(SecurityConfig.currentAccount(), draftId,
                 new DraftCommand(request.step(), request.payload(), request.expectedVersion())));
+    }
+
+    @GetMapping("/sessions/page")
+    public ApiResponse<PageResult<SessionSummary>> sessionPage(
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String mode,
+            @RequestParam(required = false) String type,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        return ApiResponse.ok(service.page(SecurityConfig.currentAccount(), status, mode, type, page, size));
     }
 
     @GetMapping("/sessions")

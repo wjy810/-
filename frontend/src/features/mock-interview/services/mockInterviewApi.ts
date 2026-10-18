@@ -29,8 +29,10 @@ export const saveMockInterviewDraft = (id: string, step: number, payload: Record
   })
 export const createMockInterview = (command: MockInterviewCreate) =>
   api<MockInterviewSession>(`${ROOT}/sessions`, { method: 'POST', body: JSON.stringify(command) })
-export const listMockInterviews = (filters: { status?: string; mode?: string; type?: string; limit?: number } = {}) =>
-  api<MockInterviewSessionSummary[]>(`${ROOT}/sessions${query({ ...filters, limit: filters.limit ?? 50 })}`)
+/** One page of sessions, newest first, with the total. */
+export const pageMockInterviews = (filters: { status?: string; mode?: string; type?: string; page?: number; size?: number } = {}) =>
+  api<{ items: MockInterviewSessionSummary[]; total: number; page: number; size: number }>(
+    `${ROOT}/sessions/page${query({ ...filters, page: filters.page ?? 0, size: filters.size ?? 20 })}`)
 export const fetchMockInterview = (id: string) => api<MockInterviewSession>(`${ROOT}/sessions/${encodeURIComponent(id)}`)
 export const saveMockInterviewTextDraft = (sessionId: string, questionId: string, answer: string, expectedVersion?: number) =>
   api<MockInterviewAnswer>(`${ROOT}/sessions/${encodeURIComponent(sessionId)}/text-drafts/${encodeURIComponent(questionId)}`, {

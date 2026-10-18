@@ -9,7 +9,7 @@ import { formatWhen } from '@/shared/lib/datetime'
 import { errorMessage } from '@/shared/api/types'
 import { useToastFeedback } from '@/shared/ui/toast'
 import UiErrorState from '@/shared/ui/UiErrorState.vue'
-import { fetchMockInterviewDashboard, listMockInterviews } from '../services/mockInterviewApi'
+import { fetchMockInterviewDashboard, pageMockInterviews } from '../services/mockInterviewApi'
 import type { MockInterviewDashboard, MockInterviewSessionSummary } from '../types'
 import '../mock-interview.css'
 
@@ -32,17 +32,45 @@ const displayed = computed(() => {
   return source.filter((item) => !term || `${item.title} ${item.positionName} ${item.companyName ?? ''}`.toLowerCase().includes(term))
 })
 
+const HISTORY_PAGE = 20
+const historyTotal = ref(0)
+const historyPage = ref(0)
+const loadingMore = ref(false)
+const hasMoreHistory = computed(() => sessions.value.length < historyTotal.value)
+
+function fetchHistoryPage(page: number) {
+  return pageMockInterviews({
+    mode: modeFilter.value || undefined, status: statusFilter.value || undefined, type: typeFilter.value || undefined,
+    page, size: HISTORY_PAGE,
+  })
+}
+
+async function loadMoreHistory(): Promise<void> {
+  if (loadingMore.value || !hasMoreHistory.value) return
+  loadingMore.value = true
+  try {
+    const next = await fetchHistoryPage(historyPage.value + 1)
+    const known = new Set(sessions.value.map(item => item.id))
+    sessions.value = [...sessions.value, ...next.items.filter(item => !known.has(item.id))]
+    historyTotal.value = next.total
+    historyPage.value = next.page
+  } catch (reason) {
+    pageError.value = errorMessage(reason, '更多训练记录读取失败')
+  } finally {
+    loadingMore.value = false
+  }
+}
+
 async function load(): Promise<void> {
   loading.value = true
   pageError.value = ''
   loadError.value = null
   try {
-    const [summary, history] = await Promise.all([
-      fetchMockInterviewDashboard(),
-      listMockInterviews({ mode: modeFilter.value || undefined, status: statusFilter.value || undefined, type: typeFilter.value || undefined, limit: 100 }),
-    ])
+    const [summary, history] = await Promise.all([fetchMockInterviewDashboard(), fetchHistoryPage(0)])
     dashboard.value = summary
-    sessions.value = history
+    sessions.value = history.items
+    historyTotal.value = history.total
+    historyPage.value = 0
   } catch (reason) {
     // A failed first load is an error page, never "no interviews yet"; a failed refresh keeps the data.
     if (dashboard.value) pageError.value = errorMessage(reason, '模拟面试数据刷新失败')
@@ -127,6 +155,10 @@ onMounted(load)
                 </table>
                 <UiEmptyState v-else-if="modeFilter || statusFilter || typeFilter" size="sm" illustration="empty-search" title="没有符合条件的训练记录" description="换个方式、类型或状态筛选再试。" />
                 <UiEmptyState v-else size="sm" illustration="empty-interview" title="还没有模拟面试记录" description="选择一份简历和目标岗位，开始第一次文字或语音模拟面试。" />
+                <footer v-if="showHistory && sessions.length" class="mi-more">
+                  <span>共 {{ historyTotal }} 条 · 已显示 {{ sessions.length }} 条</span>
+                  <button v-if="hasMoreHistory" type="button" :disabled="loadingMore" @click="loadMoreHistory">{{ loadingMore ? '正在读取…' : '加载更多' }}</button>
+                </footer>
               </div>
             </section>
           </section>
@@ -154,7 +186,7 @@ onMounted(load)
 .mi-home-bottom{grid-template-columns:330px minmax(0,1fr);gap:16px;margin-top:16px;display:grid}
 .mi-suggestions{padding:18px}.mi-suggestions h2,.mi-recent h2{font-size:15px}.mi-suggestions>div{border:1px solid var(--border-subtle);border-radius:7px;gap:11px;margin-top:10px;padding:10px;display:flex}.mi-suggestions>div>span{border-radius:7px;flex:none;place-items:center;width:38px;height:38px;display:grid}.mi-suggestions p{display:grid}.mi-suggestions small{color:var(--text-secondary);font-size:12px;line-height:1.5}
 .mi-recent{min-width:0;overflow:hidden}.mi-recent>header{justify-content:space-between;align-items:center;gap:12px;padding:17px 18px 11px;display:flex}.mi-recent>header p{color:var(--text-secondary);font-size:12px}.mi-recent .mi-secondary{min-height:32px;padding:0 12px;font-size:12px}
-.mi-filters{grid-template-columns:minmax(220px,1.5fr) repeat(3,minmax(120px,.7fr));gap:8px;padding:8px 18px 14px;display:grid}.mi-filters label{color:var(--text-secondary);border:1px solid var(--border-default);border-radius:6px;align-items:center;gap:7px;height:42px;padding:0 11px;display:flex}.mi-filters input{color:var(--text-primary);background:0 0;border:0;outline:0;width:100%;min-width:0}.mi-table-wrap{overflow:auto}.mi-history-table{border-collapse:collapse;width:100%;font-size:12px}.mi-history-table th{color:var(--text-secondary);text-align:left;white-space:nowrap;background:var(--surface-2);border-top:1px solid var(--border-subtle);border-bottom:1px solid var(--border-subtle);padding:9px 13px}.mi-history-table td{white-space:nowrap;border-bottom:1px solid var(--border-subtle);padding:10px 13px}.mi-history-table td:first-child{min-width:150px}.mi-history-table td strong,.mi-history-table td small{display:block}.mi-history-table td small{color:var(--text-secondary)}.mi-history-table td button{color:var(--color-primary-text);background:var(--surface-1);border:1px solid var(--color-primary-border);border-radius:4px;padding:4px 9px}.mi-terminal-action{color:var(--text-tertiary)}.mi-history-table .is-score{color:var(--color-success-text);font-weight:700}
+.mi-filters{grid-template-columns:minmax(220px,1.5fr) repeat(3,minmax(120px,.7fr));gap:8px;padding:8px 18px 14px;display:grid}.mi-filters label{color:var(--text-secondary);border:1px solid var(--border-default);border-radius:6px;align-items:center;gap:7px;height:42px;padding:0 11px;display:flex}.mi-filters input{color:var(--text-primary);background:0 0;border:0;outline:0;width:100%;min-width:0}.mi-table-wrap{overflow:auto}.mi-history-table{border-collapse:collapse;width:100%;font-size:12px}.mi-history-table th{color:var(--text-secondary);text-align:left;white-space:nowrap;background:var(--surface-2);border-top:1px solid var(--border-subtle);border-bottom:1px solid var(--border-subtle);padding:9px 13px}.mi-history-table td{white-space:nowrap;border-bottom:1px solid var(--border-subtle);padding:10px 13px}.mi-history-table td:first-child{min-width:150px}.mi-history-table td strong,.mi-history-table td small{display:block}.mi-history-table td small{color:var(--text-secondary)}.mi-history-table td button{color:var(--color-primary-text);background:var(--surface-1);border:1px solid var(--color-primary-border);border-radius:4px;padding:4px 9px}.mi-terminal-action{color:var(--text-tertiary)}.mi-more{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 18px;color:var(--text-tertiary);font-size:12px}.mi-more button{height:32px;padding:0 14px;border:1px solid var(--border-default);border-radius:6px;color:var(--color-primary-text);background:var(--surface-1);cursor:pointer}.mi-more button:disabled{opacity:.6;cursor:default}.mi-history-table .is-score{color:var(--color-success-text);font-weight:700}
 @media (width<=1100px){.mi-home-bottom{grid-template-columns:1fr}.mi-suggestions{display:none}.mi-filters{grid-template-columns:1fr 1fr}.mi-mode-card{gap:18px;padding:22px}.mi-mode-icon{width:82px;height:82px}}
 @media (width<=760px){.mi-home-stats,.mi-mode-grid{grid-template-columns:1fr}.mi-home-stats{gap:10px}.mi-home-stats article{min-height:88px;padding:15px}.mi-mode-card{min-height:150px}.mi-mode-card h2{font-size:20px}.mi-filters{grid-template-columns:1fr}.mi-continue{grid-template-columns:38px 1fr}.mi-continue em{display:none}.mi-table-wrap{padding:0 12px 12px;overflow:visible}.mi-history-table{width:100%;display:block}.mi-history-table thead{display:none}.mi-history-table tbody{gap:10px;display:grid}.mi-history-table tr{background:var(--surface-1);border:1px solid var(--border-subtle);border-radius:8px;grid-template-columns:repeat(2,minmax(0,1fr));gap:11px 14px;padding:14px;display:grid;box-shadow:0 4px 12px color-mix(in srgb, var(--border-strong) 4%, transparent)}.mi-history-table td,.mi-history-table td:first-child{white-space:normal;border:0;align-content:start;gap:4px;min-width:0;padding:0;display:grid}.mi-history-table td:before{content:attr(data-label);color:var(--text-secondary);font-size:11.5px;font-weight:500}.mi-history-table td:first-child{border-bottom:1px solid var(--border-subtle);grid-column:1/-1;padding-bottom:10px}.mi-history-table td:first-child:before{display:none}.mi-history-table td strong{overflow-wrap:anywhere}.mi-history-table td:last-child{grid-column:1/-1}.mi-history-table td:last-child button{border-radius:7px;width:100%;min-height:38px;font-weight:600}.mi-terminal-action{background:var(--surface-2);border-radius:7px;place-items:center;min-height:38px;display:grid}}
 @media (prefers-reduced-motion: reduce){.mi-home-stats,.mi-mode-card,.mi-continue,.mi-secondary,.mi-primary{transition:none!important}.mi-spin{animation:none}}

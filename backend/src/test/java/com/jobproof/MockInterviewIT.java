@@ -86,6 +86,14 @@ class MockInterviewIT {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error.reason").value("MOCK_INTERVIEW_NOT_FOUND"));
 
+        mockMvc.perform(get("/api/v1/mock-interviews/sessions/page").cookie(owner).param("size", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.total").value(1))
+                .andExpect(jsonPath("$.data.items[0].id").value(sessionId));
+        mockMvc.perform(get("/api/v1/mock-interviews/sessions/page").cookie(other))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.total").value(0));
+
         for (int index = 0; index < 5; index++) {
             JsonNode current = index == 0 ? session.path("currentQuestion") : data(mockMvc.perform(
                             get("/api/v1/mock-interviews/sessions/{id}", sessionId).cookie(owner))
