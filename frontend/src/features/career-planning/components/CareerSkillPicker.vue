@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { Check, Plus, Search, Tags, X } from 'lucide-vue-next'
-import AppModal from '@/shared/ui/AppModal.vue'
+import UiDialog from '@/shared/ui/UiDialog.vue'
 import {
   careerSkillCatalog, careerSkillCategories, filterCareerSkillOptions,
   normalizeCareerSkillName, removeCareerSkill, upsertCareerSkill,
@@ -81,7 +81,7 @@ function statusLabel(status: CareerSkillStatus): string {
       <Plus :size="17" />
     </button>
 
-    <AppModal :open="open" title="选择专业技能" :width="780" mobile-sheet @close="close">
+    <UiDialog :open="open" title="选择专业技能" :width="780" @close="close">
       <div class="career-skill-dialog">
         <p class="career-skill-dialog__notice"><Tags :size="18" />只选择真实掌握或正在学习的技能，学习中的内容不会被 AI 当作已掌握事实。</p>
         <label class="career-skill-dialog__search">
@@ -123,7 +123,7 @@ function statusLabel(status: CareerSkillStatus): string {
         <button class="cp-secondary" type="button" @click="close">取消</button>
         <button class="cp-primary" type="button" :disabled="!draft.length" @click="commit"><Check :size="16" />确认选择 {{ draft.length }} 项</button>
       </template>
-    </AppModal>
+    </UiDialog>
   </div>
 </template>
 

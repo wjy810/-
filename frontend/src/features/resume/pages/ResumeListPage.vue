@@ -1,24 +1,38 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, h, onMounted, ref, watch, type FunctionalComponent } from 'vue'
 import { useLocalStorage } from '@vueuse/core'
 import { useRouter } from 'vue-router'
-import { Archive, ArchiveRestore, Copy, LayoutGrid, List, PenLine, Search, Trash2 } from 'lucide-vue-next'
-import AppBanner from '@/shared/ui/AppBanner.vue'
-import AppButton from '@/shared/ui/AppButton.vue'
-import AppIcon from '@/shared/ui/AppIcon.vue'
+import {
+  Archive,
+  ArchiveRestore,
+  BookOpen,
+  Copy,
+  LayoutGrid,
+  List,
+  PenLine,
+  Plus,
+  RefreshCw,
+  Search,
+  Trash2,
+} from 'lucide-vue-next'
 import JobProofIcon from '@/shared/ui/JobProofIcon.vue'
-import AppModal from '@/shared/ui/AppModal.vue'
-import AppSelect from '@/shared/ui/AppSelect.vue'
+import type { JobProofIconName } from '@/shared/ui/jobProofIcons'
 import PageState from '@/shared/ui/PageState.vue'
+import UiBanner from '@/shared/ui/UiBanner.vue'
 import UiButton from '@/shared/ui/UiButton.vue'
+import UiCard from '@/shared/ui/UiCard.vue'
 import UiDialog from '@/shared/ui/UiDialog.vue'
 import type { MenuItem } from '@/shared/ui/UiDropdownMenu.vue'
 import UiEmptyState from '@/shared/ui/UiEmptyState.vue'
 import UiField from '@/shared/ui/UiField.vue'
 import UiInput from '@/shared/ui/UiInput.vue'
+import UiPageHeader from '@/shared/ui/UiPageHeader.vue'
+import UiPagination from '@/shared/ui/UiPagination.vue'
 import UiSegmented, { type SegmentItem } from '@/shared/ui/UiSegmented.vue'
 import UiSelect from '@/shared/ui/UiSelect.vue'
 import UiSkeleton from '@/shared/ui/UiSkeleton.vue'
+import UiStatTile from '@/shared/ui/UiStatTile.vue'
+import { pageCountOf } from '@/shared/ui/pagination'
 import { useToastFeedback } from '@/shared/ui/toast'
 import ForbidState from '@/shared/ui/ForbidState.vue'
 import { errorMessage, isForbidden, isVersionConflict } from '@/shared/api/types'
@@ -66,6 +80,17 @@ const VIEWS: SegmentItem<ListView>[] = [
 ]
 const page = ref(0)
 const pageSize = ref(10)
+const PAGE_SIZES = [10, 20, 50].map((value) => ({ value, label: `${value} 条 / 页` }))
+
+/** UiStatTile takes an icon component; these keep the product's own resume glyphs. */
+function proofIcon(name: JobProofIconName): FunctionalComponent<{ size?: number | string }> {
+  return (props) => h(JobProofIcon, { name, size: props.size })
+}
+const STAT_ICONS = {
+  master: proofIcon('resume-master-resume'),
+  tailored: proofIcon('resume-tailored-resume'),
+  frozen: proofIcon('resume-frozen-version'),
+}
 const archiveTarget = ref<ResumeRow | null>(null)
 const renameTarget = ref<ResumeRow | null>(null)
 const renameValue = ref('')
@@ -127,13 +152,7 @@ const snapshotCounts = computed(() => {
 /** Evidence coverage only exists for resumes with key outcomes; without any, the column is noise. */
 const hasCoverage = computed(() => filtered.value.some((row) => row.coverage !== null))
 
-const pageCount = computed(() => Math.max(1, Math.ceil(viewItems.value.length / pageSize.value)))
-const pageNums = computed(() => {
-  const total = pageCount.value
-  const start = Math.max(0, Math.min(page.value - 2, total - 5))
-  const end = Math.min(total, start + 5)
-  return Array.from({ length: end - start }, (_, i) => start + i)
-})
+const pageCount = computed(() => pageCountOf(viewItems.value.length, pageSize.value))
 const paged = computed(() => viewItems.value.slice(page.value * pageSize.value, (page.value + 1) * pageSize.value))
 const searching = computed(() => Boolean(normalizeResumeTitle(query.value)))
 const emptyState = computed(() => {
@@ -317,27 +336,24 @@ onMounted(() => {
 
 <template>
   <ForbidState v-if="forbidden" :error="forbidden" />
-  <section v-else class="page">
-    <header class="page-head">
-      <div>
-        <h1 class="page-head__title">简历工作台</h1>
-        <p class="page-head__sub">统一管理简历和冻结版本，随时预览与导出</p>
-      </div>
-      <div class="page-head__actions">
-        <RouterLink class="btn btn--ghost" to="/resume-templates">
-          <AppIcon name="book" :size="15" />
-          模板中心
-        </RouterLink>
-        <AppButton variant="ghost" :pending="list.loading.value && list.loaded.value" @click="load">
-          <AppIcon name="refresh" :size="15" />
-          刷新
-        </AppButton>
-        <AppButton @click="openCreate">
-          <AppIcon name="plus" :size="15" />
-          新建简历
-        </AppButton>
-      </div>
-    </header>
+  <section v-else class="page-container animate-rise resume-list-page">
+    <UiPageHeader title="简历工作台" description="统一管理简历和冻结版本，随时预览与导出">
+      <template #actions>
+        <div class="list-actions">
+          <UiButton class="list-action" variant="secondary" :icon="BookOpen" to="/resume-templates">模板中心</UiButton>
+          <UiButton
+            class="list-action"
+            variant="secondary"
+            :icon="RefreshCw"
+            :pending="list.loading.value && list.loaded.value"
+            @click="load"
+          >
+            刷新
+          </UiButton>
+          <UiButton class="list-action" :icon="Plus" @click="openCreate">新建简历</UiButton>
+        </div>
+      </template>
+    </UiPageHeader>
 
     <PageState
       :loading="list.loading.value"
@@ -348,45 +364,36 @@ onMounted(() => {
     >
       <template #skeleton>
         <div class="list-body" aria-busy="true">
-          <div class="grid-stats">
+          <div class="resume-stats">
             <UiSkeleton height="96px" radius="var(--radius-lg)" />
             <UiSkeleton height="96px" radius="var(--radius-lg)" />
             <UiSkeleton height="96px" radius="var(--radius-lg)" />
           </div>
-          <div class="card bones">
+          <UiCard as="div" padding="md" class="bones">
             <UiSkeleton height="18px" width="48%" />
             <UiSkeleton :lines="4" />
-          </div>
+          </UiCard>
         </div>
       </template>
 
       <div class="list-body">
-        <AppBanner v-if="detailGap" tone="warn">
+        <UiBanner v-if="detailGap" tone="warning">
           有 {{ detailGap }} 份简历的详情没有读取成功，它们的版本和证据覆盖度暂未显示。可以稍后点“刷新”重试。
-        </AppBanner>
+        </UiBanner>
 
-        <div class="grid-stats">
-          <div class="stat">
-            <span class="stat__icon"><JobProofIcon name="resume-master-resume" :size="18" /></span>
-            <span class="stat__label">主简历</span>
-            <span class="stat__value">{{ stats.masters }}</span>
-            <span class="stat__sub">草稿 / 待确认 / 可导出</span>
-          </div>
-          <div class="stat">
-            <span class="stat__icon stat__icon--green"><JobProofIcon name="resume-tailored-resume" :size="18" /></span>
-            <span class="stat__label">岗位定制版</span>
-            <span class="stat__value">{{ stats.tailored }}</span>
-            <span class="stat__sub">按岗位生成、待确认的版本</span>
-          </div>
-          <div class="stat">
-            <span class="stat__icon stat__icon--orange"><JobProofIcon name="resume-frozen-version" :size="18" /></span>
-            <span class="stat__label">冻结版本</span>
-            <span class="stat__value">{{ stats.snapshots }}</span>
-            <span class="stat__sub">已冻结，内容不可修改</span>
-          </div>
+        <div class="resume-stats">
+          <UiStatTile label="主简历" :value="stats.masters" hint="草稿 / 待确认 / 可导出" :icon="STAT_ICONS.master" />
+          <UiStatTile
+            label="岗位定制版"
+            :value="stats.tailored"
+            hint="按岗位生成、待确认的版本"
+            :icon="STAT_ICONS.tailored"
+            tone="success"
+          />
+          <UiStatTile label="冻结版本" :value="stats.snapshots" hint="已冻结，内容不可修改" :icon="STAT_ICONS.frozen" tone="accent" />
         </div>
 
-        <div class="card">
+        <UiCard as="div" padding="none">
           <div class="tabs" role="tablist" aria-label="简历类型筛选" :style="{ '--tab-index': activeTabIndex }">
             <button
               v-for="item in TABS"
@@ -446,37 +453,19 @@ onMounted(() => {
                   @restore="onRestore"
                   @delete="openPermanentDelete"
                 />
-                <footer class="tbl-foot">
+                <footer class="results-foot">
                   <span class="muted">共 {{ viewItems.length }} 条</span>
-                  <div class="pager">
-                    <AppSelect :model-value="pageSize" class="pager__size" ariaLabel="每页条数" @change="pageSize = Number($event)">
-                      <option :value="10">10 条 / 页</option>
-                      <option :value="20">20 条 / 页</option>
-                      <option :value="50">50 条 / 页</option>
-                    </AppSelect>
-                    <button class="pager__page" type="button" :disabled="page <= 0" aria-label="上一页" @click="page -= 1">
-                      <AppIcon name="chevron-left" :size="14" />
-                    </button>
-                    <button
-                      v-for="num in pageNums"
-                      :key="num"
-                      class="pager__page"
-                      :class="{ 'is-active': page === num }"
-                      type="button"
-                      @click="page = num"
-                    >
-                      {{ num + 1 }}
-                    </button>
-                    <button
-                      class="pager__page"
-                      type="button"
-                      :disabled="page >= pageCount - 1"
-                      aria-label="下一页"
-                      @click="page += 1"
-                    >
-                      <AppIcon name="chevron-right" :size="14" />
-                    </button>
-                  </div>
+                  <UiPagination class="results-pager" :page="page" :page-count="pageCount" aria-label="简历分页" @update:page="page = $event">
+                    <div class="results-pager__size">
+                      <UiSelect
+                        :model-value="pageSize"
+                        :options="PAGE_SIZES"
+                        size="sm"
+                        aria-label="每页条数"
+                        @update:model-value="pageSize = Number($event)"
+                      />
+                    </div>
+                  </UiPagination>
                 </footer>
               </template>
 
@@ -493,7 +482,7 @@ onMounted(() => {
               </UiEmptyState>
             </div>
           </Transition>
-        </div>
+        </UiCard>
       </div>
     </PageState>
   </section>
@@ -517,23 +506,42 @@ onMounted(() => {
     </template>
   </UiDialog>
 
-  <AppModal :open="Boolean(archiveTarget)" title="归档简历" :width="440" @close="archiveTarget = null">
+  <UiDialog :open="Boolean(archiveTarget)" title="归档简历" width="sm" @close="archiveTarget = null">
     <p class="muted">
       「{{ archiveTarget?.title }}」归档后会移到「已归档」，可以随时恢复，不会删除任何内容。
     </p>
     <template #footer>
-      <AppButton variant="ghost" :disabled="Boolean(pending)" @click="archiveTarget = null">取消</AppButton>
-      <AppButton variant="danger" :pending="Boolean(pending)" @click="onArchiveConfirm">确认归档</AppButton>
+      <UiButton variant="secondary" :disabled="Boolean(pending)" @click="archiveTarget = null">取消</UiButton>
+      <UiButton variant="danger" :pending="Boolean(pending)" @click="onArchiveConfirm">确认归档</UiButton>
     </template>
-  </AppModal>
+  </UiDialog>
 
   <ResumeDeleteDialog :target="deleteTarget" @close="deleteTarget = null" @deleted="onDeleted" />
 </template>
 
 <style scoped>
-.page,
-.page > * {
+.resume-list-page {
+  display: grid;
+  gap: var(--space-6);
+  align-content: start;
+}
+
+.resume-list-page,
+.resume-list-page > * {
   min-width: 0;
+}
+
+.list-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.resume-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--space-4);
 }
 
 .tabs {
@@ -543,7 +551,7 @@ onMounted(() => {
   grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 4px;
   padding: 0 16px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--border-default);
   overflow-x: auto;
 }
 
@@ -558,9 +566,9 @@ onMounted(() => {
   border: none;
   margin-bottom: -1px;
   white-space: nowrap;
-  transition:color var(--motion-base) ease,
-  background-color var(--motion-fast) ease,
-  transform var(--motion-fast) var(--motion-ease);
+  transition: color var(--dur-base) ease,
+    background-color var(--dur-fast) ease,
+    transform var(--dur-fast) var(--ease-standard);
 }
 
 .tabs__item:hover {
@@ -589,12 +597,16 @@ onMounted(() => {
   box-shadow: 0 -2px 7px color-mix(in srgb, var(--color-primary) 18%, transparent);
   pointer-events: none;
   transform: translateX(calc(var(--tab-index) * (100% + 4px)));
-  transition: transform var(--motion-slow) var(--motion-ease);
+  transition: transform var(--dur-slow) var(--ease-standard);
 }
 
 .list-body {
   display: grid;
   gap: var(--space-6);
+  min-width: 0;
+}
+
+.list-body > * {
   min-width: 0;
 }
 
@@ -604,7 +616,7 @@ onMounted(() => {
   align-items: center;
   gap: 12px;
   padding: 12px 16px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--border-default);
   font-size: 13px;
 }
 
@@ -632,7 +644,7 @@ onMounted(() => {
 }
 
 .resume-results-enter-active {
-  transition: opacity var(--motion-base) ease, transform var(--motion-base) var(--motion-ease);
+  transition: opacity var(--dur-base) ease, transform var(--dur-base) var(--ease-standard);
 }
 
 .resume-results-leave-active {
@@ -649,75 +661,59 @@ onMounted(() => {
   transform: translateY(-2px);
 }
 
-.bones {
+/* Nested so it outranks UiCard's own display: block. */
+.list-body .bones {
   display: grid;
   gap: 12px;
-  padding: 20px;
 }
 
-.tbl-foot {
+.results-foot {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
   padding: 12px 16px;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--border-default);
   font-size: 13px;
   flex-wrap: wrap;
 }
 
-.pager__size {
+.results-pager__size {
   width: 132px;
-  padding: 0;
 }
 
-.pager__size:deep(.app-select__trigger) {
-  height: 34px;
+@media (max-width: 640px) {
+  .resume-list-page {
+    gap: var(--space-5);
+  }
 }
 
 @media (max-width: 560px) {
-  .page {
-    min-width: 0;
-    padding: 16px 12px 32px;
+  .resume-list-page {
+    padding: var(--space-4) var(--space-3) var(--space-8);
     gap: 14px;
   }
 
-  .page-head,
-  .page-head > div:first-child,
-  .page-head__actions,
-  .grid-stats,
-  .card,
-  .tbl-foot {
-    min-width: 0;
-    max-width: 100%;
-  }
-
-  .page-head__sub {
-    display: block;
-    line-height: 1.6;
-  }
-
-  .page-head__actions {
+  .list-actions {
     width: 100%;
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 8px;
   }
 
-  .page-head__actions:deep(.btn),
-  .page-head__actions > .btn {
+  .list-actions .list-action {
     width: 100%;
     min-width: 0;
-    padding-inline: 8px;
+    padding-inline: var(--space-2);
   }
 
   /* Three compact counters in one row, so the list itself starts above the fold. */
-  .grid-stats {
+  .resume-stats {
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 8px;
+    gap: var(--space-2);
   }
 
-  .stat {
+  .resume-stats :deep(.ui-stat) {
+    display: grid;
     grid-template-columns: auto minmax(0, 1fr);
     grid-template-areas: 'icon value' 'label label';
     align-items: center;
@@ -725,20 +721,22 @@ onMounted(() => {
     padding: 10px 12px;
   }
 
-  .stat__icon {
+  .resume-stats :deep(.ui-stat__body) {
+    display: contents;
+  }
+
+  .resume-stats :deep(.ui-stat__icon) {
     grid-area: icon;
     width: 28px;
     height: 28px;
-    margin-bottom: 0;
   }
 
-  .stat__value {
+  .resume-stats :deep(.ui-stat__value) {
     grid-area: value;
-    justify-content: flex-end;
-    font-size: 22px;
+    justify-self: end;
   }
 
-  .stat__label {
+  .resume-stats :deep(.ui-stat__label) {
     grid-area: label;
     overflow: hidden;
     font-size: 12px;
@@ -746,7 +744,7 @@ onMounted(() => {
     white-space: nowrap;
   }
 
-  .stat__sub {
+  .resume-stats :deep(.ui-stat__hint) {
     display: none;
   }
 
@@ -769,6 +767,17 @@ onMounted(() => {
     display: none;
   }
 
+  .results-foot {
+    display: grid;
+    align-items: start;
+    padding: 12px;
+  }
+
+  .results-foot .results-pager {
+    width: 100%;
+    min-width: 0;
+    justify-content: space-between;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -784,23 +793,5 @@ onMounted(() => {
   .resume-results-leave-to {
     transform: none;
   }
-
-}
-
-@media (max-width: 560px) {
-  .tbl-foot {
-    display: grid;
-    align-items: start;
-    padding: 12px;
-  }
-
-  .pager {
-    width: 100%;
-    min-width: 0;
-    justify-content: flex-start;
-    flex-wrap: wrap;
-    padding-bottom: 2px;
-  }
-
 }
 </style>

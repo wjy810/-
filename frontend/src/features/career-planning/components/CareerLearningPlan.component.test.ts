@@ -25,7 +25,7 @@ describe('CareerLearningPlan', () => {
         'aria-labelledby': 'career-workbench-tab-plan',
       },
       props: { sessionId: 'session-1', plan: makePlan(canvas), canvas, canCreate: true },
-      global: { stubs: { AppModal: ModalStub } },
+      global: { stubs: { UiDialog: ModalStub } },
     })
 
     expect(wrapper.element.tagName).toBe('DIV')
@@ -42,7 +42,7 @@ describe('CareerLearningPlan', () => {
     api.updateCareerPlanTask.mockResolvedValue(plan)
     const wrapper = mount(CareerLearningPlan, {
       props: { sessionId: 'session-1', plan, canvas, canCreate: true },
-      global: { stubs: { AppModal: ModalStub } },
+      global: { stubs: { UiDialog: ModalStub } },
     })
 
     await wrapper.findAll('button[aria-label="完成任务"]')[0].trigger('click')

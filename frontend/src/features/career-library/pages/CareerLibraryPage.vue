@@ -7,6 +7,7 @@ import {
 import { errorMessage } from '@/shared/api/types'
 import { useLoadState } from '@/shared/lib/useLoadState'
 import PageState from '@/shared/ui/PageState.vue'
+import UiSkeleton from '@/shared/ui/UiSkeleton.vue'
 import { useToastFeedback } from '@/shared/ui/toast'
 import CareerLibraryTabs, { type CareerLibraryView } from '../components/CareerLibraryTabs.vue'
 import CareerProfileTab from '../components/CareerProfileTab.vue'
@@ -217,7 +218,7 @@ onBeforeUnmount(() => window.clearTimeout(searchTimer))
     </div>
 
     <PageState :loading="loading" :error="shellError" :loaded="loaded" error-title="求职资料库读取失败" @retry="loadShell">
-      <template #skeleton><div class="career-shell-loading"><span class="bone" /><span class="bone" /></div></template>
+      <template #skeleton><div class="career-shell-loading"><UiSkeleton height="160px" radius="var(--radius-lg)" /><UiSkeleton height="160px" radius="var(--radius-lg)" /></div></template>
       <Transition name="career-view" mode="out-in">
         <div v-if="profile && overview" :key="view" class="career-view-panel">
           <CareerProfileTab v-if="view === 'profile'" :profile="profile" :overview="overview" :pending="profilePending" @save="saveProfile" @profile-updated="profile = $event; refreshOverview()" @notice="setNotice" @error="setError" />

@@ -111,7 +111,7 @@ onMounted(() => { load(); void resumeState.load() })
 
 <template>
   <ForbidState v-if="forbidden" :error="forbidden" />
-  <section v-else class="page tpl-detail">
+  <section v-else class="page-container animate-rise tpl-detail">
     <RouterLink class="tpl-detail__back" to="/resume-templates"><ArrowLeft :size="15" aria-hidden="true" />模板中心</RouterLink>
 
     <UiEmptyState v-if="notFound" title="模板不存在" description="这套模板可能已下架，或链接有误。" illustration="empty-templates">
@@ -213,9 +213,9 @@ onMounted(() => { load(); void resumeState.load() })
 <style scoped>
 .tpl-detail {
   max-width: 1380px;
-  margin: 0 auto;
   display: grid;
   gap: var(--space-4);
+  align-content: start;
 }
 
 .tpl-detail__back {
@@ -365,17 +365,19 @@ onMounted(() => { load(); void resumeState.load() })
   font-size: var(--fs-sm);
 }
 
-.tpl-detail__hint {
+/* The section rule above styles every paragraph; hints sit one step quieter. */
+.tpl-detail__hint,
+.tpl-detail__section .tpl-detail__hint {
   display: flex;
   align-items: center;
   gap: 6px;
-  color: var(--text-tertiary) !important;
-  font-size: var(--fs-xs) !important;
+  color: var(--text-tertiary);
+  font-size: var(--fs-xs);
 }
 
 .tpl-detail__hint--error {
   flex-wrap: wrap;
-  color: var(--color-danger-text) !important;
+  color: var(--color-danger-text);
 }
 
 .tpl-detail__actions {

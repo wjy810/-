@@ -1,10 +1,10 @@
 <script setup lang="ts">
 /** Resumes and their versions as a table; versions sit indented under their resume in "全部". */
 import AppIcon from '@/shared/ui/AppIcon.vue'
-import AppTag from '@/shared/ui/AppTag.vue'
 import JobProofIcon from '@/shared/ui/JobProofIcon.vue'
+import UiBadge, { type BadgeTone } from '@/shared/ui/UiBadge.vue'
 import { formatWhen } from '@/shared/lib/datetime'
-import { coverageSub, rowAction, rowLink, type ResumeRow } from '../utils/resumeRows'
+import { coverageSub, rowAction, rowLink, type ResumeRow, type RowTone } from '../utils/resumeRows'
 
 defineProps<{
   rows: ResumeRow[]
@@ -21,11 +21,13 @@ const emit = defineEmits<{
   restore: [row: ResumeRow]
   delete: [row: ResumeRow]
 }>()
+
+const BADGE_TONE: Record<RowTone, BadgeTone> = { blue: 'primary', green: 'success', orange: 'accent' }
 </script>
 
 <template>
-  <div class="tbl-wrap">
-    <table class="tbl">
+  <div class="table-scroll">
+    <table class="data-table">
       <thead>
         <tr>
           <th>简历名称</th>
@@ -45,7 +47,7 @@ const emit = defineEmits<{
               <div class="rname__body">
                 <div class="rname__line">
                   <span class="rname__title" :title="row.title">{{ row.title }}</span>
-                  <AppTag :tone="row.rowTone">{{ row.rowType }}<template v-if="row.ordinal"> · 第 {{ row.ordinal }} 版</template></AppTag>
+                  <UiBadge :tone="BADGE_TONE[row.rowTone]">{{ row.rowType }}<template v-if="row.ordinal"> · 第 {{ row.ordinal }} 版</template></UiBadge>
                 </div>
                 <p v-if="row.lockNote" class="rname__lock">
                   <AppIcon name="lock" :size="12" />
@@ -94,12 +96,12 @@ const emit = defineEmits<{
 </template>
 
 <style scoped>
-.tbl tr.is-child td:first-child {
+.data-table tr.is-child td:first-child {
   padding-left: 38px;
   position: relative;
 }
 
-.tbl tr.is-child td:first-child::before {
+.data-table tr.is-child td:first-child::before {
   content: '';
   position: absolute;
   left: 22px;
@@ -111,7 +113,7 @@ const emit = defineEmits<{
   border-bottom-left-radius: 6px;
 }
 
-.tbl-wrap {
+.table-scroll {
   overflow-x: auto;
 }
 
@@ -137,12 +139,12 @@ const emit = defineEmits<{
 }
 
 .rtype--green {
-  background: var(--success-soft);
+  background: var(--color-success-soft);
   color: var(--color-success);
 }
 
 .rtype--orange {
-  background: var(--warning-soft);
+  background: var(--color-warning-soft);
   color: var(--color-warning);
 }
 
@@ -245,7 +247,7 @@ const emit = defineEmits<{
 }
 
 @media (max-width: 560px) {
-  .tbl-wrap {
+  .table-scroll {
     min-width: 0;
     max-width: 100%;
   }
@@ -253,35 +255,35 @@ const emit = defineEmits<{
 }
 
 @media (max-width: 560px) {
-  .tbl-wrap {
+  .table-scroll {
     overflow: visible;
     padding: 10px;
   }
 
-  .tbl,
-  .tbl tbody {
+  .data-table,
+  .data-table tbody {
     width: 100%;
     min-width: 0;
     display: grid;
     gap: 10px;
   }
 
-  .tbl thead {
+  .data-table thead {
     display: none;
   }
 
-  .tbl tbody tr {
+  .data-table tbody tr {
     min-width: 0;
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 12px;
     padding: 14px;
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    background: var(--surface);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-md);
+    background: var(--surface-1);
   }
 
-  .tbl td {
+  .data-table td {
     min-width: 0;
     display: grid;
     align-content: start;
@@ -291,20 +293,20 @@ const emit = defineEmits<{
     overflow-wrap: anywhere;
   }
 
-  .tbl td::before {
+  .data-table td::before {
     content: attr(data-label);
     color: var(--text-tertiary);
     font-size: 12px;
     line-height: 1.4;
   }
 
-  .tbl td:first-child,
-  .tbl td:last-child {
+  .data-table td:first-child,
+  .data-table td:last-child {
     grid-column: 1 / -1;
   }
 
-  .tbl td:first-child::before,
-  .tbl td:last-child::before {
+  .data-table td:first-child::before,
+  .data-table td:last-child::before {
     display: none;
   }
 

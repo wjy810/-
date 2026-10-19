@@ -6,11 +6,11 @@ import {
   Play, Search, Sparkles, Star, Target,
 } from 'lucide-vue-next'
 import JobProofIcon from '@/shared/ui/JobProofIcon.vue'
-import AppModal from '@/shared/ui/AppModal.vue'
-import AppSelect from '@/shared/ui/AppSelect.vue'
 import PageState from '@/shared/ui/PageState.vue'
 import UiButton from '@/shared/ui/UiButton.vue'
+import UiDialog from '@/shared/ui/UiDialog.vue'
 import UiEmptyState from '@/shared/ui/UiEmptyState.vue'
+import UiSelect from '@/shared/ui/UiSelect.vue'
 import { jobProofIconIds } from '@/shared/ui/jobProofIcons'
 import { useLoadState } from '@/shared/lib/useLoadState'
 import { useToastFeedback } from '@/shared/ui/toast'
@@ -190,8 +190,8 @@ onBeforeUnmount(() => window.clearTimeout(reloadTimer))
           <div><h2>我的能力画布</h2><em>{{ stats.canvasCount }}</em></div>
           <div class="canvas-filters">
             <label><Search :size="16" /><input v-model="query" type="search" placeholder="搜索职业或能力节点" aria-label="搜索职业或能力节点"></label>
-            <AppSelect v-model="status" :options="statusOptions" aria-label="筛选能力画布状态" />
-            <AppSelect v-model="sort" :options="sortOptions" aria-label="能力画布排序" />
+            <UiSelect v-model="status" :options="statusOptions" aria-label="筛选能力画布状态" placeholder="筛选能力画布状态" />
+            <UiSelect v-model="sort" :options="sortOptions" aria-label="能力画布排序" placeholder="能力画布排序" />
           </div>
         </header>
 
@@ -255,7 +255,7 @@ onBeforeUnmount(() => window.clearTimeout(reloadTimer))
       </PageState>
     </main>
 
-    <AppModal :open="newOpen" title="新建能力画布" :width="760" mobile-sheet @close="closeNew">
+    <UiDialog :open="newOpen" title="新建能力画布" :width="760" @close="closeNew">
       <section class="new-canvas-dialog">
         <header><span><Sparkles :size="23" /></span><div><h2>选择新的目标职业</h2><p>新画布不会复制旧节点。确认目标后只创建根节点，由 AI 重新生成完整能力树。</p></div></header>
         <JobTaxonomyPicker :selected-name="selectedTargetName" :selected-node-id="selectedTargetId" :disabled="pending === 'create'" @select="chooseTarget" />
@@ -268,7 +268,7 @@ onBeforeUnmount(() => window.clearTimeout(reloadTimer))
         <button class="dialog-cancel" type="button" :disabled="pending === 'create'" @click="closeNew">取消</button>
         <button class="dialog-create" type="button" :disabled="!selectedTargetId || !newConsent || pending === 'create'" :aria-describedby="newConsent ? undefined : 'new-canvas-consent-hint'" @click="createCanvas"><LoaderCircle v-if="pending === 'create'" class="spin" :size="16" /><JobProofIcon v-else :name="jobProofIconIds.newCanvas" :size="16" />创建目标画布</button>
       </template>
-    </AppModal>
+    </UiDialog>
 </template>
 
 <style scoped>
@@ -315,7 +315,7 @@ onBeforeUnmount(() => window.clearTimeout(reloadTimer))
 .canvas-filters > label { height: 42px; padding: 0 12px; display: flex; align-items: center; gap: 8px; border: 1px solid var(--border-strong); border-radius: 8px; color: var(--text-tertiary); background: var(--surface); }
 .canvas-filters input { min-width: 0; width: 100%; height: 40px; padding: 0; border: 0; outline: 0; color: var(--text); background: transparent; font-size: 13px; }
 .canvas-filters > label:focus-within { border-color: var(--color-primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 8%, transparent); }
-.canvas-filters:deep(.app-select__trigger) { min-height: 42px; border-radius: 8px; }
+.canvas-filters:deep(.ui-select-trigger) { min-height: 42px; border-radius: 8px; }
 .overview-loading { min-height: 300px; display: flex; align-items: center; justify-content: center; gap: 12px; color: var(--text-secondary); }
 .canvas-card-grid { margin-top: 16px; display: grid; grid-template-columns: repeat(auto-fill, minmax(285px, 1fr)); gap: 16px; align-items: start; }
 .canvas-summary-card {
@@ -414,7 +414,7 @@ onBeforeUnmount(() => window.clearTimeout(reloadTimer))
   .canvas-list-section > header { display: grid; gap: 16px; }
   .canvas-filters { grid-template-columns: 1fr 1fr; }
   .canvas-filters > label { grid-column: 1 / -1; height: 44px; }
-  .canvas-filters:deep(.app-select__trigger) { min-height: 44px; }
+  .canvas-filters:deep(.ui-select-trigger) { min-height: 44px; }
   .canvas-card-grid { grid-template-columns: 1fr; }
   .canvas-summary-card { min-height: 0; padding: 16px; }
   .canvas-summary-card > footer button { min-height: 44px; }
@@ -449,7 +449,7 @@ onBeforeUnmount(() => window.clearTimeout(reloadTimer))
 .canvas-list-section > header > div:first-child { display: flex; align-items: center; gap: 12px; }
 .canvas-filters > label { height: 42px; border-radius: 8px; background: var(--surface-1); }
 .canvas-filters input { height: 40px; padding: 0; color: var(--text-primary); background: transparent; font-size: 12px; }
-.canvas-filters:deep(.app-select__trigger) { min-height: 42px; border-radius: 8px; }
+.canvas-filters:deep(.ui-select-trigger) { min-height: 42px; border-radius: 8px; }
 .overview-loading { min-height: 420px; gap: 10px; color: var(--text-secondary); }
 .canvas-card-grid { grid-template-columns: repeat(auto-fill, minmax(285px, 1fr)); gap: 14px; margin-top: 12px; }
 .canvas-summary-card { min-height: 500px; padding: 18px; border-radius: 8px; border-color: var(--border-subtle); box-shadow: 0 9px 26px color-mix(in srgb, var(--border-strong) 4%, transparent); transition: transform .25s cubic-bezier(.2,.8,.2,1), box-shadow .25s, border-color .25s; }

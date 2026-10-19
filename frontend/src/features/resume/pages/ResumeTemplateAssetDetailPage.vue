@@ -2,11 +2,13 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useSessionStore } from '@/stores/session'
-import AppBanner from '@/shared/ui/AppBanner.vue'
-import AppButton from '@/shared/ui/AppButton.vue'
-import AppEmpty from '@/shared/ui/AppEmpty.vue'
+import { ArrowLeft, Download, Lock } from 'lucide-vue-next'
 import AppIcon from '@/shared/ui/AppIcon.vue'
-import AppTag from '@/shared/ui/AppTag.vue'
+import UiBadge from '@/shared/ui/UiBadge.vue'
+import UiBanner from '@/shared/ui/UiBanner.vue'
+import UiButton from '@/shared/ui/UiButton.vue'
+import UiEmptyState from '@/shared/ui/UiEmptyState.vue'
+import UiSkeleton from '@/shared/ui/UiSkeleton.vue'
 import { errorMessage, isUnauthenticated } from '@/shared/api/types'
 import { downloadTemplateCatalogDocx, fetchTemplateCatalogItem } from '../services/resumeApi'
 import type { TemplateCatalogItem } from '../types'
@@ -142,7 +144,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-      <section class="page asset-page">
+    <section class="page-container animate-rise asset-page">
       <nav class="asset-breadcrumb" aria-label="面包屑">
         <RouterLink to="/resume-templates">模板中心</RouterLink>
         <AppIcon name="chevron-right" :size="14" />
@@ -150,14 +152,14 @@ onUnmounted(() => {
       </nav>
 
       <div v-if="loading" class="asset-loading" aria-busy="true">
-        <div class="bone asset-loading__preview" />
-        <div>
-          <div class="bone" />
-          <div class="bone bone--short" />
+        <UiSkeleton height="660px" />
+        <div class="asset-loading__info">
+          <UiSkeleton />
+          <UiSkeleton width="55%" />
         </div>
       </div>
 
-      <AppBanner v-else-if="error" tone="bad">{{ error }}</AppBanner>
+      <UiBanner v-else-if="error" tone="danger">{{ error }}</UiBanner>
 
       <div v-else-if="item" class="asset-layout">
         <section class="asset-preview" aria-label="模板全部页面预览">
@@ -176,28 +178,28 @@ onUnmounted(() => {
                 decoding="async"
                 @error="markPreviewPageFailed(page.pageNumber)"
               />
-              <AppBanner v-else tone="bad">第 {{ page.pageNumber }} 页读取失败</AppBanner>
+              <UiBanner v-else tone="danger">第 {{ page.pageNumber }} 页读取失败</UiBanner>
               <figcaption>第 {{ page.pageNumber }} 页</figcaption>
             </figure>
           </div>
 
           <div v-else-if="item.previewStatus === 'PENDING' || item.previewStatus === 'PROCESSING'" class="preview-state" aria-live="polite">
-            <div class="bone preview-state__paper" />
+            <UiSkeleton class="preview-state__paper" width="min(76%, 440px)" height="auto" />
             <strong>{{ item.previewStatus === 'PROCESSING' ? '正在生成分页预览' : '等待生成分页预览' }}</strong>
             <span>完成后将自动显示全部页面</span>
           </div>
 
-          <AppBanner v-else-if="item.previewStatus === 'FAILED'" tone="bad">
+          <UiBanner v-else-if="item.previewStatus === 'FAILED'" tone="danger">
             Word 分页预览生成失败，管理员可在模板管理中重试。
-          </AppBanner>
+          </UiBanner>
         </section>
 
         <aside class="asset-info">
           <div class="asset-info__head">
-            <AppTag tone="green">
+            <UiBadge class="asset-info__kind" tone="success">
               <AppIcon name="download" :size="12" />
               原始 Word
-            </AppTag>
+            </UiBadge>
             <h1>{{ item.title }}</h1>
             <p>{{ item.summary || 'HICV 公共 Word 简历模板，可下载原始 DOCX 文件。' }}</p>
           </div>
@@ -215,13 +217,12 @@ onUnmounted(() => {
             <span v-for="label in jobLabels" :key="label">{{ label }}</span>
           </div>
 
-          <AppBanner v-if="downloadError" tone="bad">{{ downloadError }}</AppBanner>
+          <UiBanner v-if="downloadError" tone="danger">{{ downloadError }}</UiBanner>
 
           <div class="asset-actions">
-            <AppButton :pending="downloading" @click="download">
-              <AppIcon :name="session.signedIn ? 'download' : 'lock'" :size="15" />
+            <UiButton size="lg" block :icon="session.signedIn ? Download : Lock" :pending="downloading" @click="download">
               {{ session.signedIn ? '下载 DOCX' : '登录后下载 DOCX' }}
-            </AppButton>
+            </UiButton>
             <p>下载时服务端会再次核对病毒扫描结果与 SHA-256，文件名保留 HICV 来源前缀。</p>
           </div>
 
@@ -240,16 +241,18 @@ onUnmounted(() => {
         </aside>
       </div>
 
-      <AppEmpty v-else text="模板不存在或已退休" icon="archive">
-        <RouterLink class="btn btn--ghost" to="/resume-templates">返回模板中心</RouterLink>
-      </AppEmpty>
+      <UiEmptyState v-else size="sm" illustration="empty-search" title="模板不存在或已退休">
+        <UiButton variant="secondary" :icon="ArrowLeft" to="/resume-templates">返回模板中心</UiButton>
+      </UiEmptyState>
     </section>
 </template>
 
 <style scoped>
 .asset-page {
   max-width: 1260px;
-  margin: 0 auto;
+  display: grid;
+  gap: var(--space-6);
+  align-content: start;
 }
 
 .asset-breadcrumb {
@@ -276,7 +279,7 @@ onUnmounted(() => {
 .asset-preview {
   min-height: 660px;
   padding: 24px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-default);
   background: var(--surface-3);
 }
 
@@ -347,11 +350,11 @@ onUnmounted(() => {
   display: grid;
   gap: 10px;
   padding-bottom: 18px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--border-default);
 }
 
-.asset-info__head .tag {
-  width: max-content;
+.asset-info__kind {
+  justify-self: start;
 }
 
 .asset-info__head h1 {
@@ -372,7 +375,7 @@ onUnmounted(() => {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0;
   margin: 0;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--border-default);
 }
 
 .asset-facts div {
@@ -380,7 +383,7 @@ onUnmounted(() => {
   display: grid;
   gap: 4px;
   padding: 12px 0;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--border-default);
 }
 
 .asset-facts div:nth-child(odd) {
@@ -420,16 +423,11 @@ onUnmounted(() => {
   gap: 8px;
 }
 
-.asset-actions .btn {
-  width: 100%;
-  min-height: 44px;
-}
-
 .source-block {
   display: grid;
   gap: 10px;
   padding-top: 18px;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--border-default);
 }
 
 .source-block h2 {
@@ -458,11 +456,7 @@ onUnmounted(() => {
   font-size: 12px;
 }
 
-.asset-loading__preview {
-  min-height: 660px;
-}
-
-.asset-loading > div:last-child {
+.asset-loading__info {
   display: grid;
   gap: 12px;
 }
@@ -481,6 +475,7 @@ onUnmounted(() => {
 @media (max-width: 640px) {
   .asset-page {
     padding: 18px 14px 36px;
+    gap: var(--space-5);
   }
 
   .asset-preview {

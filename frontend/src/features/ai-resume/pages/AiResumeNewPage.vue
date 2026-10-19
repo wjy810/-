@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { ChevronLeft } from 'lucide-vue-next'
 import { errorMessage, isVersionConflict } from '@/shared/api/types'
 import { isAbortError, pollTask } from '@/shared/lib/pollTask'
 import AppIcon from '@/shared/ui/AppIcon.vue'
 import UiButton from '@/shared/ui/UiButton.vue'
 import UiField from '@/shared/ui/UiField.vue'
+import UiIconButton from '@/shared/ui/UiIconButton.vue'
 import UiInput from '@/shared/ui/UiInput.vue'
 import UiTextarea from '@/shared/ui/UiTextarea.vue'
 import { normalizeResumeTitle, resumeTitleIssue } from '@/features/resume/utils/resumeTitle'
@@ -180,7 +182,7 @@ onBeforeUnmount(() => importAbort?.abort())
 <template>
   <main class="onboarding-workbench">
     <header class="onboarding-bar">
-      <RouterLink class="icon-btn" to="/resumes" title="返回简历列表"><AppIcon name="chevron-left" :size="18" /></RouterLink>
+      <UiIconButton label="返回简历列表" :icon="ChevronLeft" to="/resumes" tooltip-side="right" />
       <strong>AI 创建简历</strong>
       <span><AppIcon name="file-text" :size="15" />简历预览</span>
     </header>

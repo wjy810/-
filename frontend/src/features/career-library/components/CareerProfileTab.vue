@@ -4,9 +4,9 @@ import {
   ArrowRight, Camera, CheckCircle2, Info, Link2, LoaderCircle, LockKeyhole, MapPin,
   ShieldCheck, Target, Trash2, UserRound,
 } from 'lucide-vue-next'
-import AppModal from '@/shared/ui/AppModal.vue'
-import AppSelect from '@/shared/ui/AppSelect.vue'
 import UiButton from '@/shared/ui/UiButton.vue'
+import UiDialog from '@/shared/ui/UiDialog.vue'
+import UiSelect from '@/shared/ui/UiSelect.vue'
 import JobTaxonomyPicker from '@/features/ai-resume/components/JobTaxonomyPicker.vue'
 import { listJobTaxonomy } from '@/features/ai-resume/services/aiResumeApi'
 import { errorMessage } from '@/shared/api/types'
@@ -219,8 +219,8 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', beforeUnload))
           <div class="profile-form-grid intention-grid">
             <label class="taxonomy-field"><span>目标岗位</span><JobTaxonomyPicker :selected-name="form.targetJob" :selected-node-id="form.taxonomyNodeId" @select="chooseJob" /></label>
             <label><span>岗位分类</span><input id="profile-job-category" v-model.trim="form.jobCategory" class="career-input" readonly placeholder="选择岗位后自动填写" /></label>
-            <label><span>目标城市</span><AppSelect id="profile-target-city" v-model="form.targetCity" :options="cityOptions" aria-label="目标城市" searchable /></label>
-            <label><span>办公方式</span><AppSelect v-model="form.workMode" :options="workModes" aria-label="办公方式" /></label>
+            <label><span>目标城市</span><UiSelect id="profile-target-city" v-model="form.targetCity" :options="cityOptions" aria-label="目标城市" searchable /></label>
+            <label><span>办公方式</span><UiSelect v-model="form.workMode" :options="workModes" aria-label="办公方式" placeholder="办公方式" /></label>
             <label class="span-2 summary-field"><span>职业简介 <small>{{ form.summary.length }}/300</small></span><textarea id="profile-summary" v-model="form.summary" class="career-input" rows="3" maxlength="300" placeholder="用 3-5 句话概括专业背景、核心技能与价值亮点，突出你能为目标岗位带来的贡献。" /></label>
           </div>
         </section>
@@ -247,7 +247,7 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', beforeUnload))
       <button class="privacy-entry" type="button" @click="privacyOpen = true"><ShieldCheck :size="17" />隐私说明<ArrowRight :size="16" /></button>
     </aside>
 
-    <AppModal :open="privacyOpen" title="资料库隐私说明" :width="520" @close="privacyOpen = false">
+    <UiDialog :open="privacyOpen" title="资料库隐私说明" :width="520" :mobile-sheet="false" @close="privacyOpen = false">
       <div class="privacy-dialog">
         <LockKeyhole :size="26" />
         <div><strong>默认仅你可见</strong><p>管理员不能查看文件正文。AI 仅在具体会话中获得你的明确授权后读取已确认的结构化资料，原始文件和预览图片不会发送给模型。</p></div>
@@ -256,6 +256,6 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', beforeUnload))
         <UiButton variant="ghost" @click="privacyOpen = false">关闭</UiButton>
         <UiButton variant="secondary" to="/account/data-rights">导出或删除我的数据</UiButton>
       </template>
-    </AppModal>
+    </UiDialog>
   </div>
 </template>

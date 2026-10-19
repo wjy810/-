@@ -1,12 +1,17 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import AppButton from '@/shared/ui/AppButton.vue'
-import AppEmpty from '@/shared/ui/AppEmpty.vue'
+import { Filter } from 'lucide-vue-next'
 import AppIcon from '@/shared/ui/AppIcon.vue'
 import JobProofIcon from '@/shared/ui/JobProofIcon.vue'
-import AppSelect from '@/shared/ui/AppSelect.vue'
-import AppTag from '@/shared/ui/AppTag.vue'
+import UiBadge from '@/shared/ui/UiBadge.vue'
+import UiButton from '@/shared/ui/UiButton.vue'
+import UiEmptyState from '@/shared/ui/UiEmptyState.vue'
+import UiPageHeader from '@/shared/ui/UiPageHeader.vue'
+import UiPagination from '@/shared/ui/UiPagination.vue'
+import UiSelect from '@/shared/ui/UiSelect.vue'
+import UiSkeleton from '@/shared/ui/UiSkeleton.vue'
+import { pageCountOf } from '@/shared/ui/pagination'
 import { useToastFeedback } from '@/shared/ui/toast'
 import { errorMessage } from '@/shared/api/types'
 import { listTemplateCatalog, listTemplateCatalogFacets } from '../services/resumeApi'
@@ -100,7 +105,7 @@ const photoOptions = [
   { value: 'REQUIRED', label: '含照片' },
 ]
 
-const pageCount = computed(() => Math.max(1, Math.ceil(total.value / size)))
+const pageCount = computed(() => pageCountOf(total.value, size))
 const capabilityIndex = computed(() => Math.max(0, capabilityTabs.findIndex((tab) => tab.value === filters.capability)))
 /** The smart tab lists the live layout templates; the catalog filters below only apply to Word assets. */
 const smartTab = computed(() => filters.capability === 'SMART_EDITABLE')
@@ -240,17 +245,18 @@ onMounted(() => {
 </script>
 
 <template>
-      <section class="page catalog-page">
-      <header class="page-head catalog-head">
-        <div>
-          <h1 class="page-head__title">简历模板中心</h1>
-          <p class="page-head__sub">{{ MANIFESTS.length }} 套智能模板可在线编辑、与 AI 协作并一键换版，导出的 PDF 与预览一致；另有开源 Word 模板可检索、预览和下载。</p>
-        </div>
-        <RouterLink class="btn btn--ghost" to="/resumes">
-          <JobProofIcon name="resume-all-resumes" :size="15" />
-          我的简历
-        </RouterLink>
-      </header>
+    <section class="page-container animate-rise catalog-page">
+      <UiPageHeader
+        title="简历模板中心"
+        :description="`${MANIFESTS.length} 套智能模板可在线编辑、与 AI 协作并一键换版，导出的 PDF 与预览一致；另有开源 Word 模板可检索、预览和下载。`"
+      >
+        <template #actions>
+          <UiButton class="catalog-mine" variant="secondary" to="/resumes">
+            <JobProofIcon name="resume-all-resumes" :size="16" />
+            我的简历
+          </UiButton>
+        </template>
+      </UiPageHeader>
 
       <div class="catalog-toolbar" :class="{ 'catalog-toolbar--pending': smartTab }">
         <div class="capability-tabs" role="tablist" aria-label="模板能力" :style="{ '--capability-index': capabilityIndex }">
@@ -277,62 +283,64 @@ onMounted(() => {
             placeholder="搜索职位、行业、模板名或原文件名"
             aria-label="关键词"
           />
-          <AppButton type="submit" :pending="loading">搜索</AppButton>
+          <UiButton class="catalog-search__submit" type="submit" :pending="loading">搜索</UiButton>
         </form>
       </div>
 
       <div v-if="!smartTab" class="channel-row">
         <div class="channel-control">
           <span>素材频道</span>
-          <AppSelect
-            v-model="filters.assetKind"
-            ariaLabel="素材频道"
-            :options="channelOptions"
-            @change="changeChannel"
-          />
+          <div class="channel-control__select">
+            <UiSelect
+              v-model="filters.assetKind"
+              aria-label="素材频道"
+              :options="channelOptions"
+              @change="changeChannel"
+            />
+          </div>
         </div>
         <p>当前共 {{ total.toLocaleString('zh-CN') }} 项</p>
       </div>
 
       <form v-if="!smartTab" class="filter-band" @submit.prevent="search">
-        <AppSelect v-model="filters.occupation" ariaLabel="职业大类" :options="occupationOptions" />
-        <AppSelect
+        <UiSelect v-model="filters.occupation" aria-label="职业大类" :options="occupationOptions" />
+        <UiSelect
           v-model="filters.jobTag"
-          ariaLabel="岗位标签"
+          aria-label="岗位标签"
+          placeholder="岗位标签"
           :disabled="facetsLoading"
           :options="facetSelectOptions('JOB', '全部岗位')"
           searchable
           search-placeholder="搜索岗位"
         />
-        <AppSelect
+        <UiSelect
           v-model="filters.style"
-          ariaLabel="版式风格"
+          aria-label="版式风格"
+          placeholder="版式风格"
           :disabled="facetsLoading"
           :options="facetSelectOptions('STYLE', '全部版式')"
         />
-        <AppSelect v-model="filters.language" ariaLabel="语言" :options="languageOptions" />
-        <AppSelect v-model="filters.pages" ariaLabel="页数" :options="pageOptions" />
-        <AppSelect
+        <UiSelect v-model="filters.language" aria-label="语言" :options="languageOptions" />
+        <UiSelect v-model="filters.pages" aria-label="页数" :options="pageOptions" />
+        <UiSelect
           v-model="filters.photoPolicy"
-          ariaLabel="照片"
+          aria-label="照片"
           :options="photoOptions"
           menu-align="end"
         />
-        <AppSelect
+        <UiSelect
           v-model="filters.careerStage"
-          ariaLabel="职业阶段"
+          aria-label="职业阶段"
+          placeholder="职业阶段"
           :disabled="facetsLoading"
           :options="facetSelectOptions('CAREER_STAGE', '全部职业阶段')"
           menu-align="end"
         />
         <div class="filter-actions">
-          <AppButton type="submit" :pending="loading">
-            <AppIcon name="filter" :size="14" />
-            筛选
-          </AppButton>
-          <AppButton v-if="activeFilterCount" variant="text" type="button" @click="resetDetails">
+          <UiButton class="filter-actions__submit" type="submit" :icon="Filter" :pending="loading">筛选</UiButton>
+          <UiButton v-if="activeFilterCount" variant="link" @click="resetDetails">
             清除 {{ activeFilterCount }}
-          </AppButton>
+          </UiButton>
         </div>
       </form>
 
@@ -340,9 +348,11 @@ onMounted(() => {
 
       <div v-else-if="loading && !items.length" class="catalog-grid" aria-busy="true">
         <div v-for="index in 8" :key="index" class="catalog-card catalog-card--loading">
-          <div class="bone catalog-card__preview" />
-          <div class="bone" />
-          <div class="bone bone--short" />
+          <UiSkeleton class="catalog-card__preview-bone" height="auto" radius="0" />
+          <div class="catalog-card__bones">
+            <UiSkeleton />
+            <UiSkeleton width="55%" />
+          </div>
         </div>
       </div>
 
@@ -368,13 +378,13 @@ onMounted(() => {
               <span class="paper-preview__rule" />
               <span v-for="line in 7" :key="line" class="paper-preview__line" :class="'line-' + line" />
             </div>
-            <AppTag
+            <UiBadge
               class="catalog-card__capability"
-              :tone="item.capability === 'SMART_EDITABLE' ? 'blue' : 'green'"
+              :tone="item.capability === 'SMART_EDITABLE' ? 'primary' : 'success'"
             >
               <AppIcon :name="item.capability === 'SMART_EDITABLE' ? 'sparkles' : 'download'" :size="12" />
               {{ capabilityLabel(item.capability) }}
-            </AppTag>
+            </UiBadge>
           </div>
 
           <div class="catalog-card__body">
@@ -396,24 +406,25 @@ onMounted(() => {
         </RouterLink>
       </div>
 
-      <AppEmpty
+      <UiEmptyState
         v-else
-        text="没有找到匹配模板"
-        hint="换一个职位关键词，或减少筛选条件。"
-        icon="search"
+        size="sm"
+        illustration="empty-search"
+        title="没有找到匹配模板"
+        description="换一个职位关键词，或减少筛选条件。"
       >
-        <AppButton variant="ghost" @click="resetDetails">清除筛选</AppButton>
-      </AppEmpty>
+        <UiButton variant="secondary" @click="resetDetails">清除筛选</UiButton>
+      </UiEmptyState>
 
-      <nav v-if="!smartTab && total > size" class="pager catalog-pager" aria-label="模板分页">
-        <button class="pager__page" :disabled="page <= 0 || loading" @click="load(page - 1)">
-          <AppIcon name="chevron-left" :size="15" />
-        </button>
-        <span>第 {{ page + 1 }} / {{ pageCount }} 页</span>
-        <button class="pager__page" :disabled="page + 1 >= pageCount || loading" @click="load(page + 1)">
-          <AppIcon name="chevron-right" :size="15" />
-        </button>
-      </nav>
+      <UiPagination
+        v-if="!smartTab && total > size"
+        class="catalog-pager"
+        :page="page"
+        :page-count="pageCount"
+        :disabled="loading"
+        aria-label="模板分页"
+        @update:page="load"
+      />
 
       <footer v-if="!smartTab" class="catalog-license">
         <AppIcon name="shield" :size="17" />
@@ -428,11 +439,9 @@ onMounted(() => {
 <style scoped>
 .catalog-page {
   max-width: 1560px;
-  margin: 0 auto;
-}
-
-.catalog-head {
-  align-items: flex-start;
+  display: grid;
+  gap: var(--space-6);
+  align-content: start;
 }
 
 .catalog-toolbar {
@@ -442,7 +451,7 @@ onMounted(() => {
   justify-content: space-between;
   gap: 20px;
   padding: 12px 0;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--border-default);
 }
 
 .catalog-toolbar--pending {
@@ -456,7 +465,7 @@ onMounted(() => {
   grid-template-columns: repeat(3, minmax(96px, 1fr));
   width: max-content;
   padding: 3px;
-  border-radius: var(--radius);
+  border-radius: var(--radius-md);
   background: var(--surface-3);
 }
 
@@ -466,8 +475,8 @@ onMounted(() => {
   z-index: -1;
   width: calc((100% - 6px) / 3);
   border-radius: 6px;
-  background: var(--surface);
-  box-shadow: var(--shadow-s);
+  background: var(--surface-1);
+  box-shadow: var(--shadow-sm);
   content: '';
   transform: translateX(calc(var(--capability-index) * 100%));
   transition: transform 280ms cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 220ms ease;
@@ -506,7 +515,7 @@ onMounted(() => {
 
 .capability-tabs button.active {
   background: transparent;
-  color: var(--text);
+  color: var(--text-primary);
   font-weight: 600;
   box-shadow: none;
 }
@@ -528,8 +537,8 @@ onMounted(() => {
   gap: 10px;
   padding-left: 12px;
   border: 1px solid var(--border-strong);
-  border-radius: var(--radius);
-  background: var(--surface);
+  border-radius: var(--radius-md);
+  background: var(--surface-1);
 }
 
 .catalog-search:focus-within {
@@ -543,12 +552,12 @@ onMounted(() => {
   border: 0;
   outline: 0;
   background: transparent;
-  color: var(--text);
+  color: var(--text-primary);
   font: inherit;
   font-size: 13px;
 }
 
-.catalog-search .btn {
+.catalog-search .catalog-search__submit {
   margin: 3px;
   height: 34px;
 }
@@ -569,7 +578,7 @@ onMounted(() => {
   font-size: 12px;
 }
 
-.channel-control .app-select {
+.channel-control__select {
   width: 180px;
 }
 
@@ -583,8 +592,8 @@ onMounted(() => {
   grid-template-columns: repeat(7, minmax(128px, 1fr)) auto;
   gap: 8px;
   padding: 12px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
   background: var(--surface-2);
 }
 
@@ -605,10 +614,10 @@ onMounted(() => {
 .catalog-card {
   min-width: 0;
   overflow: hidden;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--surface);
-  color: var(--text);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--surface-1);
+  color: var(--text-primary);
   transition: border-color 150ms ease, box-shadow 150ms ease, transform 150ms ease;
 }
 
@@ -624,7 +633,7 @@ onMounted(() => {
   display: grid;
   place-items: center;
   overflow: hidden;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--border-default);
   background: var(--surface-3);
 }
 
@@ -661,10 +670,10 @@ onMounted(() => {
   background: var(--border-strong);
 }
 
-.paper-preview__name {
+.paper-preview .paper-preview__name {
   width: 42%;
   height: 8px;
-  background: var(--text-primary) !important;
+  background: var(--text-primary);
 }
 
 .paper-preview__meta {
@@ -672,11 +681,11 @@ onMounted(() => {
   height: 3px;
 }
 
-.paper-preview__rule {
+.paper-preview .paper-preview__rule {
   width: 100%;
   height: 2px;
   margin: 4px 0;
-  background: var(--color-primary) !important;
+  background: var(--color-primary);
 }
 
 .paper-preview__line {
@@ -766,8 +775,15 @@ onMounted(() => {
   padding: 0;
 }
 
-.catalog-card--loading > .bone:not(.catalog-card__preview) {
-  margin: 13px;
+.catalog-card__preview-bone {
+  aspect-ratio: 210 / 270;
+  border-bottom: 1px solid var(--border-default);
+}
+
+.catalog-card__bones {
+  display: grid;
+  gap: 13px;
+  padding: 13px;
 }
 
 .catalog-pager {
@@ -779,7 +795,7 @@ onMounted(() => {
   align-items: flex-start;
   gap: 10px;
   padding: 16px 0;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--border-default);
   color: var(--text-tertiary);
   font-size: 12px;
   line-height: 1.6;
@@ -834,13 +850,10 @@ onMounted(() => {
 @media (max-width: 640px) {
   .catalog-page {
     padding: 18px 14px 36px;
+    gap: var(--space-5);
   }
 
-  .catalog-head {
-    gap: 14px;
-  }
-
-  .catalog-head .btn {
+  .catalog-mine {
     width: 100%;
   }
 
@@ -864,7 +877,7 @@ onMounted(() => {
     grid-template-columns: auto minmax(0, 1fr);
   }
 
-  .catalog-search .btn {
+  .catalog-search .catalog-search__submit {
     grid-column: 1 / -1;
     width: calc(100% - 6px);
     margin: 0 3px 3px;
@@ -881,7 +894,7 @@ onMounted(() => {
     display: grid;
   }
 
-  .channel-control .app-select {
+  .channel-control__select {
     width: 100%;
   }
 
@@ -889,7 +902,7 @@ onMounted(() => {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .filter-actions .btn {
+  .filter-actions .filter-actions__submit {
     flex: 1;
   }
 

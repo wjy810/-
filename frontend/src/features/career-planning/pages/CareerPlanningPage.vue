@@ -6,10 +6,10 @@ import {
   ChevronRight, CircleAlert, Compass, Database, GitCompareArrows, Heart, Layers3, Link2,
   LoaderCircle, LockKeyhole, MessageCircle, Pencil, Save, Send, ShieldCheck, Sparkles, Target, Trash2, UserRound, X,
 } from 'lucide-vue-next'
-import AppModal from '@/shared/ui/AppModal.vue'
-import AppSelect from '@/shared/ui/AppSelect.vue'
 import PageState from '@/shared/ui/PageState.vue'
+import UiDialog from '@/shared/ui/UiDialog.vue'
 import UiErrorState from '@/shared/ui/UiErrorState.vue'
+import UiSelect from '@/shared/ui/UiSelect.vue'
 import { useLoadState } from '@/shared/lib/useLoadState'
 import { useToastFeedback } from '@/shared/ui/toast'
 import JobTaxonomyPicker from '@/features/ai-resume/components/JobTaxonomyPicker.vue'
@@ -991,14 +991,14 @@ onBeforeUnmount(() => {
               <Transition name="cp-form-view" mode="out-in"><section v-if="profileTab === 'BASICS'" key="basics" class="cp-form-section">
                 <header><div><h1>基础信息</h1><p>用于判断规划节奏，不用于年龄歧视或敏感推断。</p></div><UserRound :size="23" /></header>
                 <div class="cp-form-grid">
-                  <label><span>年龄段 <em>选填</em></span><AppSelect v-model="form.ageRange" :options="ageOptions" aria-label="年龄段" /></label>
-                  <label><span>当前身份 <b>*</b></span><AppSelect v-model="form.identity" :options="identityOptions" aria-label="当前身份" /></label>
+                  <label><span>年龄段 <em>选填</em></span><UiSelect v-model="form.ageRange" :options="ageOptions" aria-label="年龄段" placeholder="年龄段" /></label>
+                  <label><span>当前身份 <b>*</b></span><UiSelect v-model="form.identity" :options="identityOptions" aria-label="当前身份" placeholder="当前身份" /></label>
                   <label><span>当前职业</span><input v-model.trim="form.currentRole" class="cp-input" placeholder="例如：机械设计助理"></label>
-                  <label><span>最高学历 <b>*</b></span><AppSelect v-model="form.education" :options="educationOptions" aria-label="最高学历" /></label>
+                  <label><span>最高学历 <b>*</b></span><UiSelect v-model="form.education" :options="educationOptions" aria-label="最高学历" placeholder="最高学历" /></label>
                   <label><span>所学专业</span><input v-model.trim="form.major" class="cp-input" placeholder="例如：软件工程"></label>
                   <label><span>毕业时间</span><input v-model.trim="form.graduationYear" class="cp-input" inputmode="numeric" maxlength="4" placeholder="例如：2026"></label>
-                  <label><span>工作年限 <b>*</b></span><AppSelect v-model="form.experienceYears" :options="experienceOptions" aria-label="工作年限" /></label>
-                  <label><span>每周可投入学习时间 <b>*</b></span><AppSelect v-model="form.weeklyLearningHours" :options="weeklyOptions" aria-label="每周学习时间" /></label>
+                  <label><span>工作年限 <b>*</b></span><UiSelect v-model="form.experienceYears" :options="experienceOptions" aria-label="工作年限" placeholder="工作年限" /></label>
+                  <label><span>每周可投入学习时间 <b>*</b></span><UiSelect v-model="form.weeklyLearningHours" :options="weeklyOptions" aria-label="每周学习时间" placeholder="每周学习时间" /></label>
                 </div>
               </section>
               <section v-else-if="profileTab === 'SKILLS'" key="skills" class="cp-form-section">
@@ -1010,7 +1010,7 @@ onBeforeUnmount(() => {
                 <header><div><h1>个人倾向与工作限制</h1><p>这些信息用于排序和规划，不会变成歧视性筛选条件。</p></div><Compass :size="23" /></header>
                 <div class="cp-form-grid">
                   <label><span>期望地点</span><input v-model.trim="form.preferredLocation" class="cp-input" placeholder="例如：上海、杭州"></label>
-                  <label><span>办公方式</span><AppSelect v-model="form.workMode" :options="workModeOptions" aria-label="办公方式" /></label>
+                  <label><span>办公方式</span><UiSelect v-model="form.workMode" :options="workModeOptions" aria-label="办公方式" placeholder="办公方式" /></label>
                   <label class="cp-grid-full"><span>方向倾向</span><input v-model.trim="form.directionPreference" class="cp-input" placeholder="例如：希望从机械方向转向软件开发，同时保留行业经验"></label>
                   <label class="cp-grid-full"><span>阶段目标</span><textarea v-model="form.learningGoal" class="cp-textarea" rows="4" placeholder="例如：未来 3 个月完成方向验证，并形成可展示的项目证据"></textarea></label>
                 </div>
@@ -1100,7 +1100,7 @@ onBeforeUnmount(() => {
                       <div v-if="reviewEditingId === item.id" class="cp-confirm-editor">
                         <label><span>条目名称</span><input v-model.trim="item.title" class="cp-confirm-title-input" maxlength="255" autofocus></label>
                         <label v-if="reviewDetailKey(item)"><span>{{ reviewDetailKey(item) === 'answer' ? '访谈回答' : '补充描述' }}</span><textarea class="cp-confirm-detail-input" rows="3" maxlength="2000" :value="reviewPayloadText(item, reviewDetailKey(item))" @input="updateReviewPayloadFromEvent(item, reviewDetailKey(item), $event)"></textarea><small>{{ reviewPayloadText(item, reviewDetailKey(item)).length }} / 2000</small></label>
-                        <label v-if="item.section === 'SKILLS'"><span>掌握状态</span><AppSelect :model-value="reviewPayloadText(item, 'proficiency') || 'PRACTICED'" :options="reviewProficiencyOptions" aria-label="技能掌握状态" @update:model-value="updateReviewPayload(item, 'proficiency', $event)" /></label>
+                        <label v-if="item.section === 'SKILLS'"><span>掌握状态</span><UiSelect :model-value="reviewPayloadText(item, 'proficiency') || 'PRACTICED'" :options="reviewProficiencyOptions" aria-label="技能掌握状态" placeholder="技能掌握状态" @update:model-value="updateReviewPayload(item, 'proficiency', $event)" /></label>
                       </div>
                       <template v-else>
                         <strong>{{ item.title }}</strong>
@@ -1159,7 +1159,7 @@ onBeforeUnmount(() => {
       <button type="button" :class="{ active: phase.includes('RECOMMEND') && !forceProfileEdit }" :disabled="!recommendationSet" @click="openMobileDirection"><Compass :size="20" /><span>方向</span></button>
     </nav>
 
-    <AppModal :open="evidenceOpen" title="选择本次规划可使用的资料" :width="760" mobile-sheet @close="evidenceOpen = false">
+    <UiDialog :open="evidenceOpen" title="选择本次规划可使用的资料" :width="760" @close="evidenceOpen = false">
       <div class="cp-evidence-dialog">
         <p><ShieldCheck :size="18" />每项资料都需要明确选择用途。只发送已确认的结构化摘要，原始 DOCX、PDF、图片和预览内容不会发送给模型。</p>
         <div v-if="evidenceLoading" class="cp-dialog-loading"><LoaderCircle class="cp-spin" :size="19" />正在读取可授权资料</div>
@@ -1186,14 +1186,14 @@ onBeforeUnmount(() => {
         </div>
       </div>
       <template #footer><button class="cp-secondary" type="button" @click="evidenceOpen = false">取消</button><button class="cp-primary" type="button" :disabled="pending === 'evidence'" @click="saveEvidence">确认授权 {{ selectedEvidenceCount }} 项</button></template>
-    </AppModal>
+    </UiDialog>
 
-    <AppModal :open="Boolean(detailRecommendation)" title="职业方向详情" :width="620" mobile-sheet @close="detailRecommendation = null">
+    <UiDialog :open="Boolean(detailRecommendation)" title="职业方向详情" :width="620" @close="detailRecommendation = null">
       <article v-if="detailRecommendation" class="cp-detail-dialog"><header><span><BriefcaseBusiness :size="23" /></span><div><h2>{{ detailRecommendation.title }}</h2><p>{{ detailRecommendation.fitSummary }}</p></div></header><section><h3>推荐依据</h3><ul><li v-for="value in detailRecommendation.rationale" :key="value">{{ value }}</li></ul></section><section><h3>能力缺口</h3><ul v-if="detailRecommendation.gaps.length"><li v-for="value in detailRecommendation.gaps" :key="value">{{ value }}</li></ul><p v-else>暂无明确能力缺口。</p></section><section><h3>事实引用</h3><div class="cp-ref-list"><span v-for="value in recommendationSourceLabels(detailRecommendation)" :key="value">{{ value }}</span><small v-if="!detailRecommendation.sourceRefs.length">没有可展示的来源引用</small></div></section></article>
       <template #footer><button class="cp-secondary" type="button" @click="detailRecommendation = null">关闭</button><button v-if="detailRecommendation" class="cp-primary" type="button" @click="prepareGoal(detailRecommendation); detailRecommendation = null">设为目标 <ChevronRight :size="16" /></button></template>
-    </AppModal>
+    </UiDialog>
 
-    <AppModal :open="compareOpen" title="职业方向对比" :width="1120" mobile-sheet @close="compareOpen = false">
+    <UiDialog :open="compareOpen" title="职业方向对比" :width="1120" @close="compareOpen = false">
       <div class="cp-compare-dialog">
         <header><span><GitCompareArrows :size="22" /></span><div><h2>并排核对职业方向</h2><p>比较推荐依据、能力缺口与事实来源。收藏和对比彼此独立，最终仍需二次确认目标。</p></div><em>{{ comparedRecommendations.length }} / 3</em></header>
         <section class="cp-compare-grid" :style="{ '--compare-columns': String(Math.max(1, comparedRecommendations.length)) }">
@@ -1209,10 +1209,10 @@ onBeforeUnmount(() => {
         </section>
       </div>
       <template #footer><button class="cp-secondary" type="button" @click="compareOpen = false">返回推荐列表</button></template>
-    </AppModal>
+    </UiDialog>
 
-    <AppModal :open="Boolean(confirmation)" title="确认目标职业" :width="560" mobile-sheet @close="confirmation = null; confirmationRecommendation = null">
+    <UiDialog :open="Boolean(confirmation)" title="确认目标职业" :width="560" @close="confirmation = null; confirmationRecommendation = null">
       <div v-if="confirmationRecommendation" class="cp-goal-dialog"><span><Target :size="30" /></span><h2>{{ confirmationRecommendation.title }}</h2><p>确认后将为这个职业创建一张独立能力画布。推荐结果不会自动替你做决定。</p><section><CircleAlert :size="18" /><div><strong>这是一项明确的用户确认</strong><small>该画布会独立保存能力树、学习计划、能力验证和版本记录，其他画布不受影响。</small></div></section><label><input v-model="goalAcknowledged" type="checkbox"> 我已阅读推荐依据和能力缺口，确认将此职业设为本画布目标</label></div>
       <template #footer><button class="cp-secondary" type="button" @click="confirmation = null; confirmationRecommendation = null; goalAcknowledged = false">再比较一下</button><button class="cp-primary" type="button" :disabled="pending === 'commit-goal' || !goalAcknowledged" @click="commitGoal"><LoaderCircle v-if="pending === 'commit-goal'" class="cp-spin" :size="16" /><Target v-else :size="16" />确认目标并创建画布</button></template>
-    </AppModal>
+    </UiDialog>
 </template>

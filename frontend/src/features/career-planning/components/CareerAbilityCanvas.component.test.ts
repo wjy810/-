@@ -45,7 +45,7 @@ describe('CareerAbilityCanvas', () => {
   it('animates only a real expansion, cancels rapid changes, and respects reduced motion', async () => {
     const wrapper = mount(CareerAbilityCanvas, {
       props: { sessionId: 'motion-session', canvas: makeCanvas(), goalTitle: '后端开发', aiConsent: true },
-      global: { stubs: { AppSelect: SelectStub, Background: true, MiniMap: true, Controls: true } },
+      global: { stubs: { UiSelect: SelectStub, Background: true, MiniMap: true, Controls: true } },
     })
     const stage = wrapper.get('.canvas-desktop-stage').element
     const element = document.createElement('div')
@@ -85,7 +85,7 @@ describe('CareerAbilityCanvas', () => {
     canvas.relations.push({ id: 'dependency', type: 'PREREQUISITE', fromNodeId: 'skill-oop', toNodeId: 'task-api' })
     const wrapper = mount(CareerAbilityCanvas, {
       props: { sessionId: 'path-session', canvas, goalTitle: '后端开发', aiConsent: true },
-      global: { stubs: { AppSelect: SelectStub, Background: true, MiniMap: true, Controls: true } },
+      global: { stubs: { UiSelect: SelectStub, Background: true, MiniMap: true, Controls: true } },
     })
     const component = wrapper.vm as unknown as {
       selectedNodeIds: Set<string>
@@ -110,7 +110,7 @@ describe('CareerAbilityCanvas', () => {
 
     const wrapper = mount(CareerAbilityCanvas, {
       props: { sessionId: 'session-1', canvas, goalTitle: '后端开发', aiConsent: true },
-      global: { stubs: { AppSelect: SelectStub, Background: true, MiniMap: true, Controls: true } },
+      global: { stubs: { UiSelect: SelectStub, Background: true, MiniMap: true, Controls: true } },
     })
 
     expect(wrapper.get('.generation-scale button[aria-checked="true"]').text()).toContain('标准')
@@ -131,7 +131,7 @@ describe('CareerAbilityCanvas', () => {
       props: { sessionId: 'session-1', canvas, goalTitle: '后端开发', aiConsent: true },
       global: {
         stubs: {
-          AppSelect: SelectStub,
+          UiSelect: SelectStub,
           Background: true,
           MiniMap: true,
           Controls: true,
@@ -164,7 +164,7 @@ describe('CareerAbilityCanvas', () => {
       props: { sessionId: 'session-1', canvas, goalTitle: '后端开发', aiConsent: true },
       global: {
         stubs: {
-          AppSelect: SelectStub,
+          UiSelect: SelectStub,
           Background: true,
           MiniMap: true,
           Controls: true,
@@ -194,7 +194,7 @@ describe('CareerAbilityCanvas', () => {
       props: { sessionId: 'session-1', canvas, goalTitle: '后端开发', aiConsent: true },
       global: {
         stubs: {
-          AppSelect: SelectStub,
+          UiSelect: SelectStub,
           Background: true,
           MiniMap: true,
           Controls: true,
@@ -220,7 +220,7 @@ describe('CareerAbilityCanvas', () => {
     })
     const wrapper = mount(CareerAbilityCanvas, {
       props: { sessionId: 'session-1', canvas, goalTitle: '后端开发', aiConsent: true },
-      global: { stubs: { AppSelect: SelectStub, Background: true, MiniMap: true, Controls: true } },
+      global: { stubs: { UiSelect: SelectStub, Background: true, MiniMap: true, Controls: true } },
     })
 
     const skillRow = wrapper.findAll('.mobile-tree-row').find(row => row.text().includes('面向对象建模'))!
@@ -243,7 +243,7 @@ describe('CareerAbilityCanvas', () => {
   it('emits the selected skill when entering the existing validation workspace', async () => {
     const wrapper = mount(CareerAbilityCanvas, {
       props: { sessionId: 'session-1', canvas: makeCanvas(), goalTitle: '后端开发', aiConsent: true },
-      global: { stubs: { AppSelect: SelectStub, Background: true, MiniMap: true, Controls: true } },
+      global: { stubs: { UiSelect: SelectStub, Background: true, MiniMap: true, Controls: true } },
     })
 
     const skillRow = wrapper.findAll('.mobile-tree-row').find(row => row.text().includes('面向对象建模'))!
@@ -257,7 +257,7 @@ describe('CareerAbilityCanvas', () => {
   it('switches hand and full-containment marquee tools without changing the canvas layout', async () => {
     const wrapper = mount(CareerAbilityCanvas, {
       props: { sessionId: 'session-1', canvas: makeCanvas(), goalTitle: '后端开发', aiConsent: true },
-      global: { stubs: { AppSelect: SelectStub, Background: true, MiniMap: true, Controls: true } },
+      global: { stubs: { UiSelect: SelectStub, Background: true, MiniMap: true, Controls: true } },
     })
 
     const flow = wrapper.getComponent({ name: 'VueFlow' })
@@ -273,7 +273,7 @@ describe('CareerAbilityCanvas', () => {
   it('keeps modified card clicks out of Vue Flow so multi-selection is handled once', () => {
     const wrapper = mount(CareerAbilityCanvas, {
       props: { sessionId: 'session-1', canvas: makeCanvas(), goalTitle: '后端开发', aiConsent: true },
-      global: { stubs: { AppSelect: SelectStub, Background: true, MiniMap: true, Controls: true } },
+      global: { stubs: { UiSelect: SelectStub, Background: true, MiniMap: true, Controls: true } },
     })
     const stopPropagation = vi.fn()
 
@@ -286,7 +286,7 @@ describe('CareerAbilityCanvas', () => {
   it('accepts Vue Flow selection changes only while the marquee is active', async () => {
     const wrapper = mount(CareerAbilityCanvas, {
       props: { sessionId: 'session-1', canvas: makeCanvas(), goalTitle: '后端开发', aiConsent: true },
-      global: { stubs: { AppSelect: SelectStub, Background: true, MiniMap: true, Controls: true } },
+      global: { stubs: { UiSelect: SelectStub, Background: true, MiniMap: true, Controls: true } },
     })
     const component = wrapper.vm as unknown as {
       onNodesChange: (changes: Array<{ type: 'select'; id: string; selected: boolean }>) => void
@@ -318,7 +318,7 @@ describe('CareerAbilityCanvas', () => {
     })))
     const wrapper = mount(CareerAbilityCanvas, {
       props: { sessionId: 'session-1', canvas, goalTitle: '后端开发', aiConsent: true },
-      global: { stubs: { AppSelect: SelectStub, Background: true, MiniMap: true, Controls: true } },
+      global: { stubs: { UiSelect: SelectStub, Background: true, MiniMap: true, Controls: true } },
     })
 
     await wrapper.get('.mobile-canvas-filters button:nth-child(4)').trigger('click')

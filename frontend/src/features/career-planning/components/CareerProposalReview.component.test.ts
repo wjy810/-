@@ -27,7 +27,7 @@ describe('CareerProposalReview', () => {
 
     const wrapper = mount(CareerProposalReview, {
       props: { open: true, sessionId: 'session-1', canvas, initialProposal: proposal },
-      global: { stubs: { AppModal: ModalStub } },
+      global: { stubs: { UiDialog: ModalStub } },
     })
 
     expect(api.decideCareerCanvasProposal).not.toHaveBeenCalled()
@@ -61,7 +61,7 @@ describe('CareerProposalReview', () => {
     api.discardCareerCanvasProposal.mockResolvedValue({ ...proposal, status: 'DISCARDED' })
     const wrapper = mount(CareerProposalReview, {
       props: { open: true, sessionId: 'session-1', canvas, initialProposal: proposal },
-      global: { stubs: { AppModal: ModalStub } },
+      global: { stubs: { UiDialog: ModalStub } },
     })
 
     expect(wrapper.text()).toContain('节点推演提案')

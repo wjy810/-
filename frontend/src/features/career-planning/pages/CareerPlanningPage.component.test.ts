@@ -65,7 +65,7 @@ describe('CareerPlanningPage notifications', () => {
       global: {
         stubs: {
           AppChrome: { template: '<div><slot /></div>' },
-          AppModal: { template: '<div />' },
+          UiDialog: { template: '<div />' },
           CareerPlanningWorkbench: {
             template: '<button class="emit-notice" @click="$emit(\'notice\', \'完整能力树已生成，并保存为新的画布版本。\')">触发提示</button>',
           },
@@ -91,7 +91,7 @@ describe('CareerPlanningPage welcome', () => {
       global: {
         stubs: {
           AppChrome: { template: '<div><slot /></div>' },
-          AppModal: { template: '<div />' },
+          UiDialog: { template: '<div />' },
           JobTaxonomyPicker: {
             template: `<button class="choose-job" type="button" @click="$emit('select', { job: { id: 'job-java', displayName: 'Java 后端工程师' } })">选择岗位</button>`,
           },
@@ -202,8 +202,8 @@ describe('CareerPlanningPage welcome', () => {
 describe('CareerPlanningPage sessions', () => {
   const stubs = {
     AppChrome: { template: '<div><slot /></div>' },
-    AppModal: { template: '<div />' },
-    AppSelect: { template: '<div />' },
+    UiDialog: { template: '<div />' },
+    UiSelect: { template: '<div />' },
     CareerSkillPicker: { template: '<div />' },
     CareerProfilePreview: { template: '<aside />' },
     CareerPlanningWorkbench: { template: '<div />' },

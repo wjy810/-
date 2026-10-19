@@ -6,10 +6,10 @@ import {
   Sparkles, Tags, Trash2, WandSparkles,
 } from 'lucide-vue-next'
 import AppDatePicker from '@/shared/ui/AppDatePicker.vue'
-import AppModal from '@/shared/ui/AppModal.vue'
-import AppSelect from '@/shared/ui/AppSelect.vue'
 import PageState from '@/shared/ui/PageState.vue'
+import UiDialog from '@/shared/ui/UiDialog.vue'
 import UiDropdownMenu, { type MenuItem } from '@/shared/ui/UiDropdownMenu.vue'
+import UiSelect from '@/shared/ui/UiSelect.vue'
 import { errorMessage } from '@/shared/api/types'
 import {
   acceptCareerAiCandidate, archiveCareerRecord, copyCareerRecord, createCareerRecord,
@@ -235,9 +235,9 @@ defineExpose({ openCreate, reload: load })
 
       <section class="record-toolbar">
         <label class="career-search"><Search :size="18" /><input :value="q" placeholder="搜索标题、组织、岗位或内容" @input="setQuery('q', ($event.target as HTMLInputElement).value)" /></label>
-        <AppSelect :model-value="type" :options="typeOptions" aria-label="经历类型" @update:model-value="setQuery('type', $event)" />
-        <AppSelect :model-value="status" :options="statusOptions" aria-label="经历状态" @update:model-value="setQuery('status', $event)" />
-        <AppSelect :model-value="sort" :options="sortOptions" aria-label="经历排序" @update:model-value="setQuery('sort', $event)" />
+        <UiSelect :model-value="type" :options="typeOptions" aria-label="经历类型" placeholder="经历类型" @update:model-value="setQuery('type', $event)" />
+        <UiSelect :model-value="status" :options="statusOptions" aria-label="经历状态" placeholder="经历状态" @update:model-value="setQuery('status', $event)" />
+        <UiSelect :model-value="sort" :options="sortOptions" aria-label="经历排序" placeholder="经历排序" @update:model-value="setQuery('sort', $event)" />
         <div class="layout-toggle" aria-label="布局">
           <button type="button" :class="{ active: layout !== 'compact' }" title="列表视图" @click="setQuery('layout', 'list')"><LayoutList :size="18" /></button>
           <button type="button" :class="{ active: layout === 'compact' }" title="紧凑视图" @click="setQuery('layout', 'compact')"><MoreVertical :size="18" /></button>
@@ -307,9 +307,9 @@ defineExpose({ openCreate, reload: load })
       <section class="career-card aside-card usage-tip"><h3>使用建议</h3><div><Lightbulb :size="20" /><p>被简历引用的经历会标记“已用于简历”；暂时不用的经历可以归档，之后随时恢复。</p></div></section>
     </aside>
 
-    <AppModal :open="modalOpen" :title="selected ? '编辑经历资料' : '添加经历资料'" :width="720" @close="modalOpen = false">
+    <UiDialog :open="modalOpen" :title="selected ? '编辑经历资料' : '添加经历资料'" :width="720" @close="modalOpen = false">
       <form id="career-record-form" class="record-form-grid" @submit.prevent="save">
-        <label><span>资料类型</span><AppSelect v-model="form.type" :options="editableTypes" aria-label="资料类型" /></label>
+        <label><span>资料类型</span><UiSelect v-model="form.type" :options="editableTypes" aria-label="资料类型" placeholder="资料类型" /></label>
         <label><span>标题</span><input v-model.trim="form.title" class="career-input" placeholder="如：数据分析实习生" /></label>
         <label><span>组织或公司</span><input v-model.trim="form.organization" class="career-input" placeholder="填写真实组织" /></label>
         <label><span>岗位或角色</span><input v-model.trim="form.role" class="career-input" placeholder="填写真实岗位" /></label>
@@ -320,9 +320,9 @@ defineExpose({ openCreate, reload: load })
         <label class="span-2"><span>核心成果</span><textarea id="record-core-outcome" v-model="form.coreOutcome" class="career-input" rows="2" placeholder="填写可核验的结果，不确定的数字请勿填写" /></label>
       </form>
       <template #footer><button class="career-btn ghost" type="button" @click="modalOpen = false">取消</button><button class="career-btn primary" type="submit" form="career-record-form" :disabled="pending === 'save'"><Sparkles :size="16" />{{ pending === 'save' ? '保存中' : '保存记录' }}</button></template>
-    </AppModal>
+    </UiDialog>
 
-    <AppModal :open="aiOpen" title="AI 优化建议" :width="760" @close="aiOpen = false">
+    <UiDialog :open="aiOpen" title="AI 优化建议" :width="760" @close="aiOpen = false">
       <div v-if="aiCandidate" class="career-ai-review">
         <div class="career-ai-review__summary"><Sparkles :size="19" /><div><strong>{{ aiRecord?.title }}</strong><p>{{ aiCandidate.proposed.reason || 'AI 仅基于当前经历中的确认事实进行重组。' }}</p></div><span>{{ aiCandidate.modelName }}</span></div>
         <section v-if="aiCandidate.diff.description?.changed"><header><strong>经历要点</strong><span>待确认</span></header><div class="career-ai-diff"><article><small>原内容</small><p>{{ aiCandidate.diff.description.before || '未填写' }}</p></article><article><small>优化建议</small><p>{{ aiCandidate.diff.description.after }}</p></article></div></section>
@@ -330,6 +330,6 @@ defineExpose({ openCreate, reload: load })
         <section class="career-ai-sources"><header><strong>依据的原文</strong><span>{{ aiCandidate.sourceRefs.length }} 项</span></header><blockquote v-for="source in aiCandidate.sourceRefs" :key="source.quote">{{ source.quote }}</blockquote></section>
       </div>
       <template #footer><button class="career-btn ghost" type="button" :disabled="aiPending" @click="rejectAi">不采纳</button><button class="career-btn primary" type="button" :disabled="aiPending" @click="acceptAi"><CheckCircle2 :size="16" />{{ aiPending ? '处理中' : '采纳并更新经历' }}</button></template>
-    </AppModal>
+    </UiDialog>
   </div>
 </template>

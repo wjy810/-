@@ -566,10 +566,9 @@ textarea.career-input {
   padding-bottom: 20px;
 }
 
-.career-library-page .app-select__trigger,
+.career-library-page .ui-select-trigger,
 .career-library-page .app-date-picker__trigger {
   height: 40px;
-  border-color: var(--border-default);
   border-radius: 8px;
 }
 
@@ -1890,8 +1889,7 @@ textarea.career-input {
   grid-template-columns: repeat(3, 1fr);
 }
 
-.bone-card,
-.career-shell-loading .bone {
+.bone-card {
   min-height: 160px;
   overflow: hidden;
   background: linear-gradient(100deg, var(--surface-2) 20%, var(--surface-2) 36%, var(--surface-2) 52%);
@@ -2133,8 +2131,8 @@ textarea.career-input {
   .records-stats strong { font-size: 17px; }
   .record-toolbar,
   .file-toolbar { grid-template-columns: 1fr 1fr; gap: 8px; }
-  .record-toolbar > .app-select:nth-of-type(3),
-  .file-toolbar > .app-select:nth-of-type(3) { grid-column: 1 / -1; }
+  .record-toolbar > .ui-select-trigger:nth-of-type(3),
+  .file-toolbar > .ui-select-trigger:nth-of-type(3) { grid-column: 1 / -1; }
   .profile-avatar-wrap { width: 90px; height: 90px; }
   .profile-avatar { width: 82px; height: 82px; }
   .completion-row { grid-template-columns: 94px minmax(0, 1fr); }
@@ -2181,7 +2179,7 @@ textarea.career-input {
 .career-input,
 .career-search,
 .layout-toggle,
-.career-library-page .app-select__trigger,
+.career-library-page .ui-select-trigger,
 .career-library-page .app-date-picker__trigger { border-radius: 10px; }
 .career-input { font-size: 13px; line-height: 1.45; }
 .career-input:focus { box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 12%, transparent); }
@@ -2208,7 +2206,7 @@ textarea.career-input {
 }
 
 @media (max-width: 760px) {
-  .career-input, .career-search, .layout-toggle, .career-library-page .app-select__trigger,
+  .career-input, .career-search, .layout-toggle, .career-library-page .ui-select-trigger,
   .career-library-page .app-date-picker__trigger, .ai-optimize, .privacy-entry,
   .ai-suggestion-card > button, .career-empty button, .file-card footer button { min-height: 44px; }
   .record-actions > div button, .file-more, .icon-action { min-width: 44px; min-height: 44px; }

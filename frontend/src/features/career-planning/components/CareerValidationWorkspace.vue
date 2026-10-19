@@ -4,7 +4,7 @@ import {
   Check, ChevronRight, CircleAlert, ClipboardCheck, Code2, FileCheck2, FlaskConical,
   LoaderCircle, Play, RefreshCw, Route, ShieldCheck, Sparkles, UploadCloud,
 } from 'lucide-vue-next'
-import AppSelect from '@/shared/ui/AppSelect.vue'
+import UiSelect from '@/shared/ui/UiSelect.vue'
 import { errorMessage } from '@/shared/api/types'
 import { fetchTask, retryTask, type TaskView } from '@/shared/api/task'
 import { isAbortError, pollTask } from '@/shared/lib/pollTask'
@@ -308,7 +308,7 @@ onBeforeUnmount(() => batchController?.abort())
 
     <div class="validation-layout">
       <main>
-        <section v-if="!isBatch" class="node-select"><label>验证节点<AppSelect v-model="nodeId" :options="nodeOptions" aria-label="验证能力节点" /></label><p><CircleAlert :size="15" />只能验证技能、知识或任务节点；职业根节点和能力域不能直接标记为掌握。</p></section>
+        <section v-if="!isBatch" class="node-select"><label>验证节点<UiSelect v-model="nodeId" :options="nodeOptions" aria-label="验证能力节点" placeholder="验证能力节点" /></label><p><CircleAlert :size="15" />只能验证技能、知识或任务节点；职业根节点和能力域不能直接标记为掌握。</p></section>
         <section v-else class="batch-queue"><header><div><h2>批量材料队列</h2><p>统一验证方式，每个节点分别填写说明和选择证据。</p></div><strong>{{ selectedNodes.filter(node => materialReady(node.logicalNodeId)).length }} / {{ selectedNodes.length }} 已就绪</strong></header><div><button v-for="(node,index) in selectedNodes" :key="node.logicalNodeId" type="button" :class="{ active: activeNodeId === node.logicalNodeId, ready: materialReady(node.logicalNodeId) }" @click="selectQueueNode(node.logicalNodeId)"><span>{{ materialReady(node.logicalNodeId) ? '✓' : index + 1 }}</span><strong>{{ node.title }}</strong><small>{{ materialReady(node.logicalNodeId) ? '材料已就绪' : '待填写材料' }}</small></button></div></section>
         <section><h2>选择验证方式</h2><div class="method-grid"><button v-for="item in methods" :key="item.value" type="button" :aria-pressed="method === item.value" :class="{ active: method === item.value }" @click="method = item.value"><component :is="item.icon" :size="21" /><p><strong>{{ item.label }}</strong><small>{{ item.copy }}</small></p><Transition name="validation-check"><Check v-if="method === item.value" :size="16" /></Transition></button></div></section>
         <section><h2>{{ isBatch ? '当前节点材料' : '任务详情' }}</h2><div class="validation-task"><span><Play :size="20" /></span><div><strong>{{ selectedNode?.title || '尚未选择节点' }}</strong><p>{{ selectedNode?.detail?.summary || '根据节点掌握标准提交可复核的实践说明。' }}</p></div></div><label class="submission-field">验证说明<textarea v-model="submission" rows="5" maxlength="4000" placeholder="说明你完成了什么、如何验证，以及有哪些结果可以复核"></textarea><small>{{ submission.length }} / 4000</small></label></section>

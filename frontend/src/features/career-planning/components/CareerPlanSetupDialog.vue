@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { CalendarDays, Check, CircleAlert, Clock3, LoaderCircle, Sparkles } from 'lucide-vue-next'
-import AppModal from '@/shared/ui/AppModal.vue'
-import AppSelect from '@/shared/ui/AppSelect.vue'
 import AppDatePicker from '@/shared/ui/AppDatePicker.vue'
+import UiDialog from '@/shared/ui/UiDialog.vue'
+import UiSelect from '@/shared/ui/UiSelect.vue'
 import { errorMessage } from '@/shared/api/types'
 import { createCareerLearningPlan } from '../services/careerPlanningApi'
 import type { CareerLearningPlan } from '../types'
@@ -29,7 +29,7 @@ watch(() => props.open, open => {
 const durationWeeks = computed(() => weeks.value === 0 ? customWeeks.value : weeks.value)
 const startDate = computed(() => startDateTime.value ? startDateTime.value.slice(0, 10) : new Date().toISOString().slice(0, 10))
 const weekdayLabels = ['一', '二', '三', '四', '五', '六', '日']
-const hourOptions = Array.from({ length: 40 }, (_, index) => ({ value: String(index + 1), label: `${index + 1} 小时 / 周` }))
+const hourOptions = Array.from({ length: 40 }, (_, index) => ({ value: index + 1, label: `${index + 1} 小时 / 周` }))
 
 function toggleDay(day: number): void {
   learningDays.value = learningDays.value.includes(day)
@@ -54,20 +54,20 @@ async function submit(): Promise<void> {
 </script>
 
 <template>
-  <AppModal :open="open" title="行动计划" :width="760" mobile-sheet @close="emit('close')">
+  <UiDialog :open="open" title="行动计划" :width="760" @close="emit('close')">
     <div class="plan-setup">
       <header><span><Sparkles :size="25" /></span><div><h2>把能力画布转成可执行计划</h2><p>系统按画布前置关系安排任务。已完成的课程不会自动等同于掌握，完成任务后仍需证据与验证。</p></div></header>
       <section><h3>计划周期</h3><div class="period-grid"><button v-for="value in [4,8,12]" :key="value" type="button" :class="{ active: weeks === value }" @click="weeks = value"><strong>{{ value }} 周</strong><small>{{ value === 4 ? '快速验证' : value === 8 ? '标准推进' : '系统提升' }}</small><Check v-if="weeks === value" :size="15" /></button><button class="period-custom" type="button" :class="{ active: weeks === 0 }" @click="weeks = 0"><strong>自定义</strong><small>2 至 24 周</small><Check v-if="weeks === 0" :size="15" /></button></div><label v-if="weeks === 0" class="custom-weeks">自定义周数 <input v-model.number="customWeeks" type="number" min="2" max="24"></label></section>
       <div class="setup-grid">
         <section><h3>计划强度</h3><div class="intensity-list"><button v-for="option in [{value:'LIGHT',label:'轻量',copy:'适合工作繁忙'},{value:'STANDARD',label:'标准',copy:'稳定推进，推荐'},{value:'FOCUSED',label:'集中',copy:'短期高投入'}]" :key="option.value" type="button" :class="{ active: intensity === option.value }" @click="intensity = option.value as typeof intensity"><span></span><p><strong>{{ option.label }}</strong><small>{{ option.copy }}</small></p></button></div></section>
-        <section><h3>时间安排</h3><label><span><Clock3 :size="15" />每周投入</span><AppSelect v-model="weeklyHours" :options="hourOptions" aria-label="每周学习时长" /></label><label><span><CalendarDays :size="15" />开始日期</span><AppDatePicker v-model="startDateTime" mode="datetime" label="计划开始日期" placeholder="默认今天开始" /></label></section>
+        <section><h3>时间安排</h3><label><span><Clock3 :size="15" />每周投入</span><UiSelect v-model="weeklyHours" :options="hourOptions" aria-label="每周学习时长" placeholder="每周学习时长" /></label><label><span><CalendarDays :size="15" />开始日期</span><AppDatePicker v-model="startDateTime" mode="datetime" label="计划开始日期" placeholder="默认今天开始" /></label></section>
       </div>
       <section><h3>固定学习日</h3><div class="weekday-list"><button v-for="(label,index) in weekdayLabels" :key="label" type="button" :class="{ active: learningDays.includes(index + 1) }" @click="toggleDay(index + 1)">周{{ label }}</button></div></section>
       <p class="plan-preview"><CalendarDays :size="17" />预计 {{ durationWeeks }} 周，每周 {{ weeklyHours }} 小时，共安排 {{ learningDays.length }} 个固定学习日。</p>
       <p v-if="message" class="plan-error" role="alert"><CircleAlert :size="16" />{{ message }}</p>
     </div>
     <template #footer><button class="setup-cancel" type="button" @click="emit('close')">取消</button><button class="setup-custom" type="button" @click="weeks = 0">自定义计划</button><button class="setup-submit" type="button" :disabled="pending" @click="submit"><LoaderCircle v-if="pending" class="spin" :size="17" /><Sparkles v-else :size="17" />生成 {{ durationWeeks }} 周计划</button></template>
-  </AppModal>
+  </UiDialog>
 </template>
 
 <style scoped>

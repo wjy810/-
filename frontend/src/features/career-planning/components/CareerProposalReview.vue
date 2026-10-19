@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
 import { Check, CircleAlert, GitCompareArrows, LoaderCircle, Sparkles, X } from 'lucide-vue-next'
-import AppModal from '@/shared/ui/AppModal.vue'
+import UiDialog from '@/shared/ui/UiDialog.vue'
 import { errorMessage } from '@/shared/api/types'
 import {
   decideCareerCanvasProposal, discardCareerCanvasProposal, generateCareerCanvasProposal,
@@ -125,7 +125,7 @@ async function discard(): Promise<void> {
 </script>
 
 <template>
-  <AppModal :open="open" title="AI 画布差异提案" :width="920" mobile-sheet @close="emit('close')">
+  <UiDialog :open="open" title="AI 画布差异提案" :width="920" @close="emit('close')">
     <div class="proposal-review">
       <section v-if="!proposal" class="proposal-prompt">
         <span><Sparkles :size="28" /></span>
@@ -156,7 +156,7 @@ async function discard(): Promise<void> {
       <button v-if="proposal && proposal.status === 'DRAFT'" class="proposal-secondary" type="button" @click="acceptAll">全部接受</button>
       <button v-if="proposal && proposal.status === 'DRAFT'" class="proposal-apply" type="button" :disabled="pending === 'apply' || !allDecided" @click="apply"><LoaderCircle v-if="pending === 'apply'" class="spin" :size="17" /><Check v-else :size="17" />应用已确认差异</button>
     </template>
-  </AppModal>
+  </UiDialog>
 </template>
 
 <style scoped>

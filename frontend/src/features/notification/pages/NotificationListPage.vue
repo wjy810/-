@@ -1,13 +1,21 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import AppBanner from '@/shared/ui/AppBanner.vue'
-import AppDrawer from '@/shared/ui/AppDrawer.vue'
-import AppEmpty from '@/shared/ui/AppEmpty.vue'
+import { Check, RefreshCw, Settings } from 'lucide-vue-next'
 import AppIcon from '@/shared/ui/AppIcon.vue'
 import JobProofIcon from '@/shared/ui/JobProofIcon.vue'
-import AppTag from '@/shared/ui/AppTag.vue'
 import PageState from '@/shared/ui/PageState.vue'
+import UiBadge, { type BadgeTone } from '@/shared/ui/UiBadge.vue'
+import UiBanner from '@/shared/ui/UiBanner.vue'
+import UiButton from '@/shared/ui/UiButton.vue'
+import UiDrawer from '@/shared/ui/UiDrawer.vue'
+import UiEmptyState from '@/shared/ui/UiEmptyState.vue'
+import UiIconButton from '@/shared/ui/UiIconButton.vue'
+import UiPageHeader from '@/shared/ui/UiPageHeader.vue'
+import UiPagination from '@/shared/ui/UiPagination.vue'
+import UiSegmented, { type SegmentItem } from '@/shared/ui/UiSegmented.vue'
+import UiSkeleton from '@/shared/ui/UiSkeleton.vue'
+import { pageCountOf } from '@/shared/ui/pagination'
 import { useToastFeedback } from '@/shared/ui/toast'
 import ForbidState from '@/shared/ui/ForbidState.vue'
 import { errorMessage, isForbidden } from '@/shared/api/types'
@@ -31,8 +39,6 @@ import {
 } from '../services/notificationApi'
 import type { AsyncTaskView, NotificationView } from '../types'
 
-type TagTone = 'blue' | 'green' | 'orange' | 'red' | 'gray' | 'purple'
-
 type RowMeta = {
   icon: JobProofIconName
   cls: 'blue' | 'green' | 'red' | 'orange' | 'purple' | 'ink'
@@ -40,7 +46,7 @@ type RowMeta = {
 
 type RowTag = {
   text: string
-  tone: TagTone
+  tone: BadgeTone
 }
 
 type DecoratedRow = {
@@ -78,14 +84,17 @@ const taskError = ref('')
 
 const readableIds = computed(() => items.value.filter(canMarkRead).map((item) => item.id))
 const failedCount = computed(() => items.value.filter((item) => item.status === 'SEND_FAILED').length)
-const hasPrev = computed(() => page.value > 0)
-const hasNext = computed(() => (page.value + 1) * size < total.value)
+const pageCount = computed(() => pageCountOf(total.value, size))
+const filterItems = computed<SegmentItem<'all' | 'unread'>[]>(() => [
+  { value: 'all', label: '全部' },
+  { value: 'unread', label: '未读', count: unread.value ? Math.min(unread.value, 99) : null },
+])
 
-function taskStatusTone(status?: string | null): TagTone {
-  if (status === 'SUCCEEDED') return 'green'
-  if (status === 'FAILED' || status === 'CANCELLED') return 'red'
-  if (status === 'PENDING') return 'orange'
-  return 'blue'
+function taskStatusTone(status?: string | null): BadgeTone {
+  if (status === 'SUCCEEDED') return 'success'
+  if (status === 'FAILED' || status === 'CANCELLED') return 'danger'
+  if (status === 'PENDING') return 'accent'
+  return 'primary'
 }
 
 function taskStatusText(status?: string | null): string {
@@ -128,16 +137,16 @@ function typeMeta(type?: string): RowMeta {
 
 function statusTag(item: NotificationView): RowTag | null {
   if (item.status === 'SEND_FAILED') {
-    return { text: '发送失败', tone: 'red' }
+    return { text: '发送失败', tone: 'danger' }
   }
   if (item.status === 'PENDING') {
-    return { text: '待发送', tone: 'orange' }
+    return { text: '待发送', tone: 'accent' }
   }
   if (item.status === 'EXPIRED') {
-    return { text: '已过期', tone: 'gray' }
+    return { text: '已过期', tone: 'neutral' }
   }
   if (item.status === 'ARCHIVED') {
-    return { text: '已归档', tone: 'gray' }
+    return { text: '已归档', tone: 'neutral' }
   }
   return null
 }
@@ -238,19 +247,9 @@ async function onReadBatch(): Promise<void> {
   }
 }
 
-async function onPrev(): Promise<void> {
-  if (!hasPrev.value) {
-    return
-  }
-  page.value -= 1
-  await load()
-}
-
-async function onNext(): Promise<void> {
-  if (!hasNext.value) {
-    return
-  }
-  page.value += 1
+async function goTo(target: number): Promise<void> {
+  if (target === page.value || loading.value) return
+  page.value = target
   await load()
 }
 
@@ -316,225 +315,179 @@ onMounted(() => {
 </script>
 
 <template>
-      <ForbidState v-if="forbidden" :error="forbidden" />
-    <section v-else class="page">
-      <header class="page-head">
-        <div>
-          <h1 class="page-head__title">通知中心</h1>
-          <p class="page-head__sub">任务进度、数据导出和账号安全等消息会汇总在这里。</p>
-        </div>
-        <div class="page-head__actions">
-          <button
-            class="btn btn--ghost"
-            type="button"
-            :disabled="!readableIds.length || pending === 'batch'"
-            @click="onReadBatch"
-          >
-            <AppIcon name="check" :size="15" />
-            {{ pending === 'batch' ? '正在标已读…' : '全部标记为已读' }}
-          </button>
-          <RouterLink class="icon-btn" to="/account/notifications" title="通知设置" aria-label="通知设置">
-            <AppIcon name="settings" :size="16" />
-          </RouterLink>
-          <button class="icon-btn" type="button" title="重新读取" :disabled="loading" @click="load">
-            <AppIcon name="refresh" :size="16" />
-          </button>
-        </div>
-      </header>
+  <ForbidState v-if="forbidden" :error="forbidden" />
+  <section v-else class="page-container notifications">
+    <UiPageHeader title="通知中心" description="任务进度、数据导出和账号安全等消息会汇总在这里。">
+      <template #actions>
+        <UiButton variant="secondary" :icon="Check" :disabled="!readableIds.length" :pending="pending === 'batch'" @click="onReadBatch">
+          {{ pending === 'batch' ? '正在标已读…' : '全部标记为已读' }}
+        </UiButton>
+        <UiIconButton label="通知设置" :icon="Settings" variant="secondary" to="/account/notifications" />
+        <UiIconButton label="重新读取" :icon="RefreshCw" variant="secondary" :pending="loading && loaded" @click="load" />
+      </template>
+    </UiPageHeader>
 
-      <AppBanner v-if="failedCount" tone="bad">
-        本页有 {{ failedCount }} 条通知发送失败。这不影响对应的业务结果，可到相关页面查看最新状态。
-      </AppBanner>
+    <UiBanner v-if="failedCount" tone="danger">
+      本页有 {{ failedCount }} 条通知发送失败。这不影响对应的业务结果，可到相关页面查看最新状态。
+    </UiBanner>
 
-      <div class="n-toolbar">
-        <div class="seg" role="tablist" aria-label="通知筛选" :style="{ '--seg-index': filter === 'unread' ? 1 : 0 }">
-          <button
-            type="button"
-            class="seg__item"
-            :class="{ 'is-active': filter === 'all' }"
-            role="tab"
-            :aria-selected="filter === 'all'"
-            :disabled="loading"
-            @click="setFilter('all')"
-          >
-            全部
-          </button>
-          <button
-            type="button"
-            class="seg__item"
-            :class="{ 'is-active': filter === 'unread' }"
-            role="tab"
-            :aria-selected="filter === 'unread'"
-            :disabled="loading"
-            @click="setFilter('unread')"
-          >
-            未读<template v-if="unread">（{{ unread > 99 ? '99+' : unread }}）</template>
-          </button>
+    <div class="n-toolbar">
+      <UiSegmented :model-value="filter" :items="filterItems" aria-label="通知筛选" @update:model-value="setFilter" />
+      <span v-if="loaded" class="n-count">共 {{ total }} 条 · 本页 {{ items.length }} 条</span>
+    </div>
+
+    <PageState
+      class="n-groups"
+      :loading="loading"
+      :error="loadError"
+      :loaded="loaded"
+      :empty="!groups.length"
+      error-title="通知读取失败"
+      @retry="load"
+    >
+      <template #skeleton>
+        <div class="n-list" aria-busy="true">
+          <div v-for="n in 4" :key="n" class="n-row n-skel">
+            <UiSkeleton circle width="40px" height="40px" />
+            <div class="n-skel__lines"><UiSkeleton width="40%" /><UiSkeleton width="72%" height="12px" /></div>
+          </div>
         </div>
-        <span v-if="loaded" class="fine">共 {{ total }} 条 · 本页 {{ items.length }} 条</span>
-      </div>
-
-      <PageState
-        class="n-groups"
-        :loading="loading"
-        :error="loadError"
-        :loaded="loaded"
-        :empty="!groups.length"
-        error-title="通知读取失败"
-        @retry="load"
-      >
-        <template #skeleton>
-          <div class="n-list" aria-busy="true">
-            <div v-for="n in 4" :key="n" class="n-row n-skel">
-              <div class="bone" />
-              <div class="bone bone--short" />
+      </template>
+      <template #empty>
+        <UiEmptyState
+          :title="filter === 'unread' ? '没有未读通知' : '还没有站内通知'"
+          :description="filter === 'unread' ? '所有通知都已读。' : '任务完成、数据导出和账号安全等消息会出现在这里。'"
+          illustration="empty-notification"
+          size="sm"
+        />
+      </template>
+      <div v-for="group in groups" :key="`${filter}-${group.label}`" class="n-block">
+        <p class="n-group">{{ group.label }}</p>
+        <ul class="n-list">
+          <li
+            v-for="row in group.rows"
+            :key="row.item.id"
+            class="n-row"
+            :class="{ 'is-unread': row.item.status === 'DELIVERED', 'is-clickable': Boolean(row.source) || row.taskish }"
+            :tabindex="row.source || row.taskish ? 0 : undefined"
+            @click="openItem(row)"
+            @keydown.enter.self="openItem(row)"
+          >
+            <span class="n-icon" :class="`n-icon--${row.meta.cls}`">
+              <JobProofIcon :name="row.meta.icon" :size="18" />
+            </span>
+            <div class="n-main">
+              <div class="n-title">
+                <strong>{{ row.item.title }}</strong>
+                <UiBadge v-if="row.tag" :tone="row.tag.tone" size="sm">{{ row.tag.text }}</UiBadge>
+              </div>
+              <p v-if="row.item.body" class="n-body">{{ row.item.body }}</p>
+              <p class="n-meta">
+                <span>{{ glossNotificationType(row.item.type) }}</span>
+                <time :datetime="row.item.createdAt ?? undefined" :title="formatWhen(row.item.createdAt)">{{ formatRelative(row.item.createdAt) }}</time>
+                <span v-if="row.item.readAt">已读</span>
+              </p>
+              <p v-if="row.blockReason" class="n-lock">{{ row.blockReason }}</p>
             </div>
-          </div>
-        </template>
-        <template #empty>
-          <AppEmpty
-            :text="filter === 'unread' ? '没有未读通知' : '还没有站内通知'"
-            :hint="filter === 'unread' ? '所有通知都已读。' : '任务完成、数据导出和账号安全等消息会出现在这里。'"
-            icon="bell"
-          />
-        </template>
-        <div v-for="group in groups" :key="`${filter}-${group.label}`" class="n-block">
-          <p class="n-group">{{ group.label }}</p>
-          <ul class="n-list">
-            <li
-              v-for="row in group.rows"
-              :key="row.item.id"
-              class="n-row"
-              :class="{ 'is-unread': row.item.status === 'DELIVERED', 'is-clickable': Boolean(row.source) || row.taskish }"
-              :tabindex="row.source || row.taskish ? 0 : undefined"
-              @click="openItem(row)"
-              @keydown.enter.self="openItem(row)"
-            >
-              <span class="n-icon" :class="`n-icon--${row.meta.cls}`">
-                <JobProofIcon :name="row.meta.icon" :size="18" />
-              </span>
-              <div class="n-main">
-                <div class="n-title">
-                  <strong>{{ row.item.title }}</strong>
-                  <AppTag v-if="row.tag" :tone="row.tag.tone">{{ row.tag.text }}</AppTag>
-                </div>
-                <p v-if="row.item.body" class="n-body">{{ row.item.body }}</p>
-                <p class="n-meta">
-                  <span>{{ glossNotificationType(row.item.type) }}</span>
-                  <time :datetime="row.item.createdAt ?? undefined" :title="formatWhen(row.item.createdAt)">{{ formatRelative(row.item.createdAt) }}</time>
-                  <span v-if="row.item.readAt">已读</span>
-                </p>
-                <p v-if="row.blockReason" class="fine n-lock">{{ row.blockReason }}</p>
+            <div class="n-side" @click.stop>
+              <span v-if="row.item.status === 'DELIVERED'" class="n-dot" title="未读" />
+              <div class="n-actions">
+                <button
+                  v-if="row.readable"
+                  class="n-action"
+                  type="button"
+                  title="标为已读"
+                  aria-label="标为已读"
+                  :disabled="pending === `read-${row.item.id}`"
+                  @click="onRead(row.item.id)"
+                >
+                  <AppIcon name="check" :size="15" />
+                </button>
+                <button v-if="row.taskish && row.source" class="n-action" type="button" title="任务详情" aria-label="任务详情" @click="openDetails(row)">
+                  <AppIcon name="info" :size="15" />
+                </button>
               </div>
-              <div class="n-side" @click.stop>
-                <span v-if="row.item.status === 'DELIVERED'" class="n-dot" title="未读" />
-                <div class="n-actions">
-                  <button
-                    v-if="row.readable"
-                    class="n-action"
-                    type="button"
-                    title="标为已读"
-                    aria-label="标为已读"
-                    :disabled="pending === `read-${row.item.id}`"
-                    @click="onRead(row.item.id)"
-                  >
-                    <AppIcon name="check" :size="15" />
-                  </button>
-                  <button v-if="row.taskish && row.source" class="n-action" type="button" title="任务详情" aria-label="任务详情" @click="openDetails(row)">
-                    <AppIcon name="info" :size="15" />
-                  </button>
-                </div>
-                <AppIcon v-if="row.source || row.taskish" class="n-go" name="chevron-right" :size="16" />
-              </div>
-            </li>
-          </ul>
-        </div>
-      </PageState>
-
-      <div v-if="loaded && total > size" class="pager">
-        <button class="pager__page" type="button" :disabled="!hasPrev || loading" @click="onPrev">上一页</button>
-        <span>第 {{ page + 1 }} 页</span>
-        <button class="pager__page" type="button" :disabled="!hasNext || loading" @click="onNext">下一页</button>
+              <AppIcon v-if="row.source || row.taskish" class="n-go" name="chevron-right" :size="16" />
+            </div>
+          </li>
+        </ul>
       </div>
+    </PageState>
 
-      <AppDrawer :open="!!selected" title="任务详情" :width="520" @close="closeTaskDrawer">
-        <template v-if="selected">
-          <div class="d-status">
-            <AppTag v-if="selectedTask" :tone="taskStatusTone(selectedTask.status)">{{ taskStatusText(selectedTask.status) }}</AppTag>
-            <AppTag v-else-if="selectedTag" :tone="selectedTag.tone">{{ selectedTag.text }}</AppTag>
-            <AppTag v-else tone="blue">{{ glossNotificationStatus(selected.status) }}</AppTag>
-          </div>
+    <UiPagination v-if="loaded && total > size" :page="page" :page-count="pageCount" :disabled="loading" aria-label="通知分页" @update:page="goTo" />
 
-          <div v-if="taskLoading" class="d-loading" aria-busy="true">
-            <div class="bone" />
-            <div class="bone bone--short" />
-          </div>
-          <AppBanner v-else-if="taskError" tone="bad">{{ taskError }}</AppBanner>
+    <UiDrawer :open="!!selected" title="任务详情" :width="520" @close="closeTaskDrawer">
+      <template v-if="selected">
+        <div class="d-status">
+          <UiBadge v-if="selectedTask" :tone="taskStatusTone(selectedTask.status)">{{ taskStatusText(selectedTask.status) }}</UiBadge>
+          <UiBadge v-else-if="selectedTag" :tone="selectedTag.tone">{{ selectedTag.text }}</UiBadge>
+          <UiBadge v-else tone="primary">{{ glossNotificationStatus(selected.status) }}</UiBadge>
+        </div>
 
-          <template v-if="selectedTask">
-            <section class="d-sec">
-              <h4 class="d-sec__title">任务信息</h4>
-              <dl class="kv">
-                <dt>任务类型</dt>
-                <dd>{{ glossTaskType(selectedTask.taskType) }}</dd>
-                <dt>创建时间</dt>
-                <dd>{{ formatWhen(selectedTask.createdAt) }}</dd>
-                <dt>更新时间</dt>
-                <dd>{{ formatWhen(selectedTask.updatedAt) }}</dd>
-              </dl>
-            </section>
+        <div v-if="taskLoading" class="d-loading" aria-busy="true">
+          <UiSkeleton />
+          <UiSkeleton width="55%" />
+        </div>
+        <UiBanner v-else-if="taskError" tone="danger">{{ taskError }}</UiBanner>
 
-            <section class="d-sec">
-              <h4 class="d-sec__title">处理进度</h4>
-              <ol class="d-timeline">
-                <li><span />任务已提交 · {{ formatWhen(selectedTask.createdAt) }}</li>
-                <li><span />{{ taskStatusText(selectedTask.status) }} · {{ formatWhen(selectedTask.updatedAt) }}</li>
-              </ol>
-            </section>
-
-            <AppBanner v-if="selectedTask.failureReason" tone="bad">
-              <strong>失败原因：</strong>{{ selectedTask.failureReason }}
-            </AppBanner>
-            <AppBanner v-if="selectedTask.status === 'FAILED'" tone="ok">
-              你已保存的资料和简历不受影响，只是这次任务没有产出结果，可以回到对应页面重新发起。
-            </AppBanner>
-
-            <details class="d-tech">
-              <summary>联系客服时可提供</summary>
-              <p>任务编号 <code class="kv__mono">{{ selectedTask.id }}</code></p>
-            </details>
-          </template>
+        <template v-if="selectedTask">
+          <section class="d-sec">
+            <h4 class="d-sec__title">任务信息</h4>
+            <dl class="kv">
+              <dt>任务类型</dt>
+              <dd>{{ glossTaskType(selectedTask.taskType) }}</dd>
+              <dt>创建时间</dt>
+              <dd>{{ formatWhen(selectedTask.createdAt) }}</dd>
+              <dt>更新时间</dt>
+              <dd>{{ formatWhen(selectedTask.updatedAt) }}</dd>
+            </dl>
+          </section>
 
           <section class="d-sec">
-            <h4 class="d-sec__title">通知内容</h4>
-            <p class="d-body">{{ selected.body || '（无正文）' }}</p>
+            <h4 class="d-sec__title">处理进度</h4>
+            <ol class="d-timeline">
+              <li><span />任务已提交 · {{ formatWhen(selectedTask.createdAt) }}</li>
+              <li><span />{{ taskStatusText(selectedTask.status) }} · {{ formatWhen(selectedTask.updatedAt) }}</li>
+            </ol>
           </section>
+
+          <UiBanner v-if="selectedTask.failureReason" tone="danger">
+            <strong>失败原因：</strong>{{ selectedTask.failureReason }}
+          </UiBanner>
+          <UiBanner v-if="selectedTask.status === 'FAILED'" tone="success">
+            你已保存的资料和简历不受影响，只是这次任务没有产出结果，可以回到对应页面重新发起。
+          </UiBanner>
+
+          <details class="d-tech">
+            <summary>联系客服时可提供</summary>
+            <p>任务编号 <code class="kv__mono">{{ selectedTask.id }}</code></p>
+          </details>
         </template>
-        <template v-if="selected" #footer>
-          <RouterLink v-if="selectedSource" class="btn btn--primary" :to="selectedSource" @click="selected = null">
-            查看来源
-          </RouterLink>
-          <button
-            v-if="canMarkRead(selected)"
-            class="btn btn--ghost"
-            type="button"
-            :disabled="pending === `read-${selected.id}`"
-            @click="onRead(selected.id)"
-          >
-            标记已读
-          </button>
-          <a
-            v-if="selectedTask?.downloadAvailable && selectedTask.downloadUrl"
-            class="btn btn--primary"
-            :href="selectedTask.downloadUrl"
-          >下载结果</a>
-          <button class="btn btn--ghost" type="button" @click="closeTaskDrawer">关闭</button>
-        </template>
-      </AppDrawer>
-    </section>
+
+        <section class="d-sec">
+          <h4 class="d-sec__title">通知内容</h4>
+          <p class="d-body">{{ selected.body || '（无正文）' }}</p>
+        </section>
+      </template>
+      <template v-if="selected" #footer>
+        <UiButton v-if="selectedSource" :to="selectedSource" @click="selected = null">查看来源</UiButton>
+        <UiButton v-if="canMarkRead(selected)" variant="secondary" :pending="pending === `read-${selected.id}`" @click="onRead(selected.id)">
+          标记已读
+        </UiButton>
+        <UiButton v-if="selectedTask?.downloadAvailable && selectedTask.downloadUrl" :href="selectedTask.downloadUrl">下载结果</UiButton>
+        <UiButton variant="secondary" @click="closeTaskDrawer">关闭</UiButton>
+      </template>
+    </UiDrawer>
+  </section>
 </template>
 
 <style scoped>
+.notifications {
+  display: grid;
+  gap: var(--space-6);
+  align-content: start;
+}
+
 .n-toolbar {
   display: flex;
   align-items: center;
@@ -543,35 +496,15 @@ onMounted(() => {
   flex-wrap: wrap;
 }
 
-.seg {
-  display: inline-flex;
-  gap: 4px;
-  padding: 3px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 999px;
-}
-
-.seg__item {
-  min-height: 36px;
-  padding: 6px 16px;
-  border-radius: 999px;
-  border: 1px solid transparent;
-  background: transparent;
-  font-size: 13px;
-  color: var(--text-secondary);
-  cursor: pointer;
-  transition: background 0.15s, color 0.15s;
-}
-
-.seg__item.is-active {
-  background: var(--color-primary);
-  color: var(--text-on-primary);
+.n-count {
+  color: var(--text-tertiary);
+  font-size: var(--fs-xs);
 }
 
 .n-block {
   display: grid;
   gap: 8px;
+  animation: notification-block-in var(--dur-base) var(--ease-out) both;
 }
 
 .n-group {
@@ -620,6 +553,11 @@ onMounted(() => {
 }
 
 .n-skel {
+  align-items: center;
+}
+
+.n-skel__lines {
+  flex: 1;
   display: grid;
   gap: 8px;
 }
@@ -682,7 +620,7 @@ onMounted(() => {
 }
 
 .n-body {
-  font-size: 14px;
+  font-size: 13px;
   color: var(--text-secondary);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -690,7 +628,8 @@ onMounted(() => {
 }
 
 .n-lock {
-  color: var(--color-warning);
+  color: var(--color-warning-text);
+  font-size: var(--fs-xs);
 }
 
 .n-meta {
@@ -861,39 +800,17 @@ onMounted(() => {
   word-break: break-word;
 }
 
-@media (max-width: 640px) {
-  .seg { display: flex; width: 100%; border-radius: 8px; }
-  .seg__item { flex: 1; min-height: 44px; padding-inline: 8px; border-radius: 6px; }
-  .n-row { padding: 16px 12px; gap: 10px; }
-  .n-icon { width: 32px; height: 32px; border-radius: 8px; }
-  .n-body { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; white-space: normal; }
-}
-@media (prefers-reduced-motion: reduce) {
-  .n-row.is-clickable, .seg__item { transition: none; }
+@keyframes notification-block-in {
+  from { opacity: 0; transform: translateY(5px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
-/* Match the released notification surface: each item is its own card. */
-.n-toolbar { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; }
-.seg { position: relative; isolation: isolate; display: inline-flex; gap: 4px; padding: 3px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); }
-.seg::before { position: absolute; z-index: 0; inset: 3px auto 3px 3px; width: calc((100% - 10px) / 2); border-radius: inherit; background: var(--color-primary); box-shadow: 0 5px 12px color-mix(in srgb, var(--color-primary) 18%, transparent); content: ''; pointer-events: none; transform: translateX(calc(var(--seg-index) * (100% + 4px))); transition: transform var(--motion-slow) var(--motion-ease), box-shadow var(--motion-base) var(--motion-ease); }
-.seg__item { position: relative; z-index: 1; padding: 5px 16px; border: 1px solid transparent; border-radius: 999px; color: var(--text-secondary); background: transparent; font-size: 13px; cursor: pointer; transition: color var(--motion-base) ease, transform var(--motion-fast) var(--motion-ease); }
-.seg__item.is-active { color: var(--text-on-primary); background: transparent; }
-.seg__item:active { transform: scale(.97); }
-.n-block { animation: notification-block-in var(--motion-base) var(--motion-ease-out) both; }
-@keyframes notification-block-in { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
-.n-icon { width: 40px; height: 40px; flex-shrink: 0; display: grid; place-items: center; border-radius: 10px; }
-.n-main { min-width: 0; flex: 1; display: grid; gap: 4px; }
-.n-body { color: var(--text-secondary); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 @media (max-width: 640px) {
-  .seg { width: auto; border-radius: 999px; }
-  .seg__item { min-height: 40px; padding-inline: 12px; }
   .n-row { padding: 14px 12px; gap: 10px; }
-  .n-icon { width: 40px; height: 40px; border-radius: 10px; }
-  .n-body { white-space: nowrap; }
 }
+
 @media (prefers-reduced-motion: reduce) {
-  .seg::before, .seg__item { transition: none; }
-  .seg__item:active { transform: none; }
+  .n-row.is-clickable { transition: none; }
   .n-block { animation: none; }
 }
 </style>

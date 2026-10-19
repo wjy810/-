@@ -40,9 +40,9 @@ const dashboard = {
 
 const stubs = {
   AppChrome: { template: '<div><slot name="topbar"/><slot/></div>' },
-  AppSelect: { props: ['modelValue'], template: '<select :value="modelValue" />' },
+  UiSelect: { props: ['modelValue'], template: '<select :value="modelValue" />' },
   RouterLink: { template: '<a><slot/></a>' },
-  AppModal: {
+  UiDialog: {
     props: ['open'],
     template: '<section v-if="open" role="dialog"><slot/><footer><slot name="footer"/></footer></section>',
   },

@@ -5,10 +5,10 @@ import {
   Folder, FolderPlus, Grid2X2, HardDrive, Info, List, LoaderCircle, MoreVertical,
   Pencil, RefreshCcw, Search, ShieldCheck, Trash2, UploadCloud, X,
 } from 'lucide-vue-next'
-import AppModal from '@/shared/ui/AppModal.vue'
-import AppSelect from '@/shared/ui/AppSelect.vue'
 import PageState from '@/shared/ui/PageState.vue'
+import UiDialog from '@/shared/ui/UiDialog.vue'
 import UiDropdownMenu, { type MenuItem } from '@/shared/ui/UiDropdownMenu.vue'
+import UiSelect from '@/shared/ui/UiSelect.vue'
 import UiSkeleton from '@/shared/ui/UiSkeleton.vue'
 import { isAbortError, pollTask } from '@/shared/lib/pollTask'
 import { useLoadState } from '@/shared/lib/useLoadState'
@@ -283,8 +283,8 @@ defineExpose({ chooseFile, openFolder })
         <div v-else class="upload-ready">
           <span class="file-hero-icon docx"><FileText :size="27" /></span>
           <div><strong>{{ selectedUpload.name }}</strong><small>{{ fileSize(selectedUpload.size) }} · 等待提交</small></div>
-          <label><span>分类</span><AppSelect v-model="uploadForm.category" :options="uploadCategories" aria-label="上传文件分类" /></label>
-          <label><span>文件夹</span><AppSelect v-model="uploadForm.folderId" :options="folderOptions" aria-label="上传文件夹" /></label>
+          <label><span>分类</span><UiSelect v-model="uploadForm.category" :options="uploadCategories" aria-label="上传文件分类" placeholder="上传文件分类" /></label>
+          <label><span>文件夹</span><UiSelect v-model="uploadForm.folderId" :options="folderOptions" aria-label="上传文件夹" placeholder="上传文件夹" /></label>
           <button class="career-btn primary" type="button" :disabled="pending === 'upload'" @click="startUpload"><UploadCloud :size="16" />{{ pending === 'upload' ? '提交中' : '开始上传' }}</button>
           <button class="icon-action" type="button" title="取消" @click="clearSelection"><X :size="18" /></button>
         </div>
@@ -292,9 +292,9 @@ defineExpose({ chooseFile, openFolder })
 
       <section class="file-toolbar">
         <label class="career-search"><Search :size="18" /><input :value="q" placeholder="搜索文件名或显示名称" @input="setQuery('q', ($event.target as HTMLInputElement).value)" /></label>
-        <AppSelect :model-value="type" :options="categoryOptions" aria-label="文件分类" @update:model-value="setQuery('type', $event)" />
-        <AppSelect :model-value="status" :options="statusOptions" aria-label="文件状态" @update:model-value="setQuery('status', $event)" />
-        <AppSelect :model-value="sort" :options="sortOptions" aria-label="文件排序" @update:model-value="setQuery('sort', $event)" />
+        <UiSelect :model-value="type" :options="categoryOptions" aria-label="文件分类" placeholder="文件分类" @update:model-value="setQuery('type', $event)" />
+        <UiSelect :model-value="status" :options="statusOptions" aria-label="文件状态" placeholder="文件状态" @update:model-value="setQuery('status', $event)" />
+        <UiSelect :model-value="sort" :options="sortOptions" aria-label="文件排序" placeholder="文件排序" @update:model-value="setQuery('sort', $event)" />
         <div class="layout-toggle"><button type="button" :class="{ active: layout !== 'list' }" title="网格视图" @click="setQuery('layout', 'grid')"><Grid2X2 :size="18" /></button><button type="button" :class="{ active: layout === 'list' }" title="列表视图" @click="setQuery('layout', 'list')"><List :size="18" /></button></div>
       </section>
 
@@ -357,10 +357,10 @@ defineExpose({ chooseFile, openFolder })
       <section class="career-card aside-card privacy-file-card"><ShieldCheck :size="21" /><div><h3>隐私说明</h3><p>文件只有你自己能查看，不会发送给 AI，也不会向招聘方公开。</p><RouterLink class="privacy-file-card__link" to="/privacy">查看隐私政策<ArrowRight :size="15" /></RouterLink></div></section>
     </aside>
 
-    <AppModal :open="Boolean(previewFile)" :title="previewFile?.displayName || '文件预览'" :width="960" @close="previewFile = null"><div class="career-preview-pages"><img v-for="page in previewPages" :key="page" :src="`/api/v1/career-library/files/${previewFile?.id}/preview-pages/${page}`" :alt="`第 ${page} 页`" /></div></AppModal>
+    <UiDialog :open="Boolean(previewFile)" :title="previewFile?.displayName || '文件预览'" :width="960" @close="previewFile = null"><div class="career-preview-pages"><img v-for="page in previewPages" :key="page" :src="`/api/v1/career-library/files/${previewFile?.id}/preview-pages/${page}`" :alt="`第 ${page} 页`" /></div></UiDialog>
 
-    <AppModal :open="Boolean(editFile)" title="更新文件资料" :width="520" @close="editFile = null"><form id="career-file-edit" class="file-edit-form" @submit.prevent="saveEdit"><label><span>显示名称</span><input v-model.trim="editForm.displayName" class="career-input" maxlength="160" /></label><label><span>分类</span><AppSelect v-model="editForm.category" :options="uploadCategories" aria-label="文件分类" /></label><label><span>文件夹</span><AppSelect v-model="editForm.folderId" :options="folderOptions" aria-label="文件夹" /></label></form><template #footer><button class="career-btn ghost" type="button" @click="editFile = null">取消</button><button class="career-btn primary" type="submit" form="career-file-edit">保存修改</button></template></AppModal>
+    <UiDialog :open="Boolean(editFile)" title="更新文件资料" :width="520" @close="editFile = null"><form id="career-file-edit" class="file-edit-form" @submit.prevent="saveEdit"><label><span>显示名称</span><input v-model.trim="editForm.displayName" class="career-input" maxlength="160" /></label><label><span>分类</span><UiSelect v-model="editForm.category" :options="uploadCategories" aria-label="文件分类" placeholder="文件分类" /></label><label><span>文件夹</span><UiSelect v-model="editForm.folderId" :options="folderOptions" aria-label="文件夹" placeholder="文件夹" /></label></form><template #footer><button class="career-btn ghost" type="button" @click="editFile = null">取消</button><button class="career-btn primary" type="submit" form="career-file-edit">保存修改</button></template></UiDialog>
 
-    <AppModal :open="folderModal" title="新建文件夹" :width="460" @close="folderModal = false"><form id="career-folder-form" class="file-edit-form" @submit.prevent="createFolder"><label><span>文件夹名称</span><input v-model.trim="folderName" class="career-input" maxlength="80" autofocus placeholder="例如：证书与证明" /></label><p class="folder-hint">当前仅支持一级文件夹，文件可随时移动。</p></form><template #footer><button class="career-btn ghost" type="button" @click="folderModal = false">取消</button><button class="career-btn primary" type="submit" form="career-folder-form">创建文件夹</button></template></AppModal>
+    <UiDialog :open="folderModal" title="新建文件夹" :width="460" :mobile-sheet="false" @close="folderModal = false"><form id="career-folder-form" class="file-edit-form" @submit.prevent="createFolder"><label><span>文件夹名称</span><input v-model.trim="folderName" class="career-input" maxlength="80" autofocus placeholder="例如：证书与证明" /></label><p class="folder-hint">当前仅支持一级文件夹，文件可随时移动。</p></form><template #footer><button class="career-btn ghost" type="button" @click="folderModal = false">取消</button><button class="career-btn primary" type="submit" form="career-folder-form">创建文件夹</button></template></UiDialog>
   </div>
 </template>

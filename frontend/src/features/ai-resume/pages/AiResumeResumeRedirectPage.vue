@@ -3,6 +3,7 @@ import { onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { errorMessage } from '@/shared/api/types'
 import AppIcon from '@/shared/ui/AppIcon.vue'
+import UiButton from '@/shared/ui/UiButton.vue'
 import { ensureAiResume } from '../services/aiResumeApi'
 
 const route = useRoute()
@@ -29,13 +30,13 @@ onMounted(async () => {
     <AppIcon :name="error ? 'alert-circle' : 'loader'" :size="24" />
     <h1>{{ error ? '无法打开简历' : '正在打开 AI 工作台' }}</h1>
     <p>{{ error || '正在读取长期主对话和当前简历版本…' }}</p>
-    <RouterLink v-if="error" class="btn btn--ghost" to="/resumes">返回简历列表</RouterLink>
+    <UiButton v-if="error" variant="secondary" to="/resumes">返回简历列表</UiButton>
   </main>
 </template>
 
 <style scoped>
-.resume-redirect { min-height: 100vh; display: grid; place-content: center; justify-items: center; gap: 10px; padding: 24px; text-align: center; background: var(--bg); }
-.resume-redirect h1 { font-size: 18px; }
-.resume-redirect p { color: var(--text-2); }
-.resume-redirect .app-icon { color: var(--primary); }
+.resume-redirect { min-height: 100vh; display: grid; place-content: center; justify-items: center; gap: 10px; padding: var(--space-6); text-align: center; background: var(--bg-app); }
+.resume-redirect h1 { font-size: var(--fs-h3); line-height: var(--lh-h3); }
+.resume-redirect p { color: var(--text-secondary); }
+.resume-redirect .app-icon { color: var(--color-primary); }
 </style>

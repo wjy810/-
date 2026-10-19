@@ -33,7 +33,7 @@ describe('CareerValidationWorkspace', () => {
     api.confirmCareerAbilityValidation.mockResolvedValue({ ...evaluated, status: 'CONFIRMED', userConfirmed: true })
     const wrapper = mount(CareerValidationWorkspace, {
       props: { sessionId: 'session-1', canvas, plan: makePlan(canvas), validations: [], initialNodeId: 'skill-oop' },
-      global: { stubs: { AppSelect: SelectStub } },
+      global: { stubs: { UiSelect: SelectStub } },
     })
 
     await wrapper.get('.method-grid button:nth-child(3)').trigger('click')
@@ -76,7 +76,7 @@ describe('CareerValidationWorkspace', () => {
         sessionId: 'session-1', canvas, plan: makePlan(canvas), validations: [],
         initialNodeIds: ['skill-oop', 'task-api'],
       },
-      global: { stubs: { AppSelect: SelectStub } },
+      global: { stubs: { UiSelect: SelectStub } },
     })
 
     await wrapper.get('.submission-field textarea').setValue('说明面向对象建模过程和测试结果。')
@@ -115,7 +115,7 @@ describe('CareerValidationWorkspace', () => {
         sessionId: 'session-1', canvas: makeCanvas(), plan: makePlan(), validations: [],
         initialNodeIds: ['skill-oop', 'task-api'],
       },
-      global: { stubs: { AppSelect: SelectStub } },
+      global: { stubs: { UiSelect: SelectStub } },
     })
     await wrapper.get('.submission-field textarea').setValue('建模说明')
     await wrapper.findAll('.batch-queue button')[1].trigger('click')
@@ -145,7 +145,7 @@ describe('CareerValidationWorkspace', () => {
     api.fetchCareerAbilityValidations.mockResolvedValue(values)
     const wrapper = mount(CareerValidationWorkspace, {
       props: { sessionId: 'session-1', canvas: makeCanvas(), plan: makePlan(), validations: [] },
-      global: { stubs: { AppSelect: SelectStub } },
+      global: { stubs: { UiSelect: SelectStub } },
     })
     await flushPromises()
 

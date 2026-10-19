@@ -6,7 +6,7 @@ import {
   ClipboardCheck, Clock3, FilePlus2, LoaderCircle, Pause, Play, RotateCcw, ShieldCheck,
   Sparkles, Target,
 } from 'lucide-vue-next'
-import AppModal from '@/shared/ui/AppModal.vue'
+import UiDialog from '@/shared/ui/UiDialog.vue'
 import { errorMessage } from '@/shared/api/types'
 import {
   addCareerLearningEvidence, saveCareerWeeklyReview, updateCareerLearningPlan, updateCareerPlanTask,
@@ -209,10 +209,10 @@ async function setPlanStatus(status: 'ACTIVE' | 'PAUSED' | 'COMPLETED' | 'ARCHIV
     </div>
   </section>
 
-  <AppModal :open="Boolean(evidenceTask)" title="添加能力证据" :width="560" mobile-sheet @close="evidenceTask = null">
+  <UiDialog :open="Boolean(evidenceTask)" title="添加能力证据" :width="560" @close="evidenceTask = null">
     <div class="evidence-dialog"><p><CircleAlert :size="16" />首版保存结构化证据说明，不会把未选择的资料文件发送给 AI。</p><label>证据名称<input v-model="evidenceTitle" maxlength="255" placeholder="例如：订单接口测试报告"></label><label>补充说明<textarea v-model="evidenceNote" rows="5" maxlength="2000" placeholder="写明你完成的工作、验证方式和可复核结果"></textarea></label></div>
     <template #footer><button class="dialog-cancel" type="button" @click="evidenceTask = null">取消</button><button class="dialog-primary" type="button" :disabled="pending === 'evidence' || !evidenceTitle.trim()" @click="addEvidence"><LoaderCircle v-if="pending === 'evidence'" class="spin" :size="16" /><FilePlus2 v-else :size="16" />保存并关联</button></template>
-  </AppModal>
+  </UiDialog>
   </div>
 </template>
 

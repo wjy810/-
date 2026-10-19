@@ -62,8 +62,26 @@ watch(
 </template>
 
 <style scoped>
+.app-root {
+  min-height: 100vh;
+}
+
 .app-view {
   display: contents;
+}
+
+.boot {
+  min-height: 100vh;
+  padding: var(--space-8);
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: var(--space-3);
+  text-align: center;
+}
+
+.boot h1 {
+  font-size: var(--fs-h2);
 }
 
 .boot__mark {

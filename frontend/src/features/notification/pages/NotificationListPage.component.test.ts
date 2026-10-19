@@ -19,7 +19,7 @@ import NotificationListPage from './NotificationListPage.vue'
 const failure = new ApiClientError({ category: 'SYSTEM_FAILURE', reason: 'X', message: '服务暂时不可用' }, 503, 'req-notice')
 
 function mountPage() {
-  return mount(NotificationListPage, { global: { stubs: { UiIllustration: true, AppDrawer: true, JobProofIcon: true } } })
+  return mount(NotificationListPage, { global: { stubs: { UiIllustration: true, UiDrawer: true, JobProofIcon: true, UiTooltip: { template: '<slot />' } } } })
 }
 
 describe('NotificationListPage', () => {
@@ -44,7 +44,7 @@ describe('NotificationListPage', () => {
   it('labels task types in plain language', async () => {
     api.list.mockResolvedValue({ items: [{ id: 'n1', type: 'TASK_COMPLETED', status: 'DELIVERED', title: '导出完成', eventId: 'task-1', createdAt: new Date().toISOString() }], total: 1, page: 0, size: 20 })
     api.task.mockResolvedValue({ id: 'task-1', taskType: 'ACCOUNT_EXPORT', status: 'SUCCEEDED', inputVersion: 'sha-abc' })
-    const wrapper = mount(NotificationListPage, { global: { stubs: { UiIllustration: true, JobProofIcon: true, AppDrawer: { template: '<div class="drawer-stub"><slot /></div>' } } } })
+    const wrapper = mount(NotificationListPage, { global: { stubs: { UiIllustration: true, JobProofIcon: true, UiTooltip: { template: '<slot />' }, UiDrawer: { template: '<div class="drawer-stub"><slot /></div>' } } } })
     await flushPromises()
     await wrapper.get('.n-row').trigger('click')
     await flushPromises()

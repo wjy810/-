@@ -22,7 +22,6 @@ const stubs = {
   UiIllustration: true,
   ResumeThumbnail: true,
   JobProofIcon: true,
-  AppSelect: true,
   UiDialog: { props: ['open', 'title'], template: '<div v-if="open" role="dialog"><slot /><slot name="footer" /></div>' },
 }
 
