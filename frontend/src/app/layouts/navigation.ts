@@ -1,6 +1,7 @@
 import type { Component } from 'vue'
 import type { FeatureKey } from '@/shared/api/capabilities'
 import {
+  BarChart3,
   Bell,
   Ticket,
   Compass,
@@ -68,6 +69,7 @@ export const NAV_GROUPS: NavGroup[] = [
     label: '管理',
     adminOnly: true,
     items: [
+      { key: 'admin-overview', to: '/admin/overview', label: '运营概览', icon: BarChart3 },
       { key: 'admin-templates', to: '/admin/resume-templates', label: '模板运营', icon: Shapes },
       { key: 'admin-ai', to: '/admin/ai-channels', label: 'AI 通道', icon: Cpu },
       { key: 'admin-redeem', to: '/admin/redeem-codes', label: '兑换码', icon: Ticket },

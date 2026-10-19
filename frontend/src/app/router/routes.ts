@@ -8,11 +8,11 @@ import { resumeLandingPath } from '@/features/resume/utils/resumeLanding'
 import { useSessionStore } from '@/stores/session'
 
 export function signedInHome() {
-  return useSessionStore().isAdmin ? { name: 'template-admin' } : { name: 'dashboard' }
+  return useSessionStore().isAdmin ? { name: 'admin-overview' } : { name: 'dashboard' }
 }
 
 async function resolveResumeHome() {
-  if (useSessionStore().isAdmin) return { name: 'template-admin' }
+  if (useSessionStore().isAdmin) return { name: 'admin-overview' }
   try {
     const { listResumes } = await import('@/features/resume/services/resumeApi')
     return { path: resumeLandingPath(await listResumes()), replace: true }
@@ -290,6 +290,12 @@ export const routes: RouteRecordRaw[] = [
           { path: 'ai', name: 'account-ai', meta: { title: 'AI 用量' }, component: () => import('@/features/ai-resume/pages/AiResumeUsagePage.vue') },
           { path: 'data-rights', name: 'account-data-rights', meta: { title: '数据与隐私' }, component: () => import('@/features/datarights/pages/DataRightsPage.vue') },
         ],
+      },
+      {
+        path: 'admin/overview',
+        name: 'admin-overview',
+        meta: { ...authed, adminOnly: true, title: '运营概览' },
+        component: () => import('@/features/operations/pages/AdminOverviewPage.vue'),
       },
       {
         path: 'admin/resume-templates',
