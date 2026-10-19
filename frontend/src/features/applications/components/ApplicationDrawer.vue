@@ -494,7 +494,7 @@ watch(() => [props.open, props.applicationId] as const, ([open, id]) => {
 }
 
 .receipt__head h3 {
-  font-size: var(--fs-md, 15px);
+  font-size: var(--fs-h3);
   font-weight: 650;
 }
 

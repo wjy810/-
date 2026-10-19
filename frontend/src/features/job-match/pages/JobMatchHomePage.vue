@@ -2,7 +2,7 @@
 import { computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ArrowRight, FileCheck2, LoaderCircle, Plus, ShieldCheck, Sparkles } from 'lucide-vue-next'
-import AppTag from '@/shared/ui/AppTag.vue'
+import UiBadge from '@/shared/ui/UiBadge.vue'
 import UiButton from '@/shared/ui/UiButton.vue'
 import UiEmptyState from '@/shared/ui/UiEmptyState.vue'
 import JobProofIcon from '@/shared/ui/JobProofIcon.vue'
@@ -50,7 +50,7 @@ onMounted(load)
               <article class="jm-flow__step"><span><JobProofIcon name="matching-next-steps" :size="27" /></span><strong>优化与准备</strong><p>按优先级改简历、补证据和学习</p></article>
             </div><button class="jm-primary" type="button" @click="router.push({ name: 'job-match-new' })">开始岗位匹配</button></section>
             <section class="jm-card jm-recent"><header class="jm-section-head"><h2>最近的匹配任务</h2><button class="jm-text-btn" type="button" @click="router.push({ name: 'job-match-history' })">查看全部 <ArrowRight :size="15" /></button></header>
-              <div class="jm-task-list"><article v-for="item in dashboard?.recent" :key="item.id" class="jm-task"><span class="jm-score-ring" :class="{ 'is-pending': item.score == null }">{{ item.score ?? '—' }}</span><p><strong>{{ item.title || '岗位描述待解析' }}<template v-if="item.company"> · {{ item.company }}</template></strong><small><AppTag :tone="statusTone(item.status)">{{ statusLabel(item.status) }}</AppTag></small></p><p><small>简历版本</small><strong>{{ item.resumeTitle || '尚未选择' }}</strong></p><time>{{ new Date(item.updatedAt).toLocaleDateString('zh-CN') }}</time><button class="jm-secondary" type="button" @click="open(item)">{{ item.status === 'COMPLETED' ? '查看报告' : '继续分析' }}</button></article></div>
+              <div class="jm-task-list"><article v-for="item in dashboard?.recent" :key="item.id" class="jm-task"><span class="jm-score-ring" :class="{ 'is-pending': item.score == null }">{{ item.score ?? '—' }}</span><p><strong>{{ item.title || '岗位描述待解析' }}<template v-if="item.company"> · {{ item.company }}</template></strong><small><UiBadge :tone="statusTone(item.status)">{{ statusLabel(item.status) }}</UiBadge></small></p><p><small>简历版本</small><strong>{{ item.resumeTitle || '尚未选择' }}</strong></p><time>{{ new Date(item.updatedAt).toLocaleDateString('zh-CN') }}</time><button class="jm-secondary" type="button" @click="open(item)">{{ item.status === 'COMPLETED' ? '查看报告' : '继续分析' }}</button></article></div>
             </section>
           </div>
           <aside class="jm-card jm-suggestions"><h2>匹配原则</h2><article class="jm-suggestion"><span><ShieldCheck :size="18" /></span><p><strong>结论必须可溯源</strong><small>每项优势、缺口和建议都关联 JD、简历或授权证据。</small></p></article><article class="jm-suggestion"><span><Sparkles :size="18" /></span><p><strong>AI 不制造分数</strong><small>规则引擎负责稳定评分，AI 负责解释、澄清与行动计划。</small></p></article><article class="jm-suggestion"><span><FileCheck2 :size="18" /></span><p><strong>未写不等于不会</strong><small>证据不足时优先追问，不把简历没有写误判为能力缺口。</small></p></article></aside>

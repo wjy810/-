@@ -3,7 +3,7 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import test from 'node:test'
 
-test('all Vue select controls use the shared AppSelect component', () => {
+test('all Vue select controls use the shared UiSelect component', () => {
   const sourceRoot = join(import.meta.dirname, '..', '..')
   const offenders: string[] = []
 

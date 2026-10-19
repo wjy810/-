@@ -1,6 +1,6 @@
 .main.is-career .main__body {
   min-width: 0;
-  background: var(--bg);
+  background: var(--bg-app);
 }
 
 .career-library-page,
@@ -92,7 +92,7 @@
   justify-content: center;
   gap: 7px;
   padding: 0 18px;
-  border: 1px solid var(--career-border, var(--border));
+  border: 1px solid var(--career-border, var(--border-default));
   border-radius: 8px;
   background: var(--surface-1);
   color: var(--text-primary);
@@ -112,12 +112,12 @@
   border-color: var(--career-primary, var(--color-primary));
   background: var(--career-primary, var(--color-primary));
   color: var(--text-on-primary);
-  box-shadow: var(--shadow-s);
+  box-shadow: var(--shadow-sm);
 }
 
 .career-btn.primary:hover:not(:disabled) {
-  border-color: var(--career-primary-hover, var(--primary-hover));
-  background: var(--career-primary-hover, var(--primary-hover));
+  border-color: var(--career-primary-hover, var(--color-primary-hover));
+  background: var(--career-primary-hover, var(--color-primary-hover));
 }
 
 .career-btn:disabled {
@@ -256,7 +256,7 @@
   border: 1px solid var(--border-subtle);
   border-radius: 12px;
   background: var(--surface-1);
-  box-shadow: var(--shadow-s);
+  box-shadow: var(--shadow-sm);
 }
 
 .profile-master-card,
@@ -785,7 +785,7 @@ textarea.career-input {
 }
 
 .ai-suggestion-card {
-  background: var(--surface-warm);
+  background: var(--surface-2);
 }
 
 .ai-card-head {
@@ -2153,7 +2153,7 @@ textarea.career-input {
   font-size: 12px;
   line-height: 1.65;
 }
-.profile-status.is-dirty { color: var(--color-warning-text); background: var(--warning-soft); }
+.profile-status.is-dirty { color: var(--color-warning-text); background: var(--color-warning-soft); }
 .profile-missing-head {
   display: flex;
   align-items: center;

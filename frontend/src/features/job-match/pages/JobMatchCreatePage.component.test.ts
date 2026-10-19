@@ -27,7 +27,7 @@ function capabilities(minJdChars = 300) {
 }
 
 function mountPage() {
-  return mount(JobMatchCreatePage, { global: { stubs: { UiIllustration: true, AppDrawer: true, Transition: false } } })
+  return mount(JobMatchCreatePage, { global: { stubs: { UiIllustration: true, UiDrawer: true, Transition: false } } })
 }
 
 describe('job match creation', () => {
@@ -90,7 +90,7 @@ describe('job match creation', () => {
     api.revokeEvidence.mockResolvedValue({ ...authorised, status: 'RESUME_CONFIRMED', version: 8, evidenceMode: null, authorizationId: null })
     dialogs.confirm.mockResolvedValue(true)
     // Default Transition stub: the step change renders at once instead of waiting for leave frames.
-    const wrapper = mount(JobMatchCreatePage, { global: { stubs: { UiIllustration: true, AppDrawer: true } } })
+    const wrapper = mount(JobMatchCreatePage, { global: { stubs: { UiIllustration: true, UiDrawer: true } } })
     await flushPromises()
     expect(wrapper.text()).toContain('查看发送给 AI 的内容')
     const revoke = wrapper.findAll('button').find(button => button.text().includes('撤销资料授权'))!
@@ -114,7 +114,7 @@ describe('job match creation', () => {
       { sourceType: 'CAREER_RECORD', sourceId: 'rec-1', title: '订单系统重构', strength: 'MEDIUM', relevance: 60, recommended: true },
     ])
     api.authorizeEvidence.mockResolvedValue({ id: 'match-2', status: 'EVIDENCE_AUTHORIZED', version: 4, requirements: [], clarifications: [] })
-    const wrapper = mount(JobMatchCreatePage, { global: { stubs: { UiIllustration: true, AppDrawer: true } } })
+    const wrapper = mount(JobMatchCreatePage, { global: { stubs: { UiIllustration: true, UiDrawer: true } } })
     await flushPromises()
     await wrapper.get('.jm-evidence-option input').trigger('change')
     expect(wrapper.get('.jm-choice.is-selected').text()).toContain('手动选择')

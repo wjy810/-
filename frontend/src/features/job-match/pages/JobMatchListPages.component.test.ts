@@ -50,7 +50,7 @@ describe('job match history', () => {
 
   it('shows a failed load as an error, not as "no records"', async () => {
     api.fetchJobMatchHistory.mockRejectedValue(failure())
-    const wrapper = mount(JobMatchHistoryPage, { global: { stubs: { ...stubs, AppSelect: true } } })
+    const wrapper = mount(JobMatchHistoryPage, { global: { stubs: { ...stubs, UiSelect: true } } })
     await flushPromises()
     expect(wrapper.text()).toContain('历史记录读取失败')
     expect(wrapper.text()).not.toContain('没有符合条件的匹配记录')
@@ -59,7 +59,7 @@ describe('job match history', () => {
 
   it('distinguishes an empty history from an empty search', async () => {
     api.fetchJobMatchHistory.mockResolvedValue({ items: [], page: 0, size: 20, total: 0, totalPages: 0 })
-    const wrapper = mount(JobMatchHistoryPage, { global: { stubs: { ...stubs, AppSelect: true } } })
+    const wrapper = mount(JobMatchHistoryPage, { global: { stubs: { ...stubs, UiSelect: true } } })
     await flushPromises()
     expect(wrapper.text()).toContain('还没有岗位匹配记录')
   })

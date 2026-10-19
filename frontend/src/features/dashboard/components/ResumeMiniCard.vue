@@ -18,7 +18,7 @@ const accent = computed(() => {
 </script>
 
 <template>
-  <RouterLink :to="`/resumes/${encodeURIComponent(resume.id)}`" class="mini" :style="{ '--accent': accent }">
+  <RouterLink :to="`/resumes/${encodeURIComponent(resume.id)}`" class="mini" :style="{ '--mini-accent': accent }">
     <div class="mini__paper" aria-hidden="true">
       <ResumeThumbnail :resume-id="resume.id" :updated-at="resume.updatedAt" :title="resume.title">
         <!-- No layout yet (the resume was never opened in the editor): a sketch of a page. -->
@@ -103,14 +103,14 @@ const accent = computed(() => {
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  background: color-mix(in srgb, var(--accent) 22%, #fff);
+  background: color-mix(in srgb, var(--mini-accent) 22%, #fff);
 }
 
 .mini__name {
   width: 42%;
   height: 7px;
   border-radius: 4px;
-  background: var(--accent);
+  background: var(--mini-accent);
 }
 
 .mini__section {
@@ -118,7 +118,7 @@ const accent = computed(() => {
   height: 5px;
   margin-top: 4px;
   border-radius: 3px;
-  background: color-mix(in srgb, var(--accent) 60%, #fff);
+  background: color-mix(in srgb, var(--mini-accent) 60%, #fff);
 }
 
 .mini__line {

@@ -32,7 +32,7 @@ function match(overrides: Partial<JobMatch> = {}): JobMatch {
 }
 
 function mountPage() {
-  return mount(JobMatchAnalyzingPage, { global: { stubs: { UiIllustration: true, AppDrawer: true } } })
+  return mount(JobMatchAnalyzingPage, { global: { stubs: { UiIllustration: true, UiDrawer: true } } })
 }
 
 describe('analysis progress', () => {

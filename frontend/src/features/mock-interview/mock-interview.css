@@ -20,7 +20,7 @@
 .mi-secondary { border: 1px solid var(--border-default); color: var(--text-primary); background: var(--surface-1); }
 .mi-secondary:hover { color: var(--color-primary); border-color: var(--color-primary); }
 .mi-danger { border: 1px solid var(--color-danger); color: var(--text-on-primary); background: var(--color-danger); }
-.mi-card { border: 1px solid var(--border); border-radius: 12px; background: var(--surface-1); box-shadow: var(--shadow-s); }
+.mi-card { border: 1px solid var(--border-default); border-radius: 12px; background: var(--surface-1); box-shadow: var(--shadow-sm); }
 .mi-label { color: var(--text-secondary); font-size: 12px; }
 .mi-tag { min-height: 24px; padding: 2px 9px; display: inline-flex; align-items: center; gap: 4px; border-radius: 5px; font-size: 12px; font-weight: 600; }
 .mi-tag--blue { color: var(--color-primary-text); background: var(--surface-2); }

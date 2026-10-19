@@ -2,8 +2,8 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Check, Circle, LoaderCircle, PauseCircle, ShieldCheck, TriangleAlert } from 'lucide-vue-next'
-import AppTag from '@/shared/ui/AppTag.vue'
 import PageState from '@/shared/ui/PageState.vue'
+import UiBadge from '@/shared/ui/UiBadge.vue'
 import { useLoadState } from '@/shared/lib/useLoadState'
 import { useToastFeedback } from '@/shared/ui/toast'
 import { errorMessage } from '@/shared/api/types'
@@ -193,7 +193,7 @@ onBeforeUnmount(stopLive)
         <h1>{{ match?.status === 'ANALYZING' || !match ? '正在分析岗位匹配' : '岗位匹配分析' }}</h1>
         <p>{{ match?.title || '目标岗位' }}<template v-if="match?.company"> · {{ match.company }}</template></p>
       </div>
-      <AppTag v-if="match" :tone="statusTone(match.status)">{{ statusLabel(match.status) }}</AppTag>
+      <UiBadge v-if="match" :tone="statusTone(match.status)">{{ statusLabel(match.status) }}</UiBadge>
     </header>
 
     <PageState :loading="loading" :error="loadError" :loaded="loaded" error-title="分析状态读取失败" @retry="start">

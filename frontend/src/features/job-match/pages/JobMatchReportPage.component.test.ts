@@ -54,7 +54,7 @@ function report(overrides: Partial<JobMatchReport['report']> = {}, extra: Partia
 }
 
 function mountPage() {
-  return mount(JobMatchReportPage, { global: { stubs: { UiIllustration: true, AppDrawer: true, AppModal: true, Transition: false } } })
+  return mount(JobMatchReportPage, { global: { stubs: { UiIllustration: true, UiDrawer: true, UiDialog: true, Transition: false } } })
 }
 
 describe('job match report', () => {
@@ -118,8 +118,8 @@ describe('job match report', () => {
       { ...report().claims[0], id: claimId, feedback, version: version + 1 }
     ))
     const wrapper = mount(JobMatchReportPage, { global: { stubs: {
-      UiIllustration: true, AppModal: true, Transition: false,
-      AppDrawer: { props: ['open'], template: '<div v-if="open"><slot /></div>' },
+      UiIllustration: true, UiDialog: true, Transition: false,
+      UiDrawer: { props: ['open'], template: '<div v-if="open"><slot /></div>' },
     } } })
     await flushPromises()
     await wrapper.get('.jm-privacy .jm-secondary').trigger('click')

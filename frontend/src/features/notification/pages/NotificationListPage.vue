@@ -519,9 +519,9 @@ onMounted(() => {
   display: grid;
   gap: 0;
   overflow: hidden;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-default);
   border-radius: 12px;
-  background: var(--surface);
+  background: var(--surface-1);
 }
 
 .n-row {
@@ -529,9 +529,9 @@ onMounted(() => {
   align-items: flex-start;
   gap: 12px;
   padding: 14px 16px;
-  background: var(--surface);
+  background: var(--surface-1);
   border: 0;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--border-default);
   border-radius: 0;
   box-shadow: none;
 }
@@ -577,23 +577,23 @@ onMounted(() => {
 }
 
 .n-icon--green {
-  background: var(--success-soft);
+  background: var(--color-success-soft);
   color: var(--color-success);
 }
 
 .n-icon--red {
-  background: var(--danger-soft);
+  background: var(--color-danger-soft);
   color: var(--color-danger);
 }
 
 .n-icon--orange {
-  background: var(--warning-soft);
+  background: var(--color-warning-soft);
   color: var(--color-warning);
 }
 
 .n-icon--purple {
-  background: var(--purple-soft);
-  color: var(--purple);
+  background: var(--color-primary-soft);
+  color: var(--violet-400);
 }
 
 .n-icon--ink {
@@ -719,7 +719,7 @@ onMounted(() => {
   display: grid;
   gap: 10px;
   padding: 14px 0;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--border-default);
 }
 
 .d-sec__title {
@@ -745,7 +745,7 @@ onMounted(() => {
 }
 
 .kv__mono {
-  font-family: var(--mono);
+  font-family: var(--font-mono);
   font-size: 12px;
 }
 

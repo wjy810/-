@@ -2,9 +2,13 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { ArrowRight, Filter, Search } from 'lucide-vue-next'
 import { useRoute, useRouter } from 'vue-router'
-import AppSelect from '@/shared/ui/AppSelect.vue'
-import UiEmptyState from '@/shared/ui/UiEmptyState.vue'
 import PageState from '@/shared/ui/PageState.vue'
+import UiButton from '@/shared/ui/UiButton.vue'
+import UiEmptyState from '@/shared/ui/UiEmptyState.vue'
+import UiPagination from '@/shared/ui/UiPagination.vue'
+import UiSelect from '@/shared/ui/UiSelect.vue'
+import UiSkeleton from '@/shared/ui/UiSkeleton.vue'
+import { pageCountOf } from '@/shared/ui/pagination'
 import { useLoadState } from '@/shared/lib/useLoadState'
 import { MODULE_LABELS, TYPE_LABELS, moduleLabel, typeLabel } from '../labels'
 import { fetchLatestUpdate, fetchUpdateFacets, listUpdates } from '../services/updatesApi'
@@ -34,6 +38,7 @@ const { data: result, error, loading, loaded, load } = useLoadState(() => listUp
 }))
 const items = computed<ReleaseSummary[]>(() => result.value?.items ?? [])
 const total = computed(() => result.value?.total ?? 0)
+const pageCount = computed(() => pageCountOf(total.value, size))
 const filtered = computed(() => {
   const applied = parseUpdateFilters(route.query)
   return Boolean(applied.q || applied.type || applied.module || applied.versionFrom || applied.versionTo || applied.range)
@@ -66,8 +71,8 @@ async function apply(): Promise<void> {
 }
 
 async function chooseType(value: string): Promise<void> { type.value = value; await apply() }
-async function turn(delta: number): Promise<void> {
-  page.value += delta
+async function goTo(target: number): Promise<void> {
+  page.value = target
   await router.replace({ query: serializeUpdateFilters({ q: q.value, type: type.value, module: module.value,
     versionFrom: versionFrom.value, versionTo: versionTo.value, range: publishedRange.value, page: page.value }) })
   await load()
@@ -99,18 +104,18 @@ onUnmounted(() => restoreMetadata())
         </div>
         <Transition name="updates-filter">
         <section v-if="filterOpen" class="updates-filter-panel">
-          <label>更新类型<AppSelect v-model="type" :options="typeOptions" aria-label="更新类型" /></label>
-          <label>产品模块<AppSelect v-model="module" :options="moduleOptions" aria-label="产品模块" searchable /></label>
-          <label>版本范围<div style="display:flex;gap:6px"><AppSelect v-model="versionFrom" :options="versionOptions" aria-label="起始版本" /><AppSelect v-model="versionTo" :options="versionOptions" aria-label="结束版本" /></div></label>
-          <label>发布时间<AppSelect v-model="publishedRange" :options="rangeOptions" aria-label="发布时间" /></label>
-          <div style="grid-column:1/-1;display:flex;justify-content:flex-end;gap:8px"><button class="btn btn--ghost" type="button" @click="q='';type='';module='';versionFrom='';versionTo='';publishedRange='';apply()">清空条件</button><button class="btn btn--primary" type="button" @click="filterOpen=false;apply()">应用筛选</button></div>
+          <label>更新类型<UiSelect v-model="type" :options="typeOptions" aria-label="更新类型" placeholder="更新类型" /></label>
+          <label>产品模块<UiSelect v-model="module" :options="moduleOptions" aria-label="产品模块" placeholder="产品模块" searchable /></label>
+          <label>版本范围<div style="display:flex;gap:6px"><UiSelect v-model="versionFrom" :options="versionOptions" aria-label="起始版本" placeholder="起始版本" /><UiSelect v-model="versionTo" :options="versionOptions" aria-label="结束版本" placeholder="结束版本" /></div></label>
+          <label>发布时间<UiSelect v-model="publishedRange" :options="rangeOptions" aria-label="发布时间" placeholder="发布时间" /></label>
+          <div style="grid-column:1/-1;display:flex;justify-content:flex-end;gap:8px"><UiButton variant="secondary" @click="q='';type='';module='';versionFrom='';versionTo='';publishedRange='';apply()">清空条件</UiButton><UiButton @click="filterOpen=false;apply()">应用筛选</UiButton></div>
         </section>
         </Transition>
         <div class="updates-grid">
           <section>
             <PageState :loading="loading" :error="error" :loaded="loaded" :empty="!items.length" error-title="更新日志读取失败" @retry="load">
               <template #skeleton>
-                <div class="updates-timeline" aria-busy="true"><article v-for="n in 4" :key="n" class="update-card"><div class="bone" /><div><div class="bone" /><div class="bone bone--short" /></div></article></div>
+                <div class="updates-timeline" aria-busy="true"><article v-for="n in 4" :key="n" class="update-card"><UiSkeleton /><UiSkeleton :lines="2" /></article></div>
               </template>
               <template #empty>
                 <UiEmptyState
@@ -127,10 +132,10 @@ onUnmounted(() => restoreMetadata())
                 </article>
               </div>
             </PageState>
-            <div v-if="loaded && total > size" class="updates-pager"><button class="btn btn--ghost" :disabled="page<=0||loading" @click="turn(-1)">上一页</button><span>第 {{ page + 1 }} 页 · 共 {{ total }} 个版本</span><button class="btn btn--ghost" :disabled="(page+1)*size>=total||loading" @click="turn(1)">下一页</button></div>
+            <div v-if="loaded && total > size" class="updates-pager"><UiPagination :page="page" :page-count="pageCount" :disabled="loading" aria-label="更新日志分页" @update:page="goTo"><span>共 {{ total }} 个版本</span></UiPagination></div>
           </section>
           <aside class="updates-aside">
-            <section v-if="latest" class="latest-card"><small>最新版本</small><h2>{{ latest.release.versionLabel }}</h2><span class="update-pill is-status">正式发布</span><h3>{{ latest.release.title }}</h3><p>{{ latest.release.summary }}</p><RouterLink class="btn btn--primary" :to="`/updates/${latest.release.slug}`">查看完整更新 <ArrowRight :size="16" /></RouterLink></section>
+            <section v-if="latest" class="latest-card"><small>最新版本</small><h2>{{ latest.release.versionLabel }}</h2><span class="update-pill is-status">正式发布</span><h3>{{ latest.release.title }}</h3><p>{{ latest.release.summary }}</p><UiButton class="latest-card__cta" :to="`/updates/${latest.release.slug}`" :icon-right="ArrowRight">查看完整更新</UiButton></section>
             <section class="updates-note"><h3>持续透明地改进</h3><p>这里仅展示已经正式发布的真实变更。草稿、计划和未验证内容不会提前对外出现。</p></section>
           </aside>
         </div>
@@ -156,7 +161,7 @@ onUnmounted(() => restoreMetadata())
   background: var(--updates-blue);
   box-shadow: 0 6px 14px color-mix(in srgb, var(--color-primary) 18%, transparent);
   transform: translateX(calc(var(--chip-index) * 112px));
-  transition: transform var(--motion-slow) var(--motion-ease), box-shadow var(--motion-base) var(--motion-ease);
+  transition: transform var(--dur-slow) var(--ease-standard), box-shadow var(--dur-base) var(--ease-standard);
 }
 .updates-chip {
   position: relative;
@@ -171,22 +176,22 @@ onUnmounted(() => restoreMetadata())
 .updates-filter-panel { animation: none; }
 .updates-filter-enter-active,
 .updates-filter-leave-active {
-  transition: opacity var(--motion-base) ease, transform var(--motion-base) var(--motion-ease);
+  transition: opacity var(--dur-base) ease, transform var(--dur-base) var(--ease-standard);
 }
 .updates-filter-enter-from { opacity: 0; transform: translateY(-7px); }
 .updates-filter-leave-to { opacity: 0; transform: translateY(-5px); }
-.updates-timeline.is-refreshing { opacity: .6; transition: opacity var(--motion-base) ease; }
+.updates-timeline.is-refreshing { opacity: .6; transition: opacity var(--dur-base) ease; }
 .updates-empty > svg { display: block; margin: 0 auto 12px; }
 
 @media (max-width: 700px) {
   .updates-chip,
   .updates-filter-button,
-  .updates-filter-panel .btn,
-  .updates-filter-panel:deep(.app-select__trigger) {
+  .updates-filter-panel .ui-btn,
+  .updates-filter-panel :deep(.ui-select-trigger) {
     min-height: 44px;
   }
   .update-card__link,
-  .latest-card .btn {
+  .latest-card .latest-card__cta {
     min-height: 44px;
   }
 }

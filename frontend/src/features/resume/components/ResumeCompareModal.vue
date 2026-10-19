@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import AppBanner from '@/shared/ui/AppBanner.vue'
-import AppButton from '@/shared/ui/AppButton.vue'
-import AppEmpty from '@/shared/ui/AppEmpty.vue'
 import AppIcon from '@/shared/ui/AppIcon.vue'
-import AppModal from '@/shared/ui/AppModal.vue'
-import AppSelect from '@/shared/ui/AppSelect.vue'
-import AppTag from '@/shared/ui/AppTag.vue'
+import UiBadge from '@/shared/ui/UiBadge.vue'
+import UiBanner from '@/shared/ui/UiBanner.vue'
+import UiButton from '@/shared/ui/UiButton.vue'
+import UiDialog from '@/shared/ui/UiDialog.vue'
+import UiEmptyState from '@/shared/ui/UiEmptyState.vue'
+import UiField from '@/shared/ui/UiField.vue'
+import UiSelect, { type SelectOption } from '@/shared/ui/UiSelect.vue'
+import UiSkeleton from '@/shared/ui/UiSkeleton.vue'
 import { errorMessage, isForbidden } from '@/shared/api/types'
 import { formatWhen } from '@/shared/lib/datetime'
 import { COMPARE_KEYS, glossVersionStatus, prettyValue, versionOrdinals } from '../labels'
@@ -35,6 +37,7 @@ type FieldDiff = { key: string; label: string; differs: boolean; lines: DiffLine
 const ordinals = computed(() => versionOrdinals(props.versions))
 const sorted = computed(() => [...props.versions].sort((a, b) => (ordinals.value.get(b.id) ?? 0) - (ordinals.value.get(a.id) ?? 0)))
 const sides = computed(() => (compared.value ? [compared.value.left, compared.value.right] : []))
+const versionOptions = computed<SelectOption[]>(() => sorted.value.map((item) => ({ value: item.id, label: optionLabel(item) })))
 
 function optionLabel(item: ResumeVersionView): string {
   return `版本 ${ordinals.value.get(item.id) ?? '—'} · ${glossVersionStatus(item.status)} · ${formatWhen(item.frozenAt || item.createdAt)}`
@@ -179,41 +182,35 @@ watch(
 </script>
 
 <template>
-  <AppModal :open="open" title="简历版本对比" :width="1080" @close="emit('close')">
+  <UiDialog :open="open" title="简历版本对比" :width="1080" @close="emit('close')">
     <div v-if="sorted.length < 2" class="compare">
-      <AppEmpty text="至少需要两个版本才能对比" hint="再冻结一个版本后就可以对比差异。" icon="copy" />
+      <UiEmptyState title="至少需要两个版本才能对比" description="再冻结一个版本后就可以对比差异。" illustration="empty-search" size="sm" />
     </div>
     <div v-else class="compare">
       <p class="muted">对比两个版本的简历差异：绿色为新增，红色为删除，橙色为证据链接变化。</p>
 
       <div class="compare__bar">
-        <label class="compare__pick">
-          <span class="field__label">旧版本</span>
-          <AppSelect v-model="leftId" ariaLabel="旧版本" :disabled="comparing">
-            <option v-for="item in sorted" :key="`l-${item.id}`" :value="item.id">
-              {{ optionLabel(item) }}
-            </option>
-          </AppSelect>
-        </label>
+        <UiField id="compare-left" label="旧版本" class="compare__pick">
+          <template #default="{ id }">
+            <UiSelect :id="id" v-model="leftId" aria-label="旧版本" placeholder="旧版本" :options="versionOptions" :disabled="comparing" />
+          </template>
+        </UiField>
         <span class="compare__vs">VS</span>
-        <label class="compare__pick">
-          <span class="field__label">新版本</span>
-          <AppSelect v-model="rightId" ariaLabel="新版本" :disabled="comparing">
-            <option v-for="item in sorted" :key="`r-${item.id}`" :value="item.id">
-              {{ optionLabel(item) }}
-            </option>
-          </AppSelect>
-        </label>
+        <UiField id="compare-right" label="新版本" class="compare__pick">
+          <template #default="{ id }">
+            <UiSelect :id="id" v-model="rightId" aria-label="新版本" placeholder="新版本" :options="versionOptions" :disabled="comparing" />
+          </template>
+        </UiField>
       </div>
 
-      <AppBanner v-if="compareError" tone="bad">{{ compareError }}</AppBanner>
-      <AppBanner v-if="leftId && rightId && leftId === rightId" tone="warn">
+      <UiBanner v-if="compareError" tone="danger">{{ compareError }}</UiBanner>
+      <UiBanner v-if="leftId && rightId && leftId === rightId" tone="warning">
         请选择两个不同的版本再对比。
-      </AppBanner>
+      </UiBanner>
 
       <div v-if="comparing" class="bones" aria-busy="true">
-        <div class="bone" />
-        <div class="bone bone--short" />
+        <UiSkeleton />
+        <UiSkeleton width="55%" />
       </div>
 
       <template v-else-if="compared">
@@ -236,9 +233,9 @@ watch(
           <article v-for="(side, sideIndex) in sides" :key="side.id" class="pane">
             <header class="pane__head">
               <strong>{{ optionLabel(side) }}</strong>
-              <AppTag :tone="side.immutable ? 'orange' : 'gray'">
+              <UiBadge :tone="side.immutable ? 'accent' : 'neutral'">
                 {{ side.immutable ? '已冻结' : '待确认' }}
-              </AppTag>
+              </UiBadge>
             </header>
             <section
               v-for="field in fieldDiffs"
@@ -248,9 +245,9 @@ watch(
             >
               <div class="pane__field-head">
                 <span class="pane__label">{{ field.label }}</span>
-                <AppTag v-if="field.differs" :tone="field.key === 'keyOutcomes' ? 'orange' : 'blue'">
+                <UiBadge v-if="field.differs" :tone="field.key === 'keyOutcomes' ? 'accent' : 'primary'">
                   {{ field.key === 'keyOutcomes' ? '证据变化' : '有变更' }}
-                </AppTag>
+                </UiBadge>
               </div>
               <div class="pane__lines">
                 <p
@@ -267,15 +264,15 @@ watch(
         </div>
 
         <p class="fine">
-          暂不支持直接恢复到旧版本；如需沿用旧内容，请在工作台中手动修改。
+          想沿用旧内容？关闭对比后，在版本列表里对那个版本点“恢复此版本”；现在的内容会保留在修订历史中。
         </p>
       </template>
     </div>
 
     <template #footer>
-      <AppButton variant="ghost" @click="emit('close')">关闭</AppButton>
+      <UiButton variant="secondary" @click="emit('close')">关闭</UiButton>
     </template>
-  </AppModal>
+  </UiDialog>
 </template>
 
 <style scoped>
@@ -292,8 +289,6 @@ watch(
 
 .compare__pick {
   flex: 1;
-  display: grid;
-  gap: 6px;
 }
 
 .compare__vs {
@@ -328,17 +323,17 @@ watch(
 }
 
 .summary__item--add {
-  background: var(--success-soft);
+  background: var(--color-success-soft);
   color: var(--color-success);
 }
 
 .summary__item--del {
-  background: var(--danger-soft);
+  background: var(--color-danger-soft);
   color: var(--color-danger);
 }
 
 .summary__item--ev {
-  background: var(--warning-soft);
+  background: var(--color-warning-soft);
   color: var(--color-warning);
 }
 
@@ -350,9 +345,9 @@ watch(
 }
 
 .pane {
-  border: 1px solid var(--border);
-  border-radius: var(--radius-l);
-  background: var(--surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--surface-1);
   overflow: hidden;
 }
 
@@ -362,7 +357,7 @@ watch(
   justify-content: space-between;
   gap: 8px;
   padding: 10px 14px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--border-default);
   background: var(--surface-2);
   font-size: 13px;
 }
@@ -408,12 +403,12 @@ watch(
 }
 
 .pane__line--add {
-  background: var(--success-soft);
+  background: var(--color-success-soft);
   color: var(--color-success-text);
 }
 
 .pane__line--del {
-  background: var(--danger-soft);
+  background: var(--color-danger-soft);
   color: var(--color-danger-text);
   text-decoration: line-through;
 }
@@ -421,6 +416,18 @@ watch(
 @media (max-width: 900px) {
   .panes {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .compare__bar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-2);
+  }
+
+  .compare__vs {
+    align-self: center;
   }
 }
 </style>

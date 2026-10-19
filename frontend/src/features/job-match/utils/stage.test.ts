@@ -26,7 +26,7 @@ test('stage reachability never lets an early workflow open later data', () => {
 test('status copy and tones distinguish success, recovery and failure', () => {
   assert.equal(statusLabel('JD_PARSE_FAILED'), 'JD 解析失败')
   assert.equal(statusLabel('NEEDS_CLARIFICATION'), '需要确认')
-  assert.equal(statusTone('COMPLETED'), 'green')
-  assert.equal(statusTone('ANALYSIS_PAUSED'), 'red')
-  assert.equal(statusTone('CANCELLED'), 'gray')
+  assert.equal(statusTone('COMPLETED'), 'success')
+  assert.equal(statusTone('ANALYSIS_PAUSED'), 'danger')
+  assert.equal(statusTone('CANCELLED'), 'neutral')
 })

@@ -447,29 +447,29 @@ onBeforeUnmount(() => {
 .app-date-picker__header .app-date-picker__title { font-size: 14px; font-weight: 700; }
 .app-date-picker__month-grid, .app-date-picker__year-grid { min-height: 204px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; padding: 7px 2px 10px; }
 .app-date-picker__month-grid button, .app-date-picker__year-grid button { min-width: 0; height: 48px; color: var(--text-secondary); background: transparent; border: 1px solid transparent; border-radius: 6px; font-size: 13px; }
-.app-date-picker__month-grid button:hover, .app-date-picker__year-grid button:hover { color: var(--text); background: var(--surface-2); }
+.app-date-picker__month-grid button:hover, .app-date-picker__year-grid button:hover { color: var(--text-primary); background: var(--surface-2); }
 .app-date-picker__month-grid button.is-current { border-color: var(--color-primary-border); color: var(--color-primary); }
 .app-date-picker__month-grid button.is-selected, .app-date-picker__year-grid button.is-selected { color: var(--text-on-primary); background: var(--color-primary); border-color: var(--color-primary); font-weight: 700; }
 .app-date-picker__weekdays, .app-date-picker__day-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; }
 .app-date-picker__weekdays { height: 26px; align-items: center; color: var(--text-tertiary); font-size: 11px; font-weight: 600; text-align: center; }
 .app-date-picker__day-grid button { aspect-ratio: 1; min-width: 0; min-height: 32px; display: grid; place-items: center; color: var(--text-secondary); background: transparent; border: 1px solid transparent; border-radius: 6px; font-size: 12px; font-variant-numeric: tabular-nums; }
-.app-date-picker__day-grid button:hover { color: var(--text); background: var(--surface-2); }
+.app-date-picker__day-grid button:hover { color: var(--text-primary); background: var(--surface-2); }
 .app-date-picker__day-grid button.is-outside { color: var(--text-tertiary); }
 .app-date-picker__day-grid button.is-today { border-color: var(--color-primary-border); color: var(--color-primary); font-weight: 700; }
 .app-date-picker__day-grid button.is-selected { color: var(--text-on-primary); background: var(--color-primary); border-color: var(--color-primary); font-weight: 700; }
-.app-date-picker__time { min-height: 46px; margin-top: 8px; padding: 7px 8px; display: grid; grid-template-columns: 18px 1fr 42px 8px 42px; align-items: center; gap: 5px; color: var(--text-secondary); background: var(--surface-2); border: 1px solid var(--border); border-radius: 7px; }
+.app-date-picker__time { min-height: 46px; margin-top: 8px; padding: 7px 8px; display: grid; grid-template-columns: 18px 1fr 42px 8px 42px; align-items: center; gap: 5px; color: var(--text-secondary); background: var(--surface-2); border: 1px solid var(--border-default); border-radius: 7px; }
 .app-date-picker__time > span { font-size: 12px; font-weight: 600; }
-.app-date-picker__time input { width: 42px; height: 30px; padding: 0 5px; color: var(--text); background: var(--surface-1); border: 1px solid var(--border-strong); border-radius: 5px; outline: 0; font-size: 12px; font-variant-numeric: tabular-nums; text-align: center; }
+.app-date-picker__time input { width: 42px; height: 30px; padding: 0 5px; color: var(--text-primary); background: var(--surface-1); border: 1px solid var(--border-strong); border-radius: 5px; outline: 0; font-size: 12px; font-variant-numeric: tabular-nums; text-align: center; }
 .app-date-picker__time input:focus { border-color: var(--color-primary); box-shadow: 0 0 0 2px rgba(37, 99, 235, .1); }
 .app-date-picker__time b { color: var(--text-tertiary); text-align: center; }
-.app-date-picker__footer { min-height: 44px; margin-top: 8px; padding: 8px 2px 0; display: flex; align-items: center; justify-content: space-between; gap: 8px; border-top: 1px solid var(--border); }
+.app-date-picker__footer { min-height: 44px; margin-top: 8px; padding: 8px 2px 0; display: flex; align-items: center; justify-content: space-between; gap: 8px; border-top: 1px solid var(--border-default); }
 .app-date-picker__footer > div { display: flex; align-items: center; gap: 6px; }
 .app-date-picker__text-action, .app-date-picker__confirm { height: 32px; padding: 0 10px; border: 0; border-radius: 6px; font-size: 12px; font-weight: 600; }
 .app-date-picker__text-action { color: var(--color-primary); background: transparent; }
 .app-date-picker__text-action:hover:not(:disabled) { background: var(--color-primary-soft); }
 .app-date-picker__text-action:disabled { color: var(--text-tertiary); cursor: not-allowed; }
 .app-date-picker__confirm { min-width: 58px; color: var(--text-on-primary); background: var(--color-primary); }
-.app-date-picker__confirm:hover:not(:disabled) { background: var(--primary-hover); }
+.app-date-picker__confirm:hover:not(:disabled) { background: var(--color-primary-hover); }
 .app-date-picker__confirm:disabled { opacity: .5; cursor: not-allowed; }
 .date-picker-popover-enter-active, .date-picker-popover-leave-active { transition: opacity 140ms ease, transform 140ms ease; }
 .app-date-picker__popover--bottom { transform-origin: top center; }

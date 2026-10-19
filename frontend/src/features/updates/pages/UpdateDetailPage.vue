@@ -58,7 +58,7 @@ onUnmounted(() => restoreMetadata())
               <div class="update-title-line"><span class="update-pill is-status">{{ statusLabel(release.status) }}</span><h1>{{ release.versionLabel }} {{ release.title }}</h1></div>
               <div class="update-detail__meta"><span><CalendarDays :size="15" /> {{ dateOnly(release.publishedAt) }}</span><span>{{ typeLabel(release.releaseType) }}</span><span>{{ release.modules.map(moduleLabel).join(' · ') }}</span></div>
               <p class="update-detail__summary">{{ release.summary }}</p>
-              <div class="update-detail__actions"><a v-if="release.ctaPath" class="btn btn--primary" :href="release.ctaPath">{{ release.ctaLabel || '立即体验' }} <ExternalLink :size="15" /></a></div>
+              <div class="update-detail__actions"><UiButton v-if="release.ctaPath" class="update-detail__cta" :href="release.ctaPath" :icon-right="ExternalLink">{{ release.ctaLabel || '立即体验' }}</UiButton></div>
             </header>
             <UpdateContent :sections="detail.sections" />
           </article>
@@ -75,7 +75,7 @@ onUnmounted(() => restoreMetadata())
 <style scoped>
 @media (max-width: 700px) {
   .update-breadcrumb,
-  .update-detail__actions .btn,
+  .update-detail__actions .update-detail__cta,
   .toc-card a {
     min-height: 44px;
   }

@@ -4,11 +4,12 @@
  * confirmation, then follows the deletion request until it completes before the row disappears.
  */
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import AppBanner from '@/shared/ui/AppBanner.vue'
-import AppButton from '@/shared/ui/AppButton.vue'
-import AppField from '@/shared/ui/AppField.vue'
 import AppIcon from '@/shared/ui/AppIcon.vue'
-import AppModal from '@/shared/ui/AppModal.vue'
+import UiBanner from '@/shared/ui/UiBanner.vue'
+import UiButton from '@/shared/ui/UiButton.vue'
+import UiDialog from '@/shared/ui/UiDialog.vue'
+import UiField from '@/shared/ui/UiField.vue'
+import UiInput from '@/shared/ui/UiInput.vue'
 import { errorMessage } from '@/shared/api/types'
 import { fetchDeletion, fetchDeletionPreview, submitDeletion } from '@/features/datarights/services/dataRightsApi'
 import type { DeletionPreview, DeletionView } from '@/features/datarights/types'
@@ -27,6 +28,8 @@ let generation = 0
 const targetType = computed(() => (props.target?.kind === 'MASTER' ? 'RESUME_MASTER' : 'RESUME_VERSION'))
 const targetId = computed(() => (props.target?.kind === 'MASTER' ? props.target.masterId : props.target?.versionId ?? ''))
 const canSubmit = computed(() => confirmation.value.trim() === '永久删除' && preview.value?.canProceed === true && !loading.value)
+/** Submitting or following the deletion (loading with a preview on screen); the button stays focusable while busy. */
+const deleting = computed(() => loading.value && preview.value !== null)
 
 function finished(view: DeletionView): boolean {
   return view.status === 'COMPLETED' || view.status === 'FAILED'
@@ -100,11 +103,11 @@ onBeforeUnmount(() => { generation += 1 })
 </script>
 
 <template>
-  <AppModal :open="Boolean(target)" :title="target?.kind === 'MASTER' ? '永久删除简历' : '永久删除冻结版本'" :width="520" @close="close">
+  <UiDialog :open="Boolean(target)" :title="target?.kind === 'MASTER' ? '永久删除简历' : '永久删除冻结版本'" :width="520" @close="close">
     <div class="delete-dialog">
-      <AppBanner tone="bad">
+      <UiBanner tone="danger">
         删除后不会进入「已归档」，也无法恢复。简历内容和导出的文件都会被清除。
-      </AppBanner>
+      </UiBanner>
       <div class="delete-dialog__target">
         <span class="delete-dialog__icon"><AppIcon name="trash" :size="18" /></span>
         <div>
@@ -121,34 +124,36 @@ onBeforeUnmount(() => { generation += 1 })
             <span>{{ item.label || '关联数据' }}</span>
           </li>
         </ul>
-        <AppBanner v-if="preview.canProceed === false" tone="warn">
+        <UiBanner v-if="preview.canProceed === false" tone="warning">
           当前不能删除：该简历仍有任务运行中。请等待导出、定制或匹配任务结束后重试。
-        </AppBanner>
+        </UiBanner>
       </template>
-      <AppBanner v-if="error" tone="bad">{{ error }}</AppBanner>
-      <AppBanner v-if="request && !finished(request)" tone="warn">
+      <UiBanner v-if="error" tone="danger">{{ error }}</UiBanner>
+      <UiBanner v-if="request && !finished(request)" tone="warning">
         删除申请已提交，正在清理关联数据。完成前不会从列表移除，请勿关闭此窗口。
-      </AppBanner>
-      <AppField id="permanent-delete-confirmation" label="输入“永久删除”确认" hint="必须完整输入四个字，避免误操作。">
-        <input
-          id="permanent-delete-confirmation"
-          v-model="confirmation"
-          class="input"
-          type="text"
-          autocomplete="off"
-          placeholder="永久删除"
-          :disabled="loading || preview?.canProceed !== true"
-          @keydown.enter.prevent="confirmDelete"
-        />
-      </AppField>
+      </UiBanner>
+      <UiField id="permanent-delete-confirmation" label="输入“永久删除”确认" hint="必须完整输入四个字，避免误操作。">
+        <template #default="{ id, describedBy }">
+          <UiInput
+            :id="id"
+            v-model="confirmation"
+            type="text"
+            autocomplete="off"
+            placeholder="永久删除"
+            :aria-describedby="describedBy"
+            :disabled="loading || preview?.canProceed !== true"
+            @keydown.enter.prevent="confirmDelete"
+          />
+        </template>
+      </UiField>
     </div>
     <template #footer>
-      <AppButton variant="ghost" :disabled="loading" @click="close">取消</AppButton>
-      <AppButton variant="danger" :pending="loading && Boolean(request)" :disabled="!canSubmit" @click="confirmDelete">
+      <UiButton variant="secondary" :disabled="loading" @click="close">取消</UiButton>
+      <UiButton variant="danger" :pending="deleting" :disabled="!canSubmit && !deleting" @click="confirmDelete">
         {{ request ? '正在永久删除…' : '永久删除' }}
-      </AppButton>
+      </UiButton>
     </template>
-  </AppModal>
+  </UiDialog>
 </template>
 
 <style scoped>
@@ -162,8 +167,8 @@ onBeforeUnmount(() => { generation += 1 })
   align-items: center;
   gap: 10px;
   padding: 12px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
   background: var(--surface-2);
 }
 
@@ -192,7 +197,7 @@ onBeforeUnmount(() => { generation += 1 })
   flex: 0 0 auto;
   border-radius: 8px;
   color: var(--color-danger);
-  background: var(--danger-soft);
+  background: var(--color-danger-soft);
 }
 
 .delete-dialog__summary {
@@ -216,8 +221,8 @@ onBeforeUnmount(() => { generation += 1 })
   align-items: center;
   gap: 7px;
   padding: 8px 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-s);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xs);
   color: var(--text-secondary);
   font-size: 12px;
 }
@@ -231,6 +236,5 @@ onBeforeUnmount(() => { generation += 1 })
   .delete-impact {
     grid-template-columns: 1fr;
   }
-
 }
 </style>

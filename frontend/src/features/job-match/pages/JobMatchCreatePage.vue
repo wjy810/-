@@ -2,8 +2,8 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Check, Eye, FileText, Globe2, LoaderCircle, ShieldCheck, TriangleAlert, Undo2, Upload, UserRoundCheck } from 'lucide-vue-next'
-import AppSelect from '@/shared/ui/AppSelect.vue'
 import PageState from '@/shared/ui/PageState.vue'
+import UiSelect from '@/shared/ui/UiSelect.vue'
 import { useLoadState } from '@/shared/lib/useLoadState'
 import { confirm } from '@/shared/ui/confirm'
 import { toast, useToastFeedback } from '@/shared/ui/toast'
@@ -358,8 +358,8 @@ onMounted(load)
         </template>
         <template v-else-if="stage === 'jd' && match">
           <div class="jm-wizard__body"><header><h2>确认岗位解析结果</h2><p>请逐条校正岗位信息和要求。冲突、误分类或缺失项处理后才能继续。</p></header>
-            <div class="jm-form-grid"><label class="jm-field"><span>岗位名称</span><input v-model="jdTitle"></label><label class="jm-field"><span>公司名称</span><input v-model="jdCompany" placeholder="可选"></label><label class="jm-field"><span>工作地点</span><input v-model="jdLocation" placeholder="可选"></label><label class="jm-field"><span>办公方式</span><AppSelect v-model="jdWorkMode"><option value="ONSITE">现场办公</option><option value="HYBRID">混合办公</option><option value="REMOTE">远程办公</option></AppSelect></label></div>
-            <div class="jm-requirements"><article v-for="(item,index) in requirements" :key="item.id" class="jm-requirement"><span class="jm-requirement__num">{{ index+1 }}</span><input v-model="item.text" type="text"><AppSelect v-model="item.priority"><option value="MUST">必须</option><option value="IMPORTANT">重要</option><option value="BONUS">加分</option></AppSelect><label class="jm-check"><input v-model="item.hardGate" type="checkbox">硬性</label></article></div>
+            <div class="jm-form-grid"><label class="jm-field"><span>岗位名称</span><input v-model="jdTitle"></label><label class="jm-field"><span>公司名称</span><input v-model="jdCompany" placeholder="可选"></label><label class="jm-field"><span>工作地点</span><input v-model="jdLocation" placeholder="可选"></label><label class="jm-field"><span>办公方式</span><UiSelect v-model="jdWorkMode" aria-label="办公方式"><option value="ONSITE">现场办公</option><option value="HYBRID">混合办公</option><option value="REMOTE">远程办公</option></UiSelect></label></div>
+            <div class="jm-requirements"><article v-for="(item,index) in requirements" :key="item.id" class="jm-requirement"><span class="jm-requirement__num">{{ index+1 }}</span><input v-model="item.text" type="text"><UiSelect v-model="item.priority" aria-label="优先级"><option value="MUST">必须</option><option value="IMPORTANT">重要</option><option value="BONUS">加分</option></UiSelect><label class="jm-check"><input v-model="item.hardGate" type="checkbox">硬性</label></article></div>
           </div><footer class="jm-wizard__footer">
             <button class="jm-secondary" type="button" @click="goBack">返回</button>
             <span v-if="structureBlockedReason" id="jm-structure-hint" class="jm-field-hint is-short" aria-live="polite">{{ structureBlockedReason }}</span>

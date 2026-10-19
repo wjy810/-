@@ -36,7 +36,7 @@ const collapsed = computed({
 
 <template>
   <section class="appearance">
-    <article class="card setting-card">
+    <article class="settings-card setting-card">
       <header class="setting-card__head">
         <h2>主题</h2>
         <p>选择界面配色。切换会立即生效，并保存在这台设备上。</p>
@@ -70,7 +70,7 @@ const collapsed = computed({
       </div>
     </article>
 
-    <article class="card setting-card">
+    <article class="settings-card setting-card">
       <header class="setting-card__head">
         <h2>动效</h2>
         <p>减少动效会关闭位移、缩放和循环动画，只保留必要的淡入淡出。</p>
@@ -78,7 +78,7 @@ const collapsed = computed({
       <UiSegmented v-model="motion" :items="motionItems" aria-label="动效偏好" />
     </article>
 
-    <article class="card setting-card setting-card--row">
+    <article class="settings-card setting-card setting-card--row">
       <header class="setting-card__head">
         <h2>默认收起侧边栏</h2>
         <p>为编辑内容留出更多空间；随时可在侧边栏顶部展开。</p>

@@ -1,13 +1,16 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
+import { RefreshCw } from 'lucide-vue-next'
 import { errorMessage } from '@/shared/api/types'
 import { useLoadState } from '@/shared/lib/useLoadState'
-import AppButton from '@/shared/ui/AppButton.vue'
-import UiEmptyState from '@/shared/ui/UiEmptyState.vue'
-import AppIcon from '@/shared/ui/AppIcon.vue'
-import AppSelect from '@/shared/ui/AppSelect.vue'
-import AppTag from '@/shared/ui/AppTag.vue'
 import PageState from '@/shared/ui/PageState.vue'
+import UiBadge from '@/shared/ui/UiBadge.vue'
+import UiButton from '@/shared/ui/UiButton.vue'
+import UiEmptyState from '@/shared/ui/UiEmptyState.vue'
+import UiField from '@/shared/ui/UiField.vue'
+import UiInput from '@/shared/ui/UiInput.vue'
+import UiPageHeader from '@/shared/ui/UiPageHeader.vue'
+import UiSelect from '@/shared/ui/UiSelect.vue'
 import { useToastFeedback } from '@/shared/ui/toast'
 import { activateSystemChannel, createSystemChannel, disableSystemChannel, listSystemChannels, testSystemChannel } from '../services/aiApi'
 import type { AiSystemCapability, AiSystemChannel, AiSystemChannelInput } from '../types'
@@ -64,20 +67,21 @@ onMounted(load)
 </script>
 
 <template>
-  <main class="page system-ai-page">
-    <header class="page-head">
-      <div><h1 class="page-head__title">平台 AI 通道</h1><p class="page-head__sub">管理员录入、测试和启停平台提供的 AI 通道；求职者不需要也看不到供应商密钥。</p></div>
-      <AppButton variant="ghost" :disabled="loading || !!pending" @click="load"><AppIcon name="refresh" :size="15" />刷新</AppButton>
-    </header>
+  <main class="page-container system-ai-page">
+    <UiPageHeader title="平台 AI 通道" description="管理员录入、测试和启停平台提供的 AI 通道；求职者不需要也看不到供应商密钥。">
+      <template #actions>
+        <UiButton variant="secondary" :icon="RefreshCw" :pending="loading" :disabled="!!pending && !loading" @click="load">刷新</UiButton>
+      </template>
+    </UiPageHeader>
     <section class="channel-create">
       <header><h2>新增平台通道</h2><p>请使用新生成的密钥。通道先保存为草稿，五项能力测试全部通过后才能启用。</p></header>
       <form @submit.prevent="create">
-        <label><span>名称</span><input v-model="form.name" class="input" maxlength="128" required /></label>
-        <label><span>供应商代码</span><input v-model="form.providerCode" class="input" maxlength="64" required /></label>
-        <label class="wide"><span>Base URL</span><input v-model="form.baseUrl" class="input" type="url" placeholder="https://provider.example.com" required /></label>
-        <label><span>协议</span><AppSelect v-model="form.protocol" aria-label="协议"><option value="OPENAI_CHAT">OpenAI Chat</option><option value="OPENAI_RESPONSES">OpenAI Responses</option><option value="ANTHROPIC_MESSAGES">Anthropic Messages</option></AppSelect></label>
-        <label class="wide"><span>API 密钥</span><input v-model="form.apiKey" class="input" type="password" autocomplete="new-password" required /></label>
-        <AppButton type="submit" :pending="pending === 'create'">保存为草稿</AppButton>
+        <UiField id="channel-name" label="名称"><UiInput id="channel-name" v-model="form.name" maxlength="128" required /></UiField>
+        <UiField id="channel-provider" label="供应商代码"><UiInput id="channel-provider" v-model="form.providerCode" maxlength="64" required /></UiField>
+        <UiField id="channel-base-url" class="wide" label="Base URL"><UiInput id="channel-base-url" v-model="form.baseUrl" type="url" placeholder="https://provider.example.com" required /></UiField>
+        <UiField id="channel-protocol" label="协议"><UiSelect id="channel-protocol" v-model="form.protocol" aria-label="协议" placeholder="协议"><option value="OPENAI_CHAT">OpenAI Chat</option><option value="OPENAI_RESPONSES">OpenAI Responses</option><option value="ANTHROPIC_MESSAGES">Anthropic Messages</option></UiSelect></UiField>
+        <UiField id="channel-api-key" class="wide" label="API 密钥"><UiInput id="channel-api-key" v-model="form.apiKey" type="password" autocomplete="new-password" required /></UiField>
+        <UiButton class="channel-create__submit" type="submit" :pending="pending === 'create'">保存为草稿</UiButton>
       </form>
     </section>
     <PageState
@@ -94,14 +98,14 @@ onMounted(load)
       <article v-for="channel in channels ?? []" :key="channel.id">
         <header>
           <div><strong>{{ channel.name }}</strong><span>{{ channel.providerCode }} · {{ channel.protocol }} · {{ channel.apiKeyMasked }}</span></div>
-          <AppTag :tone="channel.status === 'ACTIVE' ? 'green' : channel.healthStatus === 'UNHEALTHY' ? 'red' : 'gray'">{{ statusText(channel) }}</AppTag>
+          <UiBadge :tone="channel.status === 'ACTIVE' ? 'success' : channel.healthStatus === 'UNHEALTHY' ? 'danger' : 'neutral'">{{ statusText(channel) }}</UiBadge>
         </header>
         <p>{{ channel.baseUrl }}</p>
         <div class="test-controls">
-          <input v-model="testModels[channel.id]" class="input" placeholder="供应商模型，留空自动选择" />
-          <AppSelect v-model="platformModels[channel.id]" aria-label="平台模型"><option value="qwen-plus">映射 qwen-plus</option><option value="qwen-max">映射 qwen-max</option><option value="deepseek-chat">映射 deepseek-chat</option><option value="deepseek-reasoner">映射 deepseek-reasoner</option></AppSelect>
-          <AppButton variant="ghost" :pending="pending === `test-${channel.id}`" @click="test(channel)">能力测试</AppButton>
-          <AppButton :pending="pending === `toggle-${channel.id}`" @click="toggle(channel)">{{ channel.status === 'ACTIVE' ? '停用' : '启用' }}</AppButton>
+          <UiInput v-model="testModels[channel.id]" placeholder="供应商模型，留空自动选择" aria-label="供应商模型" />
+          <UiSelect v-model="platformModels[channel.id]" aria-label="平台模型" placeholder="平台模型"><option value="qwen-plus">映射 qwen-plus</option><option value="qwen-max">映射 qwen-max</option><option value="deepseek-chat">映射 deepseek-chat</option><option value="deepseek-reasoner">映射 deepseek-reasoner</option></UiSelect>
+          <UiButton variant="secondary" :pending="pending === `test-${channel.id}`" @click="test(channel)">能力测试</UiButton>
+          <UiButton :pending="pending === `toggle-${channel.id}`" @click="toggle(channel)">{{ channel.status === 'ACTIVE' ? '停用' : '启用' }}</UiButton>
         </div>
         <dl v-if="capabilities[channel.id]">
           <div v-for="item in ([['authenticated','鉴权'],['modelDiscovery','模型发现'],['plainResponse','普通响应'],['streamingResponse','流式响应'],['structuredResponse','结构化输出']] as const)" :key="item[0]"><dt>{{ item[1] }}</dt><dd :class="{ pass: capabilities[channel.id]![item[0]] }">{{ passLabel(capabilities[channel.id]![item[0]]) }}</dd></div>
@@ -113,15 +117,15 @@ onMounted(load)
 </template>
 
 <style scoped>
-.system-ai-page{max-width:1200px;margin:0 auto;display:grid;gap:16px}.channel-create{padding:18px;background:var(--surface-1);border:1px solid var(--border);border-radius:8px}.channel-create header{margin-bottom:14px;display:grid;gap:3px}.channel-create h2{font-size:15px}.channel-create p{color:var(--text-tertiary);font-size:12px}.channel-create form{display:grid;grid-template-columns:1fr 1fr;gap:12px}.channel-create label{display:grid;gap:6px}.channel-create label span{font-size:12px;font-weight:600;color:var(--text-secondary)}.channel-create .wide{grid-column:1/-1}.channel-create form>.btn{width:fit-content}.channel-list{display:grid;gap:10px}.channel-list article{padding:16px;display:grid;gap:12px;background:var(--surface-1);border:1px solid var(--border);border-radius:8px}.channel-list article>header{display:flex;justify-content:space-between;gap:12px}.channel-list header>div{display:grid;gap:3px}.channel-list header span,.channel-list article>p,.channel-list article>small{color:var(--text-tertiary);font-size:12px;overflow-wrap:anywhere}.test-controls{display:grid;grid-template-columns:1fr 180px auto auto;gap:8px}.channel-list dl{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}.channel-list dl div{padding:8px;background:var(--surface-2);text-align:center}.channel-list dt{color:var(--text-tertiary);font-size:11.5px}.channel-list dd{color:var(--color-danger);font-size:12px;font-weight:600}.channel-list dd.pass{color:var(--color-success)}.empty-state{min-height:120px;display:grid;place-items:center;color:var(--text-tertiary)}@media(max-width:800px){.channel-create form{grid-template-columns:1fr}.channel-create .wide{grid-column:auto}.test-controls{grid-template-columns:1fr}.channel-list dl{grid-template-columns:1fr 1fr}.channel-list article>header{align-items:flex-start;flex-direction:column}}
+.system-ai-page{max-width:1200px;margin:0 auto;display:grid;gap:16px;align-content:start}.channel-create{padding:18px;background:var(--surface-1);border:1px solid var(--border-default);border-radius:8px}.channel-create header{margin-bottom:14px;display:grid;gap:3px}.channel-create h2{font-size:15px}.channel-create p{color:var(--text-tertiary);font-size:12px}.channel-create form{display:grid;grid-template-columns:1fr 1fr;gap:12px}.channel-create .wide{grid-column:1/-1}.channel-create form>.channel-create__submit{width:fit-content}.channel-list{display:grid;gap:10px}.channel-list article{padding:16px;display:grid;gap:12px;background:var(--surface-1);border:1px solid var(--border-default);border-radius:8px}.channel-list article>header{display:flex;justify-content:space-between;gap:12px}.channel-list header>div{display:grid;gap:3px}.channel-list header span,.channel-list article>p,.channel-list article>small{color:var(--text-tertiary);font-size:12px;overflow-wrap:anywhere}.test-controls{display:grid;grid-template-columns:1fr 180px auto auto;gap:8px}.channel-list dl{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}.channel-list dl div{padding:8px;background:var(--surface-2);text-align:center}.channel-list dt{color:var(--text-tertiary);font-size:11.5px}.channel-list dd{color:var(--color-danger);font-size:12px;font-weight:600}.channel-list dd.pass{color:var(--color-success)}.empty-state{min-height:120px;display:grid;place-items:center;color:var(--text-tertiary)}@media(max-width:800px){.channel-create form{grid-template-columns:1fr}.channel-create .wide{grid-column:auto}.test-controls{grid-template-columns:1fr}.channel-list dl{grid-template-columns:1fr 1fr}.channel-list article>header{align-items:flex-start;flex-direction:column}}
 
 .channel-create,
 .channel-list article,
 .channel-list .empty-state {
-  animation: system-channel-in var(--motion-base) var(--motion-ease-out) both;
+  animation: system-channel-in var(--dur-base) var(--ease-out) both;
 }
 .channel-list article {
-  transition: border-color var(--motion-base) ease, box-shadow var(--motion-base) var(--motion-ease), transform var(--motion-fast) var(--motion-ease);
+  transition: border-color var(--dur-base) ease, box-shadow var(--dur-base) var(--ease-standard), transform var(--dur-fast) var(--ease-standard);
 }
 .channel-list article:hover {
   border-color: var(--border-default);
@@ -129,11 +133,11 @@ onMounted(load)
   transform: translateY(-1px);
 }
 .channel-list dl {
-  animation: channel-capability-in var(--motion-base) var(--motion-ease-out) both;
+  animation: channel-capability-in var(--dur-base) var(--ease-out) both;
 }
 .channel-list dl div,
-.channel-list:deep(.tag) {
-  transition: background-color var(--motion-base) ease, color var(--motion-base) ease, border-color var(--motion-base) ease;
+.channel-list :deep(.ui-badge) {
+  transition: background-color var(--dur-base) ease, color var(--dur-base) ease, border-color var(--dur-base) ease;
 }
 @keyframes system-channel-in {
   from { opacity: 0; transform: translateY(7px); }
@@ -150,7 +154,7 @@ onMounted(load)
   .channel-list dl { animation: none; }
   .channel-list article,
   .channel-list dl div,
-  .channel-list:deep(.tag) { transition: none; }
+  .channel-list :deep(.ui-badge) { transition: none; }
   .channel-list article:hover { transform: none; }
 }
 </style>

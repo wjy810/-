@@ -1,3 +1,4 @@
+import type { BadgeTone } from '@/shared/ui/UiBadge.vue'
 import type { EvidenceSource } from '../types'
 
 export const jobMatchDisplayLabels: Record<string, string> = {
@@ -68,11 +69,12 @@ export function displayJobMatchText(value: unknown): string {
     .replace(/([一-鿿])\s+(证据|规则结果)/g, '$1$2')
 }
 
-export function jobMatchStatusTone(value: unknown): 'green' | 'orange' | 'gray' {
-  if (typeof value !== 'string') return 'gray'
-  if (['RESUME_SUPPORTED', 'LIBRARY_SUPPORTED', 'USER_CONFIRMED', 'MET', 'PASSED'].includes(value)) return 'green'
-  if (['INSUFFICIENT', 'NOT_FOUND', 'NOT_MET', 'FAILED', 'PARTIAL'].includes(value)) return 'orange'
-  return 'gray'
+/** Badge colour for a requirement's evidence status: met, gap, or unknown. */
+export function jobMatchStatusTone(value: unknown): Extract<BadgeTone, 'success' | 'accent' | 'neutral'> {
+  if (typeof value !== 'string') return 'neutral'
+  if (['RESUME_SUPPORTED', 'LIBRARY_SUPPORTED', 'USER_CONFIRMED', 'MET', 'PASSED'].includes(value)) return 'success'
+  if (['INSUFFICIENT', 'NOT_FOUND', 'NOT_MET', 'FAILED', 'PARTIAL'].includes(value)) return 'accent'
+  return 'neutral'
 }
 
 const RECOMMENDATIONS: Record<string, string> = {

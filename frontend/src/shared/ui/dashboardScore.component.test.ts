@@ -12,7 +12,7 @@ vi.mock('@/features/mock-interview/services/mockInterviewApi', () => ({
 }))
 vi.mock('@/features/job-match/services/jobMatchApi', () => ({ fetchMatchDashboard: vi.fn() }))
 
-const stubs = { AppChrome: { template: '<div><slot /></div>' }, AppSelect: true, JobProofIcon: true }
+const stubs = { AppChrome: { template: '<div><slot /></div>' }, JobProofIcon: true }
 afterEach(() => vi.resetAllMocks())
 
 describe('dashboard score presentation', () => {

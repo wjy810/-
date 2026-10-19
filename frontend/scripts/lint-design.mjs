@@ -43,6 +43,21 @@ const REKA_ALLOWED = {
   'src/features/command/CommandPalette.vue': 'palette dialog with its own listbox',
 }
 
+/**
+ * Classes the retired global stylesheet (legacy.css, removed in X-6) used to style. A template that still
+ * uses one without styling it itself renders unstyled; use the Ui* component instead (docs/phase2/00 X-6).
+ */
+const RETIRED_CLASSES = new Set([
+  'page', 'page-head', 'page-head__title', 'page-head__sub', 'page-head__actions', 'btn', 'btn--primary', 'btn--ghost',
+  'btn--danger', 'btn--text', 'btn--sm', 'btn--wax', 'btn--ink', 'btn-row', 'btn-block', 'icon-btn', 'card', 'card__head',
+  'card__title', 'card__sub', 'card__body', 'card__actions', 'grid-2', 'grid-3', 'grid-stats', 'stat', 'stat__icon',
+  'stat__label', 'stat__value', 'stat__sub', 'stat__foot', 'bone', 'bone--short', 'pager', 'pager__page', 'tbl', 'input',
+  'textarea', 'select', 'field', 'field__label', 'field__hint', 'field__error', 'banner', 'tag', 'empty', 'kicker', 'lede',
+  'ack', 'input-icon', 'progress', 'divider', 'list-row', 'list-rows', 'avatar', 'settings-layout',
+])
+// Custom properties that libraries set at runtime, and optional knobs read with a fallback.
+const EXTERNAL_VARIABLE = /^reka-/
+
 const HEX = /#[0-9a-fA-F]{3,8}\b/g
 // Masks use opaque black as an alpha channel, not as a colour.
 const IGNORED_LINE = /^\s*(-webkit-)?mask(-image)?\s*:/
@@ -73,12 +88,53 @@ function countHex(css) {
     .reduce((total, line) => total + (line.match(HEX)?.length ?? 0), 0)
 }
 
+/** Class names a template applies: static class="…" plus quoted names inside :class bindings. */
+function templateClasses(source) {
+  const template = source.replace(/<style[^>]*>[\s\S]*?<\/style>/g, '').replace(/<script[^>]*>[\s\S]*?<\/script>/g, '')
+  const names = new Set()
+  for (const match of template.matchAll(/\sclass="([^"]*)"/g)) match[1].split(/\s+/).filter(Boolean).forEach(name => names.add(name))
+  for (const match of template.matchAll(/:class="([^"]*)"/g)) {
+    for (const quoted of match[1].matchAll(/'([^']*)'/g)) quoted[1].split(/\s+/).filter(Boolean).forEach(name => names.add(name))
+    for (const key of match[1].matchAll(/([a-zA-Z][\w-]*)\s*:/g)) names.add(key[1])
+  }
+  return names
+}
+
+function classesDefinedIn(css) {
+  return new Set([...css.replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/\.([a-zA-Z][\w-]*)/g)].map(match => match[1]))
+}
+
 const problems = []
 const shrunk = []
-for await (const path of files(src)) {
-  const rel = relative(root, path).split(sep).join('/')
-  const source = await readFile(path, 'utf8')
+const sources = new Map()
+for await (const path of files(src)) sources.set(relative(root, path).split(sep).join('/'), await readFile(path, 'utf8'))
 
+// Global stylesheets (design tokens and feature .css files) apply everywhere; scoped <style> only to its own file.
+const globalClasses = new Set()
+const definedVariables = new Set()
+for (const [rel, source] of sources) {
+  if (rel.endsWith('.css')) classesDefinedIn(source).forEach(name => globalClasses.add(name))
+  for (const match of source.matchAll(/(?:^|[\s;{('"`])--([\w-]+)\s*:/g)) definedVariables.add(match[1])
+  for (const match of source.matchAll(/['"`]--([\w-]+)['"`]/g)) definedVariables.add(match[1])
+  for (const match of source.matchAll(/@property\s+--([\w-]+)/g)) definedVariables.add(match[1])
+}
+
+for (const [rel, source] of sources) {
+  if (rel.endsWith('.vue')) {
+    const local = classesDefinedIn(styleText(rel, source))
+    const retired = [...templateClasses(source)].filter(name => RETIRED_CLASSES.has(name) && !local.has(name) && !globalClasses.has(name))
+    if (retired.length) problems.push(`${rel}: uses retired global class${retired.length > 1 ? 'es' : ''} ${retired.map(name => `.${name}`).join(', ')}; use the shared Ui* component or style it locally`)
+  }
+  // A var() without a fallback that nothing defines silently resolves to nothing (e.g. a mistyped token).
+  const missing = new Set()
+  for (const match of source.matchAll(/var\(\s*--([\w-]+)\s*\)/g)) {
+    if (!definedVariables.has(match[1]) && !EXTERNAL_VARIABLE.test(match[1])) missing.add(match[1])
+  }
+  if (missing.size) problems.push(`${rel}: undefined CSS variable${missing.size > 1 ? 's' : ''} ${[...missing].map(name => `--${name}`).join(', ')}; use a token from src/design/tokens.css`)
+}
+
+for (const [rel, source] of sources) {
+  const path = join(root, rel)
   if (!rel.startsWith('src/design/')) {
     const count = countHex(styleText(path, source))
     const ceiling = HEX_ALLOWED[rel] ?? 0

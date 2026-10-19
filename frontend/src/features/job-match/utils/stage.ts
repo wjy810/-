@@ -1,3 +1,4 @@
+import type { BadgeTone } from '@/shared/ui/UiBadge.vue'
 import type { JobMatch, JobMatchStatus } from '../types'
 
 export type MatchRouteStage = 'jd' | 'resume' | 'evidence' | 'confirm' | 'analyzing' | 'clarifications' | 'report'
@@ -46,13 +47,14 @@ export function statusLabel(status: JobMatchStatus): string {
   })[status]
 }
 
-export function statusTone(status: JobMatchStatus): 'green' | 'orange' | 'red' | 'blue' | 'gray' | 'purple' {
-  if (status === 'COMPLETED') return 'green'
-  if (status === 'NEEDS_CLARIFICATION') return 'purple'
-  if (status === 'ANALYZING') return 'blue'
-  if (status.includes('FAILED') || status === 'ANALYSIS_PAUSED') return 'red'
-  if (status === 'CANCELLED') return 'gray'
-  return 'orange'
+/** Badge colour for a match's lifecycle status. */
+export function statusTone(status: JobMatchStatus): BadgeTone {
+  if (status === 'COMPLETED') return 'success'
+  if (status === 'NEEDS_CLARIFICATION') return 'ai'
+  if (status === 'ANALYZING') return 'primary'
+  if (status.includes('FAILED') || status === 'ANALYSIS_PAUSED') return 'danger'
+  if (status === 'CANCELLED') return 'neutral'
+  return 'accent'
 }
 
 /** Where a match summary should open, based on its lifecycle status. */

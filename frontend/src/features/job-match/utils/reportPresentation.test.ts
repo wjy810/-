@@ -26,8 +26,8 @@ test('localizes report states and preserves their semantic tone', () => {
   assert.equal(displayJobMatchText('RESUME_SUPPORTED'), '简历已体现')
   assert.equal(displayJobMatchText('EVIDENCE_GAP'), '证据缺口')
   assert.equal(displayJobMatchText('BEFORE_INTERVIEW'), '面试前')
-  assert.equal(jobMatchStatusTone('RESUME_SUPPORTED'), 'green')
-  assert.equal(jobMatchStatusTone('NOT_FOUND'), 'orange')
+  assert.equal(jobMatchStatusTone('RESUME_SUPPORTED'), 'success')
+  assert.equal(jobMatchStatusTone('NOT_FOUND'), 'accent')
 })
 
 test('hides unlabelled internal codes instead of showing them', () => {

@@ -1,11 +1,16 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import AppBanner from '@/shared/ui/AppBanner.vue'
-import AppButton from '@/shared/ui/AppButton.vue'
-import AppField from '@/shared/ui/AppField.vue'
+import { Lock } from 'lucide-vue-next'
 import AppIcon from '@/shared/ui/AppIcon.vue'
-import AppTag from '@/shared/ui/AppTag.vue'
+import UiBadge from '@/shared/ui/UiBadge.vue'
+import UiBanner from '@/shared/ui/UiBanner.vue'
+import UiButton from '@/shared/ui/UiButton.vue'
+import UiCheckbox from '@/shared/ui/UiCheckbox.vue'
+import UiEmptyState from '@/shared/ui/UiEmptyState.vue'
+import UiField from '@/shared/ui/UiField.vue'
+import UiInput from '@/shared/ui/UiInput.vue'
+import UiSkeleton from '@/shared/ui/UiSkeleton.vue'
 import { useToastFeedback } from '@/shared/ui/toast'
 import { errorMessage } from '@/shared/api/types'
 import { formatWhen } from '@/shared/lib/datetime'
@@ -117,12 +122,12 @@ onMounted(() => void loadSessions())
       <article>
         <span><AppIcon name="mail" :size="17" /></span>
         <div><small>主登录标识</small><strong>{{ session.account?.displayIdentifier || '—' }}</strong></div>
-        <AppTag tone="green">已验证</AppTag>
+        <UiBadge tone="success">已验证</UiBadge>
       </article>
       <article>
         <span><AppIcon name="shield" :size="17" /></span>
         <div><small>账号状态</small><strong>安全保护中</strong></div>
-        <AppTag tone="blue">正常</AppTag>
+        <UiBadge tone="primary">正常</UiBadge>
       </article>
       <article>
         <span><AppIcon name="grid" :size="17" /></span>
@@ -134,74 +139,73 @@ onMounted(() => void loadSessions())
     <div class="security-columns">
       <div class="security-primary">
         <section class="settings-card">
-          <header class="card__head">
+          <header class="security-card__head">
             <div>
-              <h3 class="card__title">登录信息</h3>
-              <p class="card__sub">当前账号可使用已验证的邮箱或手机号登录</p>
+              <h3 class="security-card__title">登录信息</h3>
+              <p class="security-card__sub">当前账号可使用已验证的邮箱或手机号登录</p>
             </div>
           </header>
-          <div class="card__body">
+          <div class="security-card__body">
             <div class="info-row">
               <span class="info-row__icon"><AppIcon name="mail" :size="17" /></span>
               <div>
                 <p class="info-row__label">登录标识</p>
                 <p class="info-row__value">{{ session.account?.displayIdentifier || '—' }}</p>
               </div>
-              <AppTag tone="green">已验证</AppTag>
+              <UiBadge tone="success">已验证</UiBadge>
             </div>
             <p class="credential-note"><AppIcon name="info" :size="14" />当前版本暂不支持绑定或更换联系方式，也不提供第三方账号登录。</p>
           </div>
         </section>
 
         <section class="settings-card">
-          <header class="card__head">
+          <header class="security-card__head">
             <div>
-              <h3 class="card__title">更新密码</h3>
-              <p class="card__sub">建议使用未在其他网站重复使用的强密码</p>
+              <h3 class="security-card__title">更新密码</h3>
+              <p class="security-card__sub">建议使用未在其他网站重复使用的强密码</p>
             </div>
           </header>
-          <div class="card__body">
-            <AppBanner tone="warn">更新成功后，所有设备都会退出登录，需要使用新密码重新进入。</AppBanner>
-            <AppBanner v-if="formError" tone="bad">{{ formError }}</AppBanner>
+          <div class="security-card__body">
+            <div class="security-banners">
+              <UiBanner tone="warning">更新成功后，所有设备都会退出登录，需要使用新密码重新进入。</UiBanner>
+              <UiBanner v-if="formError" tone="danger">{{ formError }}</UiBanner>
+            </div>
             <form class="security-password-form" novalidate @submit.prevent="onSubmit">
-              <AppField id="cur-pass" label="当前密码" :error="fieldError.currentPassword">
-                <div class="input-icon"><AppIcon name="lock" :size="16" /><input id="cur-pass" v-model="form.currentPassword" type="password" autocomplete="current-password" :disabled="pending !== ''" /></div>
-              </AppField>
-              <AppField id="new-pass" label="新密码" :error="fieldError.newPassword" :hint="PASSWORD_RULE_HINT">
-                <div class="input-icon"><AppIcon name="lock" :size="16" /><input id="new-pass" v-model="form.newPassword" type="password" autocomplete="new-password" :disabled="pending !== ''" /></div>
-              </AppField>
-              <AppField id="new-pass-2" label="确认新密码" :error="fieldError.confirm">
-                <div class="input-icon"><AppIcon name="lock" :size="16" /><input id="new-pass-2" v-model="form.confirm" type="password" autocomplete="new-password" :disabled="pending !== ''" /></div>
-              </AppField>
-              <label class="ack">
-                <input v-model="acknowledged" type="checkbox" :disabled="pending !== ''" />
-                <span>我已了解更新密码后，当前账号的全部会话会立即失效。</span>
-              </label>
-              <AppButton type="submit" :pending="pending === 'password'" :disabled="!acknowledged || pending !== ''">
+              <UiField id="cur-pass" v-slot="{ id, describedBy, invalid }" label="当前密码" :error="fieldError.currentPassword">
+                <UiInput :id="id" v-model="form.currentPassword" :icon="Lock" size="lg" type="password" autocomplete="current-password" :disabled="pending !== ''" :invalid="invalid" :aria-describedby="describedBy" />
+              </UiField>
+              <UiField id="new-pass" v-slot="{ id, describedBy, invalid }" label="新密码" :error="fieldError.newPassword" :hint="PASSWORD_RULE_HINT">
+                <UiInput :id="id" v-model="form.newPassword" :icon="Lock" size="lg" type="password" autocomplete="new-password" :disabled="pending !== ''" :invalid="invalid" :aria-describedby="describedBy" />
+              </UiField>
+              <UiField id="new-pass-2" v-slot="{ id, describedBy, invalid }" label="确认新密码" :error="fieldError.confirm">
+                <UiInput :id="id" v-model="form.confirm" :icon="Lock" size="lg" type="password" autocomplete="new-password" :disabled="pending !== ''" :invalid="invalid" :aria-describedby="describedBy" />
+              </UiField>
+              <UiCheckbox v-model="acknowledged" :disabled="pending !== ''" label="我已了解更新密码后，当前账号的全部会话会立即失效。" />
+              <UiButton type="submit" :pending="pending === 'password'" :disabled="!acknowledged || (pending !== '' && pending !== 'password')">
                 {{ pending === 'password' ? '正在更新…' : acknowledged ? '更新密码并退出全部设备' : '请先确认影响' }}
-              </AppButton>
+              </UiButton>
             </form>
           </div>
         </section>
       </div>
 
       <section class="settings-card device-card">
-        <header class="card__head">
-          <div><h3 class="card__title">登录设备</h3><p class="card__sub">发现陌生会话时，请立即退出并更新密码</p></div>
-          <AppButton variant="ghost" :pending="pending === 'others'" :disabled="!otherSessions.length || pending !== ''" @click="revokeOthers">退出其他设备</AppButton>
+        <header class="security-card__head">
+          <div><h3 class="security-card__title">登录设备</h3><p class="security-card__sub">发现陌生会话时，请立即退出并更新密码</p></div>
+          <UiButton variant="secondary" :pending="pending === 'others'" :disabled="!otherSessions.length || (pending !== '' && pending !== 'others')" @click="revokeOthers">退出其他设备</UiButton>
         </header>
-        <div class="card__body">
-          <div v-if="loading" aria-busy="true"><div class="bone" /><div class="bone bone--short" /></div>
+        <div class="security-card__body">
+          <div v-if="loading" aria-busy="true"><UiSkeleton :lines="2" /></div>
           <div v-else-if="currentSession" class="session-row is-current">
             <span class="session-row__icon"><AppIcon name="shield" :size="17" /></span>
             <div><strong>当前浏览器会话</strong><small>最近活动 {{ formatWhen(currentSession.lastSeenAt) }}</small></div>
-            <AppTag tone="green">当前设备</AppTag>
+            <UiBadge tone="success">当前设备</UiBadge>
           </div>
-          <p v-else class="empty">未读取到当前会话。</p>
+          <UiEmptyState v-else size="sm" illustration="empty-search" title="未读取到当前会话。" />
           <div v-for="item in otherSessions" :key="item.id" class="session-row">
             <span class="session-row__icon"><AppIcon name="grid" :size="17" /></span>
             <div><strong>其他登录会话</strong><small>最近活动 {{ formatWhen(item.lastSeenAt) }}</small></div>
-            <AppButton variant="ghost" :pending="pending === item.id" :disabled="pending !== ''" @click="revokeOne(item.id)">退出</AppButton>
+            <UiButton variant="secondary" :pending="pending === item.id" :disabled="pending !== '' && pending !== item.id" @click="revokeOne(item.id)">退出</UiButton>
           </div>
           <div v-if="!loading && !otherSessions.length" class="device-empty"><AppIcon name="check-circle" :size="18" /><span><strong>没有其他有效设备</strong><small>当前账号仅在这个浏览器保持登录。</small></span></div>
         </div>
@@ -209,8 +213,8 @@ onMounted(() => void loadSessions())
     </div>
 
     <section class="settings-card security-record">
-      <header class="card__head"><div><h3 class="card__title">安全记录</h3><p class="card__sub">当前仍有效的登录会话活动</p></div></header>
-      <div class="card__body table-wrap"><table><thead><tr><th>事件类型</th><th>设备</th><th>首次登录</th><th>最近活动</th></tr></thead><tbody><tr v-for="item in sessions" :key="item.id"><td><span class="event-label"><AppIcon name="lock" :size="13" />登录</span></td><td>{{ item.current ? '当前设备' : '其他设备' }}</td><td>{{ formatWhen(item.createdAt) }}</td><td>{{ formatWhen(item.lastSeenAt) }}</td></tr></tbody></table><p v-if="!loading && !sessions.length" class="empty">暂无安全记录。</p></div>
+      <header class="security-card__head"><div><h3 class="security-card__title">安全记录</h3><p class="security-card__sub">当前仍有效的登录会话活动</p></div></header>
+      <div class="security-card__body table-wrap"><table><thead><tr><th>事件类型</th><th>设备</th><th>首次登录</th><th>最近活动</th></tr></thead><tbody><tr v-for="item in sessions" :key="item.id"><td><span class="event-label"><AppIcon name="lock" :size="13" />登录</span></td><td>{{ item.current ? '当前设备' : '其他设备' }}</td><td>{{ formatWhen(item.createdAt) }}</td><td>{{ formatWhen(item.lastSeenAt) }}</td></tr></tbody></table><UiEmptyState v-if="!loading && !sessions.length" size="sm" illustration="empty-history" title="暂无安全记录。" /></div>
     </section>
   </div>
 </template>
@@ -311,22 +315,43 @@ onMounted(() => void loadSessions())
   font-size: 12.5px;
 }
 
+.security-card__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-5) var(--space-5) var(--space-1);
+}
+
+.security-card__title {
+  font-size: var(--fs-h3);
+  font-weight: 600;
+  line-height: var(--lh-h3);
+}
+
+.security-card__sub {
+  margin-top: 2px;
+  color: var(--text-tertiary);
+  font-size: var(--fs-xs);
+}
+
+.security-card__body {
+  padding: var(--space-3) var(--space-5) var(--space-5);
+}
+
+.security-banners {
+  display: grid;
+  gap: var(--space-2);
+}
+
 .security-password-form {
   display: grid;
-  gap: 2px;
+  gap: var(--space-4);
   margin-top: 14px;
 }
 
-.security-password-form .input-icon {
-  min-height: 46px;
-  border-radius: 10px;
-}
-
-.security-password-form .input-icon input {
-  height: 44px;
-}
-
-.device-card .card__head {
+.device-card .security-card__head {
+  flex-wrap: wrap;
   align-items: center;
 }
 
@@ -335,7 +360,7 @@ onMounted(() => void loadSessions())
   align-items: center;
   gap: 11px;
   padding: 13px 0;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--border-default);
 }
 
 .session-row.is-current {
@@ -357,7 +382,7 @@ onMounted(() => void loadSessions())
 }
 
 .session-row.is-current .session-row__icon {
-  background: var(--success-soft);
+  background: var(--color-success-soft);
   color: var(--color-success);
 }
 
@@ -385,7 +410,7 @@ onMounted(() => void loadSessions())
 
 .device-empty span {
   display: grid;
-  color: var(--text);
+  color: var(--text-primary);
 }
 
 .device-empty strong {
@@ -404,9 +429,11 @@ onMounted(() => void loadSessions())
 .table-wrap th,
 .table-wrap td {
   padding: 12px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--border-default);
   text-align: left;
   font-size: 12.5px;
+  /* Keep "登录" and the timestamps on one line; a narrow screen scrolls the table sideways instead. */
+  white-space: nowrap;
 }
 
 .table-wrap th {

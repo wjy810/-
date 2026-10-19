@@ -2,12 +2,15 @@
  * The resume list's rows: one per resume and one per tailored or frozen version, with the labels,
  * tones and links the card and table views share. Pure, so it runs under the logic-test runner.
  */
+import type { BadgeTone } from '../../../shared/ui/UiBadge.vue'
 import type { JobProofIconName } from '../../../shared/ui/jobProofIcons'
 import { glossMasterStatus, glossVersionStatus, outcomeResolved, versionOrdinals } from '../labels.ts'
 import type { KeyOutcome, ResumeMasterSummary, ResumeMasterView, ResumeVersionView } from '../types'
 
 export type RowType = '主简历' | '定制版' | '冻结版本'
 export type RowTone = 'blue' | 'green' | 'orange'
+/** The row-type badge colour: resume, tailored version, frozen version. */
+export const ROW_BADGE_TONE: Record<RowTone, BadgeTone> = { blue: 'primary', green: 'success', orange: 'accent' }
 export type StatusTone = 'green' | 'orange' | 'red' | 'gray' | 'blue'
 
 export type ResumeRow = {

@@ -341,7 +341,7 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .job-taxonomy-picker { min-width: 0; display: grid; gap: 6px; }
-.job-taxonomy-trigger { width: 100%; min-height: 52px; padding: 9px 12px; display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--text); text-align: left; background: var(--surface-1); border: 1px solid var(--border-default); border-radius: 7px; transition: border-color .18s ease, box-shadow .18s ease, background-color .18s ease; }
+.job-taxonomy-trigger { width: 100%; min-height: 52px; padding: 9px 12px; display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--text-primary); text-align: left; background: var(--surface-1); border: 1px solid var(--border-default); border-radius: 7px; transition: border-color .18s ease, box-shadow .18s ease, background-color .18s ease; }
 .job-taxonomy-trigger:hover { border-color: var(--color-primary); background: var(--surface-1); }
 .job-taxonomy-trigger[aria-expanded="true"] { border-color: var(--color-primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 9%, transparent); }
 .job-taxonomy-trigger.selected { border-color: var(--color-primary-border); background: var(--surface-1); box-shadow: inset 3px 0 var(--color-primary); }
@@ -350,18 +350,18 @@ onBeforeUnmount(() => {
 .job-taxonomy-trigger strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
 .job-taxonomy-legacy { color: var(--color-danger-text); font-size: 11.5px; }
 .job-taxonomy-panel, .job-taxonomy-panel * { box-sizing: border-box; }
-.job-taxonomy-panel { position: fixed; z-index: 270; min-width: 0; display: grid; overflow: hidden; color: var(--text); border: 1px solid var(--border-default); border-radius: 9px; background: var(--surface-1); box-shadow: 0 18px 42px rgba(15, 23, 42, .16), 0 4px 12px rgba(15, 23, 42, .08); transform-origin: top center; }
+.job-taxonomy-panel { position: fixed; z-index: 270; min-width: 0; display: grid; overflow: hidden; color: var(--text-primary); border: 1px solid var(--border-default); border-radius: 9px; background: var(--surface-1); box-shadow: 0 18px 42px rgba(15, 23, 42, .16), 0 4px 12px rgba(15, 23, 42, .08); transform-origin: top center; }
 .job-taxonomy-panel button, .job-taxonomy-panel input { font: inherit; letter-spacing: 0; }
 .taxonomy-panel-enter-active { transition: opacity .28s ease, transform .38s cubic-bezier(.16, 1, .3, 1); }
 .taxonomy-panel-leave-active { transition: opacity .18s ease, transform .18s ease; }
 .taxonomy-panel-enter-from, .taxonomy-panel-leave-to { opacity: 0; transform: translateY(-6px) scale(.99); }
-.job-taxonomy-search { min-height: 42px; padding: 0 10px; display: grid; grid-template-columns: 18px minmax(0, 1fr) 28px; align-items: center; gap: 5px; border-bottom: 1px solid var(--border); }
+.job-taxonomy-search { min-height: 42px; padding: 0 10px; display: grid; grid-template-columns: 18px minmax(0, 1fr) 28px; align-items: center; gap: 5px; border-bottom: 1px solid var(--border-default); }
 .job-taxonomy-search:focus-within { color: var(--color-primary-text); box-shadow: inset 0 -2px var(--color-primary-border); }
-.job-taxonomy-search input { min-width: 0; height: 40px; padding: 0; color: var(--text); background: transparent; border: 0; outline: 0; font-size: 12px; }
+.job-taxonomy-search input { min-width: 0; height: 40px; padding: 0; color: var(--text-primary); background: transparent; border: 0; outline: 0; font-size: 12px; }
 .job-taxonomy-search button { width: 28px; height: 28px; display: grid; place-items: center; color: var(--text-tertiary); background: transparent; border: 0; border-radius: 5px; }
 .job-taxonomy-error { padding: 8px 10px; color: var(--color-danger); background: var(--surface-2); border-bottom: 1px solid color-mix(in srgb, var(--color-danger) 35%, var(--border-subtle)); font-size: 11.5px; }
 .job-taxonomy-browser { height: var(--taxonomy-body-height, 390px); min-height: 0; display: grid; grid-template-columns: 130px 180px minmax(0, 1fr); }
-.job-taxonomy-browser > nav { min-width: 0; padding: 8px; display: grid; align-content: start; gap: 3px; overflow-y: auto; border-right: 1px solid var(--border); }
+.job-taxonomy-browser > nav { min-width: 0; padding: 8px; display: grid; align-content: start; gap: 3px; overflow-y: auto; border-right: 1px solid var(--border-default); }
 .job-taxonomy-browser > nav, .job-taxonomy-roles, .job-taxonomy-results { scrollbar-width: thin; scrollbar-color: var(--border-default) transparent; }
 .job-taxonomy-browser > nav::-webkit-scrollbar, .job-taxonomy-roles::-webkit-scrollbar, .job-taxonomy-results::-webkit-scrollbar { width: 6px; height: 6px; }
 .job-taxonomy-browser > nav::-webkit-scrollbar-track, .job-taxonomy-roles::-webkit-scrollbar-track, .job-taxonomy-results::-webkit-scrollbar-track { background: transparent; }
@@ -382,13 +382,13 @@ onBeforeUnmount(() => {
 .job-taxonomy-roles > div button:hover { color: var(--color-primary-text); background: var(--surface-2); border-color: var(--border-subtle); }
 .job-taxonomy-roles > div button.active { color: var(--color-primary-text); background: var(--surface-2); border-color: var(--color-primary-border); font-weight: 700; }
 .job-taxonomy-results { height: var(--taxonomy-body-height, 390px); padding: 7px; display: grid; align-content: start; gap: 3px; overflow-y: auto; }
-.job-taxonomy-results > button { min-height: 42px; padding: 7px 9px; display: flex; align-items: center; justify-content: space-between; gap: 10px; color: var(--text); text-align: left; background: var(--surface-1); border: 1px solid transparent; border-radius: 5px; }
+.job-taxonomy-results > button { min-height: 42px; padding: 7px 9px; display: flex; align-items: center; justify-content: space-between; gap: 10px; color: var(--text-primary); text-align: left; background: var(--surface-1); border: 1px solid transparent; border-radius: 5px; }
 .job-taxonomy-results > button:hover, .job-taxonomy-results > button.active { color: var(--color-primary-text); background: var(--surface-2); border-color: var(--border-subtle); }
 .job-taxonomy-results > button span { min-width: 0; display: grid; gap: 2px; }
 .job-taxonomy-results > button strong { font-size: 12px; }
 .job-taxonomy-results > button small { color: var(--text-tertiary); font-size: 11px; }
 .job-taxonomy-panel--compact .job-taxonomy-browser { grid-template-columns: 1fr; grid-template-rows: auto auto minmax(0, 1fr); }
-.job-taxonomy-panel--compact .job-taxonomy-browser > nav { padding: 6px; display: flex; overflow-x: auto; overflow-y: hidden; border-right: 0; border-bottom: 1px solid var(--border); }
+.job-taxonomy-panel--compact .job-taxonomy-browser > nav { padding: 6px; display: flex; overflow-x: auto; overflow-y: hidden; border-right: 0; border-bottom: 1px solid var(--border-default); }
 .job-taxonomy-panel--compact .job-taxonomy-browser > nav > span { display: none; }
 .job-taxonomy-panel--compact .job-taxonomy-browser > nav button { min-width: max-content; min-height: 32px; }
 .job-taxonomy-panel--compact .job-taxonomy-browser > nav button .app-icon { display: none; }

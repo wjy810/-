@@ -286,20 +286,20 @@ onBeforeUnmount(() => controller?.abort())
 .skill-ai__header { min-height: 44px; padding: 7px 9px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .skill-ai__header > div { min-width: 0; display: flex; align-items: center; gap: 7px; color: var(--color-primary-text); }
 .skill-ai__header > div > span { min-width: 0; display: flex; align-items: baseline; gap: 7px; }
-.skill-ai__header strong { color: var(--text); font-size: 12px; }
+.skill-ai__header strong { color: var(--text-primary); font-size: 12px; }
 .skill-ai__header small { color: var(--text-tertiary); font-size: 11px; font-weight: 500; }
 .skill-ai__toggle, .skill-ai__primary { min-height: 28px; padding: 0 8px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; border: 1px solid var(--color-primary-border); border-radius: 4px; background: var(--surface-2); color: var(--color-primary-text); font-size: 11.5px; font-weight: 700; }
 .skill-ai__toggle:hover:not(:disabled), .skill-ai__primary:hover:not(:disabled) { background: var(--surface-2); border-color: var(--color-primary); }
 .skill-ai button:disabled { cursor: not-allowed; opacity: .55; }
 .skill-ai__body { padding: 10px; display: grid; gap: 10px; border-top: 1px solid var(--border-subtle); background: var(--surface-1); }
-.skill-panel-enter-active, .skill-panel-leave-active { overflow: hidden; transition: opacity var(--motion-base) ease, transform var(--motion-base) var(--motion-ease), max-height var(--motion-slow) var(--motion-ease); }
+.skill-panel-enter-active, .skill-panel-leave-active { overflow: hidden; transition: opacity var(--dur-base) ease, transform var(--dur-base) var(--ease-standard), max-height var(--dur-slow) var(--ease-standard); }
 .skill-panel-enter-from, .skill-panel-leave-to { max-height: 0; opacity: 0; transform: translateY(-4px); }
 .skill-panel-enter-to, .skill-panel-leave-from { max-height: 680px; }
 .skill-ai__modes { position: relative; isolation: isolate; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); padding: 2px; border: 1px solid var(--border-default); border-radius: 5px; background: var(--surface-2); }
-.skill-ai__modes::before { position: absolute; z-index: 0; inset: 2px auto 2px 2px; width: calc((100% - 4px) / 3); border-radius: 3px; background: var(--surface-1); box-shadow: 0 1px 3px rgba(23, 43, 77, .12); content: ''; pointer-events: none; transition: transform var(--motion-base) var(--motion-ease); }
+.skill-ai__modes::before { position: absolute; z-index: 0; inset: 2px auto 2px 2px; width: calc((100% - 4px) / 3); border-radius: 3px; background: var(--surface-1); box-shadow: 0 1px 3px rgba(23, 43, 77, .12); content: ''; pointer-events: none; transition: transform var(--dur-base) var(--ease-standard); }
 .skill-ai__modes:has(button:nth-child(2).is-active)::before { transform: translateX(100%); }
 .skill-ai__modes:has(button:nth-child(3).is-active)::before { transform: translateX(200%); }
-.skill-ai__modes button { position: relative; z-index: 1; min-height: 28px; padding: 0 5px; border: 0; border-radius: 3px; background: transparent; color: var(--text-tertiary); font-size: 11.5px; font-weight: 600; transition: color var(--motion-base) ease, transform var(--motion-fast) var(--motion-ease); }
+.skill-ai__modes button { position: relative; z-index: 1; min-height: 28px; padding: 0 5px; border: 0; border-radius: 3px; background: transparent; color: var(--text-tertiary); font-size: 11.5px; font-weight: 600; transition: color var(--dur-base) ease, transform var(--dur-fast) var(--ease-standard); }
 .skill-ai__modes button.is-active { background: transparent; color: var(--color-primary-text); box-shadow: none; }
 .skill-ai__modes button:active { transform: scale(.97); }
 .skill-ai__start { display: flex; justify-content: flex-end; }
@@ -316,7 +316,7 @@ onBeforeUnmount(() => controller?.abort())
 .skill-candidate:hover { border-color: var(--color-primary-border); }.skill-candidate.is-selected { border-color: var(--color-primary); background: var(--surface-2); }
 .skill-candidate > input { width: 14px; height: 14px; margin: 2px 0 0; accent-color: var(--color-primary); }
 .skill-candidate__main { min-width: 0; display: grid; gap: 2px; }
-.skill-candidate__main strong { color: var(--text); font-size: 12px; overflow-wrap: anywhere; }
+.skill-candidate__main strong { color: var(--text-primary); font-size: 12px; overflow-wrap: anywhere; }
 .skill-candidate__main small { color: var(--text-tertiary); font-size: 11px; }
 .skill-candidate__main em { color: var(--text-secondary); font-size: 11px; font-style: normal; line-height: 1.45; }
 .skill-candidate__meta { max-width: 76px; display: grid; justify-items: end; gap: 3px; text-align: right; }
@@ -330,7 +330,7 @@ onBeforeUnmount(() => controller?.abort())
 .skill-ai__actions > span { margin-right: auto; color: var(--text-tertiary); font-size: 11px; }
 .skill-ai__actions > button:not(.skill-ai__primary) { min-height: 28px; padding: 0 7px; border: 1px solid var(--border-default); border-radius: 4px; background: var(--surface-1); color: var(--text-secondary); font-size: 11px; }
 .skill-ai__details article { padding: 9px 10px; display: grid; gap: 7px; border-left: 2px solid var(--color-primary); background: var(--surface-2); }
-.skill-ai__details article header { display: flex; align-items: baseline; gap: 8px; }.skill-ai__details article header strong { color: var(--text); font-size: 12px; }.skill-ai__details article header span { color: var(--color-primary-text); font-size: 11px; }
+.skill-ai__details article header { display: flex; align-items: baseline; gap: 8px; }.skill-ai__details article header strong { color: var(--text-primary); font-size: 12px; }.skill-ai__details article header span { color: var(--color-primary-text); font-size: 11px; }
 .skill-ai__details article p { color: var(--text-secondary); font-size: 11.5px; line-height: 1.65; white-space: pre-line; }
 .skill-ai__impact { display: inline-flex; align-items: center; gap: 4px; color: var(--color-primary-text); font-size: 8px; font-weight: 600; }
 .skill-ai__details article ul { margin: 0; padding-left: 16px; color: var(--color-warning-text); font-size: 8px; line-height: 1.5; }

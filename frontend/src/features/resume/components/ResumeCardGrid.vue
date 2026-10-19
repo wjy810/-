@@ -1,13 +1,11 @@
 <script setup lang="ts">
 /** Resumes as cards with their real first page; frozen versions fold into a chip on their resume. */
 import { Layers, Lock, MoreHorizontal } from 'lucide-vue-next'
-import UiBadge, { type BadgeTone } from '@/shared/ui/UiBadge.vue'
+import UiBadge from '@/shared/ui/UiBadge.vue'
 import UiDropdownMenu, { type MenuItem } from '@/shared/ui/UiDropdownMenu.vue'
 import { formatRelative, formatWhen } from '@/shared/lib/datetime'
 import ResumeThumbnail from './ResumeThumbnail.vue'
-import { rowAction, rowLink, type ResumeRow, type RowTone } from '../utils/resumeRows'
-
-const BADGE_TONE: Record<RowTone, BadgeTone> = { blue: 'primary', green: 'success', orange: 'accent' }
+import { rowAction, rowLink, ROW_BADGE_TONE, type ResumeRow } from '../utils/resumeRows'
 
 defineProps<{
   rows: ResumeRow[]
@@ -47,7 +45,7 @@ const emit = defineEmits<{ snapshots: [row: ResumeRow] }>()
           </UiDropdownMenu>
         </div>
         <div class="rcard__meta">
-          <UiBadge :tone="BADGE_TONE[row.rowTone]">{{ row.rowType }}<template v-if="row.ordinal"> · 第 {{ row.ordinal }} 版</template></UiBadge>
+          <UiBadge :tone="ROW_BADGE_TONE[row.rowTone]">{{ row.rowType }}<template v-if="row.ordinal"> · 第 {{ row.ordinal }} 版</template></UiBadge>
           <span class="rcard__status"><span class="dot" :class="`dot--${row.statusTone}`" />{{ row.statusLabel }}</span>
         </div>
         <div class="rcard__foot">

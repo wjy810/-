@@ -4,7 +4,6 @@
  *
  * Layer 1: primitive palettes (never referenced by components).
  * Layer 2: semantic tokens (the only tokens components may use).
- * Layer 3: legacy aliases so older feature CSS follows the theme until migrated.
  */
 
 :root {
@@ -330,44 +329,4 @@
     --fs-h1: 24px;
     --lh-h1: 32px;
   }
-}
-
-/* ---------- Layer 3 · legacy aliases (do not use in new code) ---------- */
-:root {
-  --bg: var(--bg-app);
-  --surface: var(--surface-1);
-  --surface-warm: var(--surface-2);
-  --border: var(--border-default);
-  --text: var(--text-primary);
-  --text-2: var(--text-secondary);
-  --text-3: var(--text-tertiary);
-  --primary: var(--color-primary);
-  --primary-soft: var(--color-primary-soft);
-  --success: var(--color-success);
-  --success-soft: var(--color-success-soft);
-  --warning: var(--color-warning);
-  --warning-soft: var(--color-warning-soft);
-  --danger: var(--color-danger);
-  --danger-soft: var(--color-danger-soft);
-  --purple: var(--violet-400);
-  --purple-soft: var(--color-primary-soft);
-  --accent: var(--color-accent);
-  --accent-soft: var(--color-accent-soft);
-  --radius-s: var(--radius-xs);
-  --radius: var(--radius-md);
-  --radius-l: var(--radius-lg);
-  --shadow-s: var(--shadow-sm);
-  --shadow-m: var(--shadow-md);
-  --shadow-l: var(--shadow-lg);
-  --motion-fast: var(--dur-fast);
-  --motion-base: var(--dur-base);
-  --motion-slow: var(--dur-slow);
-  --motion-ease: var(--ease-standard);
-  --motion-ease-out: var(--ease-out);
-  --sans: var(--font-sans);
-  --mono: var(--font-mono);
-}
-:root,
-:root[data-theme="dark"] {
-  --primary-hover: var(--color-primary-hover);
 }

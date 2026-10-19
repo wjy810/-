@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import AppBanner from '@/shared/ui/AppBanner.vue'
-import AppButton from '@/shared/ui/AppButton.vue'
-import AppDrawer from '@/shared/ui/AppDrawer.vue'
-import AppEmpty from '@/shared/ui/AppEmpty.vue'
+import { Search } from 'lucide-vue-next'
 import AppIcon from '@/shared/ui/AppIcon.vue'
-import AppTag from '@/shared/ui/AppTag.vue'
+import UiBadge from '@/shared/ui/UiBadge.vue'
+import UiBanner from '@/shared/ui/UiBanner.vue'
+import UiButton from '@/shared/ui/UiButton.vue'
+import UiDrawer from '@/shared/ui/UiDrawer.vue'
+import UiEmptyState from '@/shared/ui/UiEmptyState.vue'
+import UiInput from '@/shared/ui/UiInput.vue'
 import type { IconName } from '@/shared/ui/icons'
 import { formatWhen } from '@/shared/lib/datetime'
 import type { CareerRecord } from '@/features/career-library/types'
@@ -39,10 +41,12 @@ const TYPE_ICON: Record<string, IconName> = {
   TEXT_STATEMENT: 'message',
 }
 
-const STRENGTH_META: Record<string, { label: string; tone: 'green' | 'orange' | 'gray' }> = {
-  STRONG: { label: '强证据', tone: 'green' },
-  MEDIUM: { label: '中等证据', tone: 'orange' },
-  WEAK: { label: '弱证据', tone: 'gray' },
+type StrengthMeta = { label: string; tone: 'success' | 'accent' | 'neutral' }
+
+const STRENGTH_META: Record<string, StrengthMeta> = {
+  STRONG: { label: '强证据', tone: 'success' },
+  MEDIUM: { label: '中等证据', tone: 'accent' },
+  WEAK: { label: '弱证据', tone: 'neutral' },
 }
 
 const filtered = computed(() => {
@@ -62,8 +66,8 @@ function iconOf(type: string): IconName {
   return TYPE_ICON[type] ?? 'file-text'
 }
 
-function strengthOf(strength?: string | null): { label: string; tone: 'green' | 'orange' | 'gray' } {
-  return (strength ? STRENGTH_META[strength] : undefined) ?? { label: strength || '未评级', tone: 'gray' }
+function strengthOf(strength?: string | null): StrengthMeta {
+  return (strength ? STRENGTH_META[strength] : undefined) ?? { label: strength || '未评级', tone: 'neutral' }
 }
 
 function typeLabel(type: string): string {
@@ -97,26 +101,24 @@ watch(
 </script>
 
 <template>
-  <AppDrawer :open="open" title="关联求职资料" :width="520" @close="emit('close')">
+  <UiDrawer :open="open" title="关联求职资料" :width="520" @close="emit('close')">
     <div class="linker">
       <section class="current">
         <p class="current__label">当前语句</p>
         <p class="current__text">{{ outcome?.text?.trim() || '（这条成果没有描述）' }}</p>
       </section>
 
-      <AppBanner v-if="evidenceError" tone="bad">
+      <UiBanner v-if="evidenceError" tone="danger">
         {{ evidenceError }}资料列表不可用期间不能关联，也不能把空列表当成没有资料。
-      </AppBanner>
+      </UiBanner>
 
-      <div class="search-box">
-        <AppIcon name="search" :size="15" />
-        <input
-          v-model="search"
-          class="search-box__input"
-          type="text"
-          placeholder="搜索你的经历、项目或成果记录"
-        />
-      </div>
+      <UiInput
+        v-model="search"
+        :icon="Search"
+        type="text"
+        placeholder="搜索你的经历、项目或成果记录"
+        aria-label="搜索你的经历、项目或成果记录"
+      />
 
       <div class="linker__meta">
         <span class="muted">全部使用中的求职资料</span>
@@ -144,8 +146,8 @@ watch(
           <span class="ev-card__body">
             <span class="ev-card__title">
               {{ item.title }}
-              <AppTag :tone="strengthOf(item.strength).tone">{{ strengthOf(item.strength).label }}</AppTag>
-              <AppTag v-if="item.id === outcome?.evidenceId" tone="blue">当前已关联</AppTag>
+              <UiBadge :tone="strengthOf(item.strength).tone">{{ strengthOf(item.strength).label }}</UiBadge>
+              <UiBadge v-if="item.id === outcome?.evidenceId" tone="primary">当前已关联</UiBadge>
             </span>
             <span class="ev-card__sub">来源：{{ typeLabel(item.type) }} · {{ formatWhen(item.updatedAt) }}</span>
             <a
@@ -161,23 +163,24 @@ watch(
           </span>
         </div>
       </div>
-      <AppEmpty
+      <UiEmptyState
         v-else
-        :text="evidenceError ? '资料列表不可用' : search ? '没有匹配的资料' : '还没有可用资料'"
-        hint="可先去「求职资料库」添加项目、经历或成果，再回到这里关联。"
-        icon="folder"
+        :title="evidenceError ? '资料列表不可用' : search ? '没有匹配的资料' : '还没有可用资料'"
+        description="可先去「求职资料库」添加项目、经历或成果，再回到这里关联。"
+        illustration="empty-folder"
+        size="sm"
       />
 
-      <AppBanner tone="warn">资料关联不会自动改写简历内容；冻结时才会登记有效引用。</AppBanner>
+      <UiBanner tone="warning">资料关联不会自动改写简历内容；冻结时才会登记有效引用。</UiBanner>
     </div>
 
     <template #footer>
-      <AppButton variant="ghost" :disabled="linking" @click="emit('close')">取消</AppButton>
-      <AppButton :disabled="!selectedId || Boolean(evidenceError)" :pending="linking" @click="onConfirm">
+      <UiButton variant="secondary" :disabled="linking" @click="emit('close')">取消</UiButton>
+      <UiButton :disabled="!selectedId || Boolean(evidenceError)" :pending="linking" @click="onConfirm">
         确认关联
-      </AppButton>
+      </UiButton>
     </template>
-  </AppDrawer>
+  </UiDrawer>
 </template>
 
 <style scoped>
@@ -189,8 +192,8 @@ watch(
 
 .current {
   background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
   padding: 10px 12px;
 }
 
@@ -202,34 +205,8 @@ watch(
 
 .current__text {
   font-size: 13px;
-  color: var(--text);
+  color: var(--text-primary);
   line-height: 1.6;
-}
-
-.search-box {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius);
-  background: var(--surface);
-  padding: 8px 12px;
-  color: var(--text-tertiary);
-}
-
-.search-box:focus-within {
-  border-color: var(--color-primary);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 15%, transparent);
-}
-
-.search-box__input {
-  flex: 1;
-  border: none;
-  outline: none;
-  font-size: 13px;
-  background: transparent;
-  color: var(--text);
-  padding: 0;
 }
 
 .linker__meta {
@@ -249,12 +226,12 @@ watch(
   align-items: flex-start;
   gap: 10px;
   width: 100%;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-l);
+  background: var(--surface-1);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
   padding: 12px;
   cursor: pointer;
-  transition: border-color 0.15s, box-shadow 0.15s;
+  transition: border-color var(--dur-fast) var(--ease-standard), box-shadow var(--dur-fast) var(--ease-standard);
 }
 
 .ev-card:hover {
@@ -280,7 +257,7 @@ watch(
   place-items: center;
   flex-shrink: 0;
   margin-top: 2px;
-  background: var(--surface);
+  background: var(--surface-1);
   color: var(--text-on-primary);
 }
 
@@ -314,7 +291,7 @@ watch(
   flex-wrap: wrap;
   font-size: 13px;
   font-weight: 500;
-  color: var(--text);
+  color: var(--text-primary);
 }
 
 .ev-card__sub {

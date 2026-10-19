@@ -2,12 +2,12 @@
 import { computed, nextTick, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { AlertTriangle, ArrowRight, BookOpenCheck, Check, CheckCircle2, ChevronRight, Download, FilePenLine, FileSearch, GitCompareArrows, GraduationCap, History, LoaderCircle, MessageCircle, RefreshCw, Send, ShieldCheck, Target, ThumbsDown, ThumbsUp, TriangleAlert } from 'lucide-vue-next'
-import AppDrawer from '@/shared/ui/AppDrawer.vue'
-import AppModal from '@/shared/ui/AppModal.vue'
-import AppSelect from '@/shared/ui/AppSelect.vue'
-import AppTag from '@/shared/ui/AppTag.vue'
 import PageState from '@/shared/ui/PageState.vue'
+import UiBadge from '@/shared/ui/UiBadge.vue'
+import UiDialog from '@/shared/ui/UiDialog.vue'
+import UiDrawer from '@/shared/ui/UiDrawer.vue'
 import UiErrorState from '@/shared/ui/UiErrorState.vue'
+import UiSelect from '@/shared/ui/UiSelect.vue'
 import { useLoadState } from '@/shared/lib/useLoadState'
 import { toast, useToastFeedback } from '@/shared/ui/toast'
 import { errorMessage } from '@/shared/api/types'
@@ -19,6 +19,7 @@ import '../job-match.css'
 
 type Item = Record<string, unknown>
 type NextStep = { key: string; title: string; desc: string }
+
 
 const route = useRoute()
 const router = useRouter()
@@ -293,9 +294,9 @@ onMounted(() => {
           <h1>岗位匹配报告</h1>
           <p>
             <strong>{{ match?.title }}<template v-if="match?.company"> · {{ match.company }}</template></strong>
-            <AppTag :tone="match?.status === 'COMPLETED' ? 'green' : 'orange'">{{ match?.status === 'COMPLETED' ? '分析完成' : '历史报告可用' }}</AppTag>
-            <AppTag v-if="confidence !== null" tone="green">可信度 {{ confidence }}%</AppTag>
-            <AppTag v-if="report?.updatedAt" tone="gray">{{ new Date(report.updatedAt).toLocaleDateString('zh-CN') }}</AppTag>
+            <UiBadge :tone="match?.status === 'COMPLETED' ? 'success' : 'accent'">{{ match?.status === 'COMPLETED' ? '分析完成' : '历史报告可用' }}</UiBadge>
+            <UiBadge v-if="confidence !== null" tone="success">可信度 {{ confidence }}%</UiBadge>
+            <UiBadge v-if="report?.updatedAt" tone="neutral">{{ new Date(report.updatedAt).toLocaleDateString('zh-CN') }}</UiBadge>
           </p>
         </div>
         <div class="jm-report-actions">
@@ -356,11 +357,11 @@ onMounted(() => {
                   v-for="(item, index) in hardGates"
                   :key="index"
                   class="jm-list__row"
-                  :class="{ 'is-unmet': jobMatchStatusTone(matrixRawStatus(item)) !== 'green' }"
+                  :class="{ 'is-unmet': jobMatchStatusTone(matrixRawStatus(item)) !== 'success' }"
                 >
-                  <span><Check v-if="jobMatchStatusTone(matrixRawStatus(item)) === 'green'" :size="16" /><TriangleAlert v-else :size="16" /></span>
+                  <span><Check v-if="jobMatchStatusTone(matrixRawStatus(item)) === 'success'" :size="16" /><TriangleAlert v-else :size="16" /></span>
                   <p><strong>{{ reportItemTitle(item) }}</strong><small v-if="optionalStr(item, 'explanation')">{{ optionalStr(item, 'explanation') }}</small></p>
-                  <AppTag :tone="jobMatchStatusTone(matrixRawStatus(item))">{{ matrixStatus(item) }}</AppTag>
+                  <UiBadge :tone="jobMatchStatusTone(matrixRawStatus(item))">{{ matrixStatus(item) }}</UiBadge>
                 </div>
                 <div v-if="!hardGates.length" class="jm-list__row">
                   <span><ShieldCheck :size="16" /></span>
@@ -431,7 +432,7 @@ onMounted(() => {
                 </div>
               </div>
               <aside>
-                <AppTag v-if="numberOrNull(item, 'score') !== null" tone="green">{{ numberOrNull(item, 'score') }} 分</AppTag>
+                <UiBadge v-if="numberOrNull(item, 'score') !== null" tone="success">{{ numberOrNull(item, 'score') }} 分</UiBadge>
                 <span v-if="claimMark(claimFor(item, true))" class="jm-claim-mark" :class="claimMark(claimFor(item, true))?.tone">{{ claimMark(claimFor(item, true))?.label }}</span>
                 <button v-if="claimFor(item, true)" class="jm-text-btn" type="button" @click="openClaim(claimFor(item, true))">查看依据</button>
               </aside>
@@ -471,7 +472,7 @@ onMounted(() => {
                   <td>{{ reportItemTitle(item) }}</td>
                   <td>{{ matrixList(item, 'resumeRefs').length ? `${matrixList(item, 'resumeRefs').length} 处简历引用` : '暂未发现证据' }}</td>
                   <td>{{ matrixList(item, 'evidenceIds').length ? `${matrixList(item, 'evidenceIds').length} 项授权资料` : '未授权或未发现' }}</td>
-                  <td><AppTag :tone="jobMatchStatusTone(matrixRawStatus(item))">{{ matrixStatus(item) }}</AppTag></td>
+                  <td><UiBadge :tone="jobMatchStatusTone(matrixRawStatus(item))">{{ matrixStatus(item) }}</UiBadge></td>
                   <td>{{ numberOrNull(item, 'confidence') !== null ? `${numberOrNull(item, 'confidence')}%` : '—' }}</td>
                   <td><button v-if="claimFor(item, true)" class="jm-text-btn" type="button" @click="openClaim(claimFor(item, true))">查看依据</button></td>
                 </tr>
@@ -494,7 +495,7 @@ onMounted(() => {
               </div>
               <aside>
                 <button v-if="task.status !== 'DONE'" class="jm-secondary" type="button" @click="setTask(task, 'DONE')"><Check :size="15" />完成</button>
-                <AppTag v-else tone="green">已完成</AppTag>
+                <UiBadge v-else tone="success">已完成</UiBadge>
               </aside>
             </article>
             <div v-if="!report?.learningPlan.length" class="jm-empty">
@@ -506,10 +507,10 @@ onMounted(() => {
     </Transition>
   </PageState>
 
-  <AppDrawer :open="evidenceOpen" title="结论依据" :width="500" @close="evidenceOpen = false">
+  <UiDrawer :open="evidenceOpen" title="结论依据" :width="500" @close="evidenceOpen = false">
     <div class="jm-evidence-drawer-content">
       <section class="jm-source-block">
-        <AppTag tone="blue">岗位要求</AppTag>
+        <UiBadge tone="primary">岗位要求</UiBadge>
         <h3>{{ selectedRequirementTitle }}</h3>
         <small v-if="selectedClaim">
           结论类型：{{ displayText(selectedClaim.conclusionType) || '—' }}<template v-if="typeof selectedClaim.confidence === 'number'"> · 可信度 {{ selectedClaim.confidence }}%</template>
@@ -518,11 +519,11 @@ onMounted(() => {
         <p v-if="selectedRequirement?.sourceQuote" class="jm-source-quote">{{ selectedRequirement.sourceQuote }}</p>
       </section>
       <section class="jm-source-block">
-        <AppTag tone="green">分析理由</AppTag>
+        <UiBadge tone="success">分析理由</UiBadge>
         <small>{{ displayText(selectedClaim?.reasoning) || '这条结论没有附带分析理由。' }}</small>
       </section>
       <section class="jm-source-block">
-        <AppTag tone="purple">引用的资料</AppTag>
+        <UiBadge tone="ai">引用的资料</UiBadge>
         <ul v-if="selectedClaim?.evidenceIds.length" class="jm-source-list">
           <li v-for="evidence in selectedClaim.evidenceIds" :key="evidence">{{ sourceLabel(evidence) }}</li>
         </ul>
@@ -541,24 +542,24 @@ onMounted(() => {
       </section>
       <div class="jm-privacy"><ShieldCheck :size="17" /><span>技能标签不会被当作强证据；联系方式和敏感字段已从模型输入排除。</span></div>
     </div>
-  </AppDrawer>
+  </UiDrawer>
 
-  <AppModal :open="versionsOpen" title="报告版本与变化" @close="versionsOpen = false">
+  <UiDialog :open="versionsOpen" title="报告版本与变化" @close="versionsOpen = false">
     <div class="jm-version-dialog">
       <UiErrorState v-if="versionsError" compact title="版本记录读取失败" :error="versionsError" :retrying="versionsLoading" @retry="openVersions" />
       <div v-else-if="versionsLoading" class="jm-loading"><LoaderCircle class="jm-spin" :size="18" /> 正在读取版本记录</div>
       <template v-else>
         <div v-if="versions.length > 1" class="jm-version-selectors">
-          <label>较早版本<AppSelect v-model="compareFrom" @change="compareVersions"><option v-for="item in versions" :key="item.id" :value="item.version">版本 {{ item.version }} · {{ new Date(item.createdAt).toLocaleString('zh-CN') }}</option></AppSelect></label>
+          <label>较早版本<UiSelect v-model="compareFrom" aria-label="较早版本" @change="compareVersions"><option v-for="item in versions" :key="item.id" :value="item.version">版本 {{ item.version }} · {{ new Date(item.createdAt).toLocaleString('zh-CN') }}</option></UiSelect></label>
           <GitCompareArrows :size="20" />
-          <label>较新版本<AppSelect v-model="compareTo" @change="compareVersions"><option v-for="item in versions" :key="item.id" :value="item.version">版本 {{ item.version }} · {{ new Date(item.createdAt).toLocaleString('zh-CN') }}</option></AppSelect></label>
+          <label>较新版本<UiSelect v-model="compareTo" aria-label="较新版本" @change="compareVersions"><option v-for="item in versions" :key="item.id" :value="item.version">版本 {{ item.version }} · {{ new Date(item.createdAt).toLocaleString('zh-CN') }}</option></UiSelect></label>
         </div>
         <div v-if="pending" class="jm-loading"><LoaderCircle class="jm-spin" :size="18" /> 正在比较版本</div>
         <div v-else-if="comparison" class="jm-version-deltas">
           <div v-for="item in comparison.changes" :key="item.label">
             <span>{{ item.label }}</span>
             <strong>{{ item.before }} → {{ item.after }}</strong>
-            <AppTag :tone="item.delta > 0 ? 'green' : item.delta < 0 ? 'orange' : 'gray'">{{ item.delta > 0 ? '+' : '' }}{{ item.delta }}</AppTag>
+            <UiBadge :tone="item.delta > 0 ? 'success' : item.delta < 0 ? 'accent' : 'neutral'">{{ item.delta > 0 ? '+' : '' }}{{ item.delta }}</UiBadge>
           </div>
         </div>
         <div v-else class="jm-empty jm-version-empty">
@@ -566,9 +567,9 @@ onMounted(() => {
         </div>
       </template>
     </div>
-  </AppModal>
+  </UiDialog>
 
-  <AppModal :open="exportOpen" title="导出岗位匹配报告" @close="exportOpen = false">
+  <UiDialog :open="exportOpen" title="导出岗位匹配报告" @close="exportOpen = false">
     <div class="jm-export-options">
       <label v-for="format in ['PDF', 'DOCX', 'JSON']" :key="format" class="jm-export-option">
         <input v-model="exportFormat" type="radio" :value="format">
@@ -580,5 +581,5 @@ onMounted(() => {
       <button class="jm-secondary" type="button" @click="exportOpen = false">取消</button>
       <button class="jm-primary" type="button" :disabled="pending" @click="exportReport"><LoaderCircle v-if="pending" class="jm-spin" :size="16" /><Download v-else :size="16" />生成 {{ exportFormat }}</button>
     </template>
-  </AppModal>
+  </UiDialog>
 </div></main></template>

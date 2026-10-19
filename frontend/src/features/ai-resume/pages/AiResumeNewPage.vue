@@ -309,11 +309,11 @@ onBeforeUnmount(() => importAbort?.abort())
 
 <style scoped>
 .onboarding-workbench { height: 100vh; display: grid; grid-template-rows: 56px 1fr; overflow: hidden; background: var(--surface-2); }
-.onboarding-bar { display: grid; grid-template-columns: 40px 1fr 1fr; align-items: center; padding: 0 16px; background: var(--surface-1); border-bottom: 1px solid var(--border); }
+.onboarding-bar { display: grid; grid-template-columns: 40px 1fr 1fr; align-items: center; padding: 0 16px; background: var(--surface-1); border-bottom: 1px solid var(--border-default); }
 .onboarding-bar > strong { text-align: center; font-size: 14px; }
-.onboarding-bar > span { height: 100%; padding-left: 18px; display: flex; align-items: center; gap: 7px; color: var(--color-primary); border-left: 1px solid var(--border); font-size: 12px; font-weight: 600; }
+.onboarding-bar > span { height: 100%; padding-left: 18px; display: flex; align-items: center; gap: 7px; color: var(--color-primary); border-left: 1px solid var(--border-default); font-size: 12px; font-weight: 600; }
 .onboarding-grid { min-height: 0; display: grid; grid-template-columns: minmax(430px, 46%) minmax(0, 54%); }
-.onboarding-flow { min-height: 0; padding: 28px max(28px, 7vw) 60px; display: flex; flex-direction: column; gap: 18px; overflow-y: auto; border-right: 1px solid var(--border); scroll-behavior: smooth; }
+.onboarding-flow { min-height: 0; padding: 28px max(28px, 7vw) 60px; display: flex; flex-direction: column; gap: 18px; overflow-y: auto; border-right: 1px solid var(--border-default); scroll-behavior: smooth; }
 .flow-copy { max-width: 620px; display: grid; gap: 7px; color: var(--text-primary); }
 .flow-copy > span { color: var(--text-tertiary); font-size: 12px; }
 .flow-copy p { line-height: 1.7; }
@@ -321,7 +321,7 @@ onBeforeUnmount(() => importAbort?.abort())
 .choice-card > div { margin-bottom: 4px; display: grid; gap: 5px; }
 .choice-card > div strong { font-size: 15px; }
 .choice-card > div span { color: var(--text-tertiary); font-size: 12px; }
-.choice-card > button { width: fit-content; min-width: 190px; min-height: 44px; padding: 0 14px; display: flex; align-items: center; justify-content: space-between; gap: 10px; color: var(--text); background: var(--surface-1); border: 1px solid var(--border-strong); border-radius: 7px; font-weight: 600; }
+.choice-card > button { width: fit-content; min-width: 190px; min-height: 44px; padding: 0 14px; display: flex; align-items: center; justify-content: space-between; gap: 10px; color: var(--text-primary); background: var(--surface-1); border: 1px solid var(--border-strong); border-radius: 7px; font-weight: 600; }
 .choice-card > button:hover:not(:disabled) { color: var(--color-primary); border-color: var(--color-primary-border); background: var(--surface-2); }
 .choice-card > button:disabled { opacity: .55; }
 .user-answer { max-width: 74%; align-self: flex-end; animation: enter .18s ease-out; }

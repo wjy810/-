@@ -33,7 +33,7 @@ function entry(index: number, status = 'DRAFT'): CatalogAdminItem {
 }
 
 async function openCatalog() {
-  const wrapper = mount(TemplateAdminPage, { global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } } })
+  const wrapper = mount(TemplateAdminPage, { global: { stubs: { RouterLink: { template: '<a><slot /></a>' }, UiTooltip: { template: '<slot />' } } } })
   await flushPromises()
   await wrapper.findAll('button').find(button => button.text() === '公共目录')!.trigger('click')
   await flushPromises()
@@ -66,7 +66,7 @@ describe('TemplateAdminPage public catalog', () => {
     await wrapper.findAll('button').find(button => button.text().includes('加载更多'))!.trigger('click')
     await flushPromises()
 
-    await wrapper.findAll('button[title="发布"]')[120]!.trigger('click')
+    await wrapper.findAll('button[aria-label="发布"]')[120]!.trigger('click')
     await flushPromises()
     expect(api.publish).toHaveBeenCalledWith('c120', 1)
     expect(wrapper.text()).toContain('已显示 130 / 共 130 条')

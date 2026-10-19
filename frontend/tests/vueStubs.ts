@@ -1,12 +1,13 @@
 import { defineComponent, h } from 'vue'
 
+/** Stands in for UiDialog: renders the body and footer inline while open. */
 export const ModalStub = defineComponent({
-  name: 'AppModal',
+  name: 'UiDialog',
   props: {
     open: { type: Boolean, default: false },
     title: { type: String, default: '' },
-    width: { type: Number, default: 520 },
-    mobileSheet: { type: Boolean, default: false },
+    width: { type: [Number, String], default: 'md' },
+    mobileSheet: { type: Boolean, default: true },
   },
   emits: ['close'],
   setup(props, { slots, emit }) {
@@ -25,8 +26,9 @@ export const ModalStub = defineComponent({
   },
 })
 
+/** Stands in for UiSelect as a native <select>, so tests can pick a value with setValue(). */
 export const SelectStub = defineComponent({
-  name: 'AppSelect',
+  name: 'UiSelect',
   inheritAttrs: false,
   props: {
     modelValue: { type: [String, Number], default: '' },

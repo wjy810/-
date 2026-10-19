@@ -1,14 +1,20 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
+import { Archive, Check, CheckCircle2, Clock, Download, Pencil, Plus, RefreshCw, Send, Upload, X } from 'lucide-vue-next'
 import { errorMessage } from '@/shared/api/types'
 import { formatWhen } from '@/shared/lib/datetime'
-import AppButton from '@/shared/ui/AppButton.vue'
-import AppEmpty from '@/shared/ui/AppEmpty.vue'
-import AppField from '@/shared/ui/AppField.vue'
 import AppIcon from '@/shared/ui/AppIcon.vue'
-import AppModal from '@/shared/ui/AppModal.vue'
-import AppSelect from '@/shared/ui/AppSelect.vue'
-import AppTag from '@/shared/ui/AppTag.vue'
+import UiBadge, { type BadgeTone } from '@/shared/ui/UiBadge.vue'
+import UiButton from '@/shared/ui/UiButton.vue'
+import UiDialog from '@/shared/ui/UiDialog.vue'
+import UiEmptyState from '@/shared/ui/UiEmptyState.vue'
+import UiField from '@/shared/ui/UiField.vue'
+import UiIconButton from '@/shared/ui/UiIconButton.vue'
+import UiInput from '@/shared/ui/UiInput.vue'
+import UiPageHeader from '@/shared/ui/UiPageHeader.vue'
+import UiSelect from '@/shared/ui/UiSelect.vue'
+import UiSkeleton from '@/shared/ui/UiSkeleton.vue'
+import UiTextarea from '@/shared/ui/UiTextarea.vue'
 import { useToastFeedback } from '@/shared/ui/toast'
 import { glossAssetKind, glossCapability, glossScannerDetail, glossStatus } from '../labels'
 import {
@@ -199,14 +205,14 @@ function provenanceLabel(version: TemplateVersion): string {
   return '来源待绑定'
 }
 
-function statusTone(status: string): 'green' | 'orange' | 'red' | 'blue' | 'gray' {
-  if (status === 'APPROVED' || status === 'PUBLISHED' || status === 'PASSED') return 'green'
+function statusTone(status: string): BadgeTone {
+  if (status === 'APPROVED' || status === 'PUBLISHED' || status === 'PASSED') return 'success'
   if (status === 'REJECTED' || status === 'STATIC_REJECTED' || status === 'MALWARE_DETECTED'
-    || status === 'STORAGE_INTEGRITY_FAILED' || status === 'FAILED') return 'red'
+    || status === 'STORAGE_INTEGRITY_FAILED' || status === 'FAILED') return 'danger'
   if (status === 'REVIEWING' || status === 'TESTING' || status === 'EXTERNAL_REQUIRED'
-    || status === 'MALWARE_SCANNER_UNAVAILABLE' || status === 'MALWARE_SCANNER_ERROR') return 'orange'
-  if (status === 'RETIRED') return 'gray'
-  return 'blue'
+    || status === 'MALWARE_SCANNER_UNAVAILABLE' || status === 'MALWARE_SCANNER_ERROR') return 'accent'
+  if (status === 'RETIRED') return 'neutral'
+  return 'primary'
 }
 
 function fileSize(bytes: number): string {
@@ -638,16 +644,12 @@ onUnmounted(() => {
 </script>
 
 <template>
-      <section class="page admin-page">
-      <header class="page-head">
-        <div>
-          <h1 class="page-head__title">模板运营台</h1>
-          <p class="page-head__sub">候选资产、权利证据、测试门禁与版本状态</p>
-        </div>
-        <button class="icon-btn" type="button" title="刷新" :disabled="loading" @click="loadAll">
-          <AppIcon name="refresh" :size="18" />
-        </button>
-      </header>
+  <section class="page-container admin-page">
+      <UiPageHeader title="模板运营台" description="候选资产、权利证据、测试门禁与版本状态">
+        <template #actions>
+          <UiIconButton label="刷新" :icon="RefreshCw" variant="secondary" :pending="loading" @click="loadAll" />
+        </template>
+      </UiPageHeader>
 
       <div class="ops-summary" aria-label="模板运营状态">
         <div><strong>{{ families.length }}</strong><span>模板家族</span></div>
@@ -672,128 +674,122 @@ onUnmounted(() => {
 
       <Transition name="ops-panel-swap" mode="out-in">
       <div v-if="loading" key="loading" class="ops-loading" aria-busy="true">
-        <span v-for="index in 5" :key="index" class="bone" />
+        <UiSkeleton v-for="index in 5" :key="index" />
       </div>
 
       <section v-else-if="activeTab === 'imports'" key="imports" class="ops-panel">
         <header class="panel-toolbar">
           <div><h2>固定目录导入</h2><p>仅处理服务器配置的 HICV 根目录；每项必须通过 OOXML、ClamAV 和去重门禁。</p></div>
-          <AppButton :pending="pending === 'batch-start'" @click="runBatchAction('start')"><AppIcon name="send" :size="15" />启动批次</AppButton>
+          <UiButton :icon="Send" :pending="pending === 'batch-start'" @click="runBatchAction('start')">启动批次</UiButton>
         </header>
         <div class="batch-layout">
           <aside class="batch-list">
             <button v-for="batch in importBatches" :key="batch.id" type="button" :class="{ active: batch.id === selectedBatchId }" @click="chooseBatch(batch.id)">
               <span><strong>{{ batch.processedCount }} / {{ batch.totalCount }}</strong><small>{{ formatWhen(batch.createdAt) }}</small></span>
-              <AppTag :tone="statusTone(batch.status)"><span :title="batch.status">{{ glossStatus(batch.status) }}</span></AppTag>
+              <UiBadge :tone="statusTone(batch.status)"><span :title="batch.status">{{ glossStatus(batch.status) }}</span></UiBadge>
             </button>
           </aside>
           <div v-if="importBatches.find((item) => item.id === selectedBatchId)" class="batch-detail">
             <template v-for="batch in importBatches.filter((item) => item.id === selectedBatchId)" :key="batch.id">
               <div class="batch-metrics"><span><strong>{{ batch.readyCount }}</strong>就绪</span><span><strong>{{ batch.duplicateCount }}</strong>重复</span><span><strong>{{ batch.rejectedCount }}</strong>拒绝</span><span><strong>{{ batch.quarantinedCount }}</strong>隔离</span><span><strong>{{ batch.unsupportedCount }}</strong>不支持</span></div>
-              <div class="row-actions"><AppButton v-if="batch.status === 'QUEUED' || batch.status === 'RUNNING'" variant="ghost" @click="runBatchAction('pause', batch)"><AppIcon name="clock" :size="14" />暂停</AppButton><AppButton v-if="batch.status === 'PAUSED' || batch.status === 'FAILED' || batch.quarantinedCount" variant="ghost" @click="runBatchAction('retry', batch)"><AppIcon name="refresh" :size="14" />重试失败项</AppButton></div>
+              <div class="row-actions"><UiButton v-if="batch.status === 'QUEUED' || batch.status === 'RUNNING'" variant="secondary" size="sm" :icon="Clock" :pending="pending === 'batch-pause'" @click="runBatchAction('pause', batch)">暂停</UiButton><UiButton v-if="batch.status === 'PAUSED' || batch.status === 'FAILED' || batch.quarantinedCount" variant="secondary" size="sm" :icon="RefreshCw" :pending="pending === 'batch-retry'" @click="runBatchAction('retry', batch)">重试失败项</UiButton></div>
             </template>
-            <div class="table-scroll"><table class="tbl"><thead><tr><th>源文件</th><th>大小</th><th>状态</th><th>原因</th><th>SHA-256</th></tr></thead><tbody><tr v-for="item in importItems" :key="item.id"><td><strong>{{ item.originalFilename }}</strong><small :title="item.sourceRelativePath">{{ item.sourceRelativePath }}</small></td><td>{{ fileSize(item.sizeBytes) }}</td><td><AppTag :tone="statusTone(item.status)"><span :title="item.status">{{ glossStatus(item.status) }}</span></AppTag></td><td>{{ item.detailCode || '—' }}</td><td><code v-if="item.fileHash" :title="item.fileHash">{{ shortHash(item.fileHash) }}</code><span v-else>—</span></td></tr></tbody></table></div>
+            <div class="table-scroll"><table class="data-table"><thead><tr><th>源文件</th><th>大小</th><th>状态</th><th>原因</th><th>SHA-256</th></tr></thead><tbody><tr v-for="item in importItems" :key="item.id"><td><strong>{{ item.originalFilename }}</strong><small :title="item.sourceRelativePath">{{ item.sourceRelativePath }}</small></td><td>{{ fileSize(item.sizeBytes) }}</td><td><UiBadge :tone="statusTone(item.status)"><span :title="item.status">{{ glossStatus(item.status) }}</span></UiBadge></td><td>{{ item.detailCode || '—' }}</td><td><code v-if="item.fileHash" :title="item.fileHash">{{ shortHash(item.fileHash) }}</code><span v-else>—</span></td></tr></tbody></table></div>
           </div>
-          <AppEmpty v-else text="尚未创建导入批次" icon="archive" />
+          <UiEmptyState v-else size="sm" title="尚未创建导入批次" illustration="empty-search" />
         </div>
       </section>
 
       <section v-else-if="activeTab === 'catalog'" key="catalog" class="ops-panel">
-        <div class="table-scroll"><table class="tbl"><thead><tr><th>目录项</th><th>能力</th><th>频道</th><th>状态</th><th>下载</th><th>操作</th></tr></thead><tbody><tr v-for="entry in catalogEntries" :key="entry.item.id"><td><strong>{{ entry.item.title }}</strong><small>{{ entry.item.sourceName }} · {{ entry.item.referenceId }}</small></td><td>{{ glossCapability(entry.item.capability) }}</td><td>{{ glossAssetKind(entry.item.assetKind) }}</td><td><AppTag :tone="statusTone(entry.publicationStatus)"><span :title="entry.publicationStatus">{{ glossStatus(entry.publicationStatus) }}</span></AppTag></td><td>{{ entry.item.downloadCount }}</td><td><div class="row-actions"><button class="icon-btn" type="button" title="校正元数据" @click="openCatalog(entry)"><AppIcon name="edit" :size="15" /></button><button v-if="entry.publicationStatus !== 'PUBLISHED'" class="icon-btn" type="button" title="发布" @click="setCatalogPublication(entry, true)"><AppIcon name="send" :size="15" /></button><button v-else class="icon-btn" type="button" title="退休" @click="setCatalogPublication(entry, false)"><AppIcon name="archive" :size="15" /></button></div></td></tr></tbody></table></div>
-        <AppEmpty v-if="!catalogEntries.length" text="公共目录尚无条目" icon="book" />
+        <div class="table-scroll"><table class="data-table"><thead><tr><th>目录项</th><th>能力</th><th>频道</th><th>状态</th><th>下载</th><th>操作</th></tr></thead><tbody><tr v-for="entry in catalogEntries" :key="entry.item.id"><td><strong>{{ entry.item.title }}</strong><small>{{ entry.item.sourceName }} · {{ entry.item.referenceId }}</small></td><td>{{ glossCapability(entry.item.capability) }}</td><td>{{ glossAssetKind(entry.item.assetKind) }}</td><td><UiBadge :tone="statusTone(entry.publicationStatus)"><span :title="entry.publicationStatus">{{ glossStatus(entry.publicationStatus) }}</span></UiBadge></td><td>{{ entry.item.downloadCount }}</td><td><div class="row-actions"><UiIconButton label="校正元数据" :icon="Pencil" @click="openCatalog(entry)" /><UiIconButton v-if="entry.publicationStatus !== 'PUBLISHED'" label="发布" :icon="Send" :pending="pending === `catalog-${entry.item.id}`" @click="setCatalogPublication(entry, true)" /><UiIconButton v-else label="退休" :icon="Archive" :pending="pending === `catalog-${entry.item.id}`" @click="setCatalogPublication(entry, false)" /></div></td></tr></tbody></table></div>
+        <UiEmptyState v-if="!catalogEntries.length" size="sm" title="公共目录尚无条目" illustration="empty-search" />
         <div v-else class="catalog-more">
           <span>已显示 {{ catalogEntries.length }} / 共 {{ catalogTotal }} 条</span>
-          <AppButton v-if="catalogEntries.length < catalogTotal" variant="ghost" :pending="pending === 'catalog-more'" @click="loadMoreCatalog">加载更多</AppButton>
+          <UiButton v-if="catalogEntries.length < catalogTotal" variant="secondary" :pending="pending === 'catalog-more'" @click="loadMoreCatalog">加载更多</UiButton>
         </div>
       </section>
 
       <section v-else-if="activeTab === 'evidence'" key="evidence" class="ops-panel">
         <form class="upload-grid" @submit.prevent="submitEvidence">
-          <AppField id="evidence-type" label="证据类型">
-            <AppSelect id="evidence-type" v-model="evidenceForm.evidenceType" ariaLabel="证据类型">
+          <UiField id="evidence-type" label="证据类型">
+            <UiSelect id="evidence-type" v-model="evidenceForm.evidenceType" aria-label="证据类型" placeholder="证据类型">
               <option v-for="[value, label] in EVIDENCE_TYPES" :key="value" :value="value">{{ label }}</option>
-            </AppSelect>
-          </AppField>
-          <AppField id="evidence-description" label="结论说明">
-            <input id="evidence-description" v-model="evidenceForm.description" class="input" maxlength="512" required />
-          </AppField>
-          <AppField id="evidence-file" label="证据文件">
-            <input id="evidence-file" ref="evidenceInput" class="input file-input" type="file" accept=".pdf,.png,.jpg,.jpeg,.txt,.json" required @change="selectFile($event, 'evidence')" />
-          </AppField>
-          <AppButton type="submit" :pending="pending === 'evidence'" :disabled="!evidenceFile || !evidenceForm.description.trim()">
-            <AppIcon name="upload" :size="15" />登记证据
-          </AppButton>
+            </UiSelect>
+          </UiField>
+          <UiField id="evidence-description" label="结论说明">
+            <UiInput id="evidence-description" v-model="evidenceForm.description" maxlength="512" required />
+          </UiField>
+          <UiField id="evidence-file" label="证据文件">
+            <input id="evidence-file" ref="evidenceInput" class="file-input" type="file" accept=".pdf,.png,.jpg,.jpeg,.txt,.json" required @change="selectFile($event, 'evidence')" />
+          </UiField>
+          <UiButton class="form-submit" type="submit" :icon="Upload" :pending="pending === 'evidence'" :disabled="!evidenceFile || !evidenceForm.description.trim()">登记证据</UiButton>
         </form>
 
         <div class="table-scroll">
-          <table class="tbl">
+          <table class="data-table">
             <thead><tr><th>类型</th><th>文件</th><th>说明</th><th>指纹</th><th>登记时间</th><th>操作</th></tr></thead>
             <tbody>
               <tr v-for="item in evidence" :key="item.id">
-                <td><AppTag tone="blue">{{ evidenceLabel(item.evidenceType) }}</AppTag></td>
+                <td><UiBadge tone="primary">{{ evidenceLabel(item.evidenceType) }}</UiBadge></td>
                 <td><strong>{{ item.originalFilename }}</strong><small>{{ fileSize(item.sizeBytes) }}</small></td>
                 <td class="description-cell">{{ item.description }}</td>
                 <td><code :title="item.fileHash">{{ shortHash(item.fileHash) }}</code></td>
                 <td>{{ formatWhen(item.createdAt) }}</td>
                 <td>
-                  <button class="icon-btn" type="button" title="下载证据" :disabled="pending === `download:${item.id}`" @click="downloadEvidence(item)">
-                    <AppIcon name="download" :size="16" />
-                  </button>
+                  <UiIconButton label="下载证据" :icon="Download" :pending="pending === `download:${item.id}`" @click="downloadEvidence(item)" />
                 </td>
               </tr>
             </tbody>
           </table>
         </div>
-        <AppEmpty v-if="!evidence.length" text="暂无不可变证据" icon="folder" />
+        <UiEmptyState v-if="!evidence.length" size="sm" title="暂无不可变证据" illustration="empty-folder" />
       </section>
 
       <section v-else-if="activeTab === 'assets'" key="assets" class="ops-panel">
         <form class="asset-upload" @submit.prevent="submitAsset">
-          <AppField id="asset-file" label="候选 DOCX">
-            <input id="asset-file" ref="assetInput" class="input file-input" type="file" accept=".docx" required @change="selectFile($event, 'asset')" />
-          </AppField>
-          <AppField id="asset-source" label="来源 URI">
-            <input id="asset-source" v-model="assetForm.sourceUri" class="input" maxlength="1024" required />
-          </AppField>
-          <AppField id="asset-name" label="来源名称">
-            <input id="asset-name" v-model="assetForm.sourceName" class="input" maxlength="255" />
-          </AppField>
-          <AppField id="asset-license" label="权利状态">
-            <AppSelect id="asset-license" v-model="assetForm.licenseStatus" ariaLabel="权利状态">
+          <UiField id="asset-file" label="候选 DOCX">
+            <input id="asset-file" ref="assetInput" class="file-input" type="file" accept=".docx" required @change="selectFile($event, 'asset')" />
+          </UiField>
+          <UiField id="asset-source" label="来源 URI">
+            <UiInput id="asset-source" v-model="assetForm.sourceUri" maxlength="1024" required />
+          </UiField>
+          <UiField id="asset-name" label="来源名称">
+            <UiInput id="asset-name" v-model="assetForm.sourceName" maxlength="255" />
+          </UiField>
+          <UiField id="asset-license" label="权利状态">
+            <UiSelect id="asset-license" v-model="assetForm.licenseStatus" aria-label="权利状态" placeholder="权利状态">
               <option value="UNCONFIRMED">未确认</option>
               <option value="APPROVED">商业授权</option>
               <option value="INDEPENDENT_DESIGN">独立设计</option>
-            </AppSelect>
-          </AppField>
-          <AppField v-if="assetForm.licenseStatus !== 'UNCONFIRMED'" id="asset-license-evidence" label="权利证据">
-            <AppSelect id="asset-license-evidence" v-model="assetForm.licenseEvidenceId" ariaLabel="权利证据" required searchable search-placeholder="搜索权利证据">
+            </UiSelect>
+          </UiField>
+          <UiField v-if="assetForm.licenseStatus !== 'UNCONFIRMED'" id="asset-license-evidence" label="权利证据">
+            <UiSelect id="asset-license-evidence" v-model="assetForm.licenseEvidenceId" aria-label="权利证据" placeholder="权利证据" required searchable search-placeholder="搜索权利证据">
               <option value="">请选择</option>
               <option v-for="item in evidence.filter((entry) => entry.evidenceType === (assetForm.licenseStatus === 'APPROVED' ? 'LICENSE' : 'INDEPENDENT_DESIGN'))" :key="item.id" :value="item.id">
                 {{ item.description }}
               </option>
-            </AppSelect>
-          </AppField>
-          <AppButton type="submit" :pending="pending === 'asset'" :disabled="!assetFile || !assetForm.sourceUri.trim()">
-            <AppIcon name="upload" :size="15" />导入候选
-          </AppButton>
+            </UiSelect>
+          </UiField>
+          <UiButton class="form-submit" type="submit" :icon="Upload" :pending="pending === 'asset'" :disabled="!assetFile || !assetForm.sourceUri.trim()">导入候选</UiButton>
         </form>
 
         <div class="table-scroll">
-          <table class="tbl">
+          <table class="data-table">
             <thead><tr><th>候选</th><th>安全扫描</th><th>权利</th><th>状态</th><th>指纹</th><th>时间</th><th>操作</th></tr></thead>
             <tbody>
               <tr v-for="item in assets" :key="item.id">
                 <td><strong>{{ item.sourceName }}</strong><small :title="item.sourceUri">{{ item.sourceUri }}</small></td>
-                <td><AppTag :tone="statusTone(item.scanStatus)"><span :title="item.scanStatus">{{ glossStatus(item.scanStatus) }}</span></AppTag></td>
+                <td><UiBadge :tone="statusTone(item.scanStatus)"><span :title="item.scanStatus">{{ glossStatus(item.scanStatus) }}</span></UiBadge></td>
                 <td :title="item.licenseStatus">{{ glossStatus(item.licenseStatus) }}</td>
-                <td><AppTag :tone="statusTone(item.status)"><span :title="item.status">{{ glossStatus(item.status) }}</span></AppTag><small v-if="item.rejectionReason">{{ item.rejectionReason }}</small></td>
+                <td><UiBadge :tone="statusTone(item.status)"><span :title="item.status">{{ glossStatus(item.status) }}</span></UiBadge><small v-if="item.rejectionReason">{{ item.rejectionReason }}</small></td>
                 <td><code :title="item.fileHash">{{ shortHash(item.fileHash) }}</code></td>
                 <td>{{ formatWhen(item.createdAt) }}</td>
                 <td>
                   <div v-if="item.status === 'REVIEWING' || canRescan(item)" class="row-actions">
-                    <AppButton v-if="canRescan(item)" variant="ghost" :pending="pending === `rescan-${item.id}`" @click="rescanAsset(item)"><AppIcon name="refresh" :size="14" />复扫</AppButton>
-                    <AppButton v-if="item.status === 'REVIEWING' && item.scanStatus === 'PASSED'" variant="ghost" @click="openReview(item, 'APPROVED')"><AppIcon name="check" :size="14" />批准</AppButton>
-                    <AppButton v-if="item.status === 'REVIEWING'" variant="text" @click="openReview(item, 'REJECTED')"><AppIcon name="x" :size="14" />驳回</AppButton>
+                    <UiButton v-if="canRescan(item)" variant="secondary" size="sm" :icon="RefreshCw" :pending="pending === `rescan-${item.id}`" @click="rescanAsset(item)">复扫</UiButton>
+                    <UiButton v-if="item.status === 'REVIEWING' && item.scanStatus === 'PASSED'" variant="secondary" size="sm" :icon="Check" @click="openReview(item, 'APPROVED')">批准</UiButton>
+                    <UiButton v-if="item.status === 'REVIEWING'" variant="link" size="sm" :icon="X" @click="openReview(item, 'REJECTED')">驳回</UiButton>
                   </div>
                   <span v-else class="fine">已完成</span>
                 </td>
@@ -801,14 +797,14 @@ onUnmounted(() => {
             </tbody>
           </table>
         </div>
-        <AppEmpty v-if="!assets.length" text="暂无候选资产" icon="file-text" />
+        <UiEmptyState v-if="!assets.length" size="sm" title="暂无候选资产" illustration="empty-resume" />
       </section>
 
       <section v-else key="families" class="version-layout">
         <aside class="family-list" aria-label="模板家族">
           <button v-for="item in families" :key="item.id" type="button" :class="{ active: item.id === selectedFamilyId }" @click="chooseFamily(item.id)">
             <span><strong>{{ item.displayName }}</strong><small>{{ item.familyName }} · {{ item.recommendedPages }} 页</small></span>
-            <AppTag :tone="statusTone(item.status)"><span :title="item.status">{{ glossStatus(item.status) }}</span></AppTag>
+            <UiBadge :tone="statusTone(item.status)"><span :title="item.status">{{ glossStatus(item.status) }}</span></UiBadge>
           </button>
         </aside>
 
@@ -818,10 +814,10 @@ onUnmounted(() => {
               <h2>{{ selectedFamily?.displayName }}</h2>
               <p class="fine"><code>{{ selectedFamily?.id }}</code> · {{ selectedFamily?.languageCode }} · {{ selectedFamily?.atsCandidateLevel }}</p>
             </div>
-            <AppButton :disabled="!canCreateDraft" @click="openDraft()"><AppIcon name="plus" :size="15" />新建修订</AppButton>
+            <UiButton :icon="Plus" :disabled="!canCreateDraft" @click="openDraft()">新建修订</UiButton>
           </header>
 
-          <div v-if="versionsLoading" class="ops-loading" aria-busy="true"><span v-for="index in 3" :key="index" class="bone" /></div>
+          <div v-if="versionsLoading" class="ops-loading" aria-busy="true"><UiSkeleton v-for="index in 3" :key="index" /></div>
           <div v-else-if="versions.length" class="version-list">
             <article v-for="version in versions" :key="version.id" class="version-row">
               <div class="version-row__main">
@@ -830,7 +826,7 @@ onUnmounted(() => {
                   <strong>{{ version.rendererProtocol }}</strong>
                   <small>{{ provenanceLabel(version) }} · 对象版本 {{ version.version }}</small>
                 </div>
-                <AppTag :tone="statusTone(version.status)"><span :title="version.status">{{ glossStatus(version.status) }}</span></AppTag>
+                <UiBadge :tone="statusTone(version.status)"><span :title="version.status">{{ glossStatus(version.status) }}</span></UiBadge>
               </div>
               <div class="gate-strip" aria-label="发布门禁">
                 <span v-for="gate in GATES" :key="gate.code" :class="{ passed: gatePassed(version, gate.field) }">
@@ -838,150 +834,183 @@ onUnmounted(() => {
                 </span>
               </div>
               <div class="version-row__actions">
-                <AppButton v-if="version.status === 'DRAFT'" variant="ghost" @click="openDraft(version)"><AppIcon name="edit" :size="14" />编辑</AppButton>
-                <AppButton v-if="version.status === 'DRAFT' || version.status === 'TESTING'" variant="ghost" @click="openTest(version)"><AppIcon name="check-circle" :size="14" />记录测试</AppButton>
-                <AppButton v-if="version.status === 'TESTING'" @click="confirmAction = { kind: 'publish', version }"><AppIcon name="send" :size="14" />发布</AppButton>
-                <AppButton v-if="version.status === 'PUBLISHED'" variant="danger" @click="confirmAction = { kind: 'retire', version }"><AppIcon name="archive" :size="14" />退休</AppButton>
+                <UiButton v-if="version.status === 'DRAFT'" variant="secondary" size="sm" :icon="Pencil" @click="openDraft(version)">编辑</UiButton>
+                <UiButton v-if="version.status === 'DRAFT' || version.status === 'TESTING'" variant="secondary" size="sm" :icon="CheckCircle2" @click="openTest(version)">记录测试</UiButton>
+                <UiButton v-if="version.status === 'TESTING'" size="sm" :icon="Send" @click="confirmAction = { kind: 'publish', version }">发布</UiButton>
+                <UiButton v-if="version.status === 'PUBLISHED'" variant="danger" size="sm" :icon="Archive" @click="confirmAction = { kind: 'retire', version }">退休</UiButton>
               </div>
             </article>
           </div>
-          <AppEmpty v-else text="该家族暂无版本" icon="file-text">
-            <AppButton :disabled="!canCreateDraft" @click="openDraft()">新建修订</AppButton>
-          </AppEmpty>
+          <UiEmptyState v-else size="sm" title="该家族暂无版本" illustration="empty-resume">
+            <UiButton :disabled="!canCreateDraft" @click="openDraft()">新建修订</UiButton>
+          </UiEmptyState>
         </div>
       </section>
       </Transition>
     </section>
 
-    <AppModal :open="Boolean(catalogTarget)" title="校正目录元数据" :width="760" @close="catalogTarget = null">
+    <UiDialog :open="Boolean(catalogTarget)" title="校正目录元数据" :width="760" @close="catalogTarget = null">
       <div class="modal-form">
-        <div class="form-grid-2"><AppField id="catalog-title" label="展示标题"><input id="catalog-title" v-model="catalogForm.title" class="input" maxlength="512" required /></AppField><AppField id="catalog-kind" label="素材频道"><AppSelect id="catalog-kind" v-model="catalogForm.assetKind" ariaLabel="素材频道"><option value="RESUME">求职简历</option><option value="COVER">封面</option><option value="SCHOOL_APPLICATION">升学材料</option><option value="COVER_LETTER">自荐信/范文</option></AppSelect></AppField></div>
-        <AppField id="catalog-summary" label="摘要"><textarea id="catalog-summary" v-model="catalogForm.summary" class="textarea" maxlength="1024" /></AppField>
-        <div class="form-grid-2"><AppField id="catalog-language" label="语言"><AppSelect id="catalog-language" v-model="catalogForm.languageCode" ariaLabel="语言"><option value="zh-CN">中文</option><option value="en">英文</option><option value="mixed">中英文</option></AppSelect></AppField><AppField id="catalog-pages" label="页数"><input id="catalog-pages" v-model="catalogForm.pageCount" class="input" maxlength="16" /></AppField><AppField id="catalog-photo" label="照片"><AppSelect id="catalog-photo" v-model="catalogForm.photoPolicy" ariaLabel="照片"><option value="UNSPECIFIED">未识别</option><option value="DISABLED">无照片</option><option value="OPTIONAL">照片可选</option><option value="REQUIRED">含照片</option></AppSelect></AppField><AppField id="catalog-thumbnail" label="缩略图 URI"><input id="catalog-thumbnail" v-model="catalogForm.thumbnailUri" class="input" maxlength="1024" /></AppField></div>
+        <div class="form-grid-2"><UiField id="catalog-title" label="展示标题"><UiInput id="catalog-title" v-model="catalogForm.title" maxlength="512" required /></UiField><UiField id="catalog-kind" label="素材频道"><UiSelect id="catalog-kind" v-model="catalogForm.assetKind" aria-label="素材频道" placeholder="素材频道"><option value="RESUME">求职简历</option><option value="COVER">封面</option><option value="SCHOOL_APPLICATION">升学材料</option><option value="COVER_LETTER">自荐信/范文</option></UiSelect></UiField></div>
+        <UiField id="catalog-summary" label="摘要"><UiTextarea id="catalog-summary" v-model="catalogForm.summary" maxlength="1024" /></UiField>
+        <div class="form-grid-2"><UiField id="catalog-language" label="语言"><UiSelect id="catalog-language" v-model="catalogForm.languageCode" aria-label="语言" placeholder="语言"><option value="zh-CN">中文</option><option value="en">英文</option><option value="mixed">中英文</option></UiSelect></UiField><UiField id="catalog-pages" label="页数"><UiInput id="catalog-pages" v-model="catalogForm.pageCount" maxlength="16" /></UiField><UiField id="catalog-photo" label="照片"><UiSelect id="catalog-photo" v-model="catalogForm.photoPolicy" aria-label="照片" placeholder="照片"><option value="UNSPECIFIED">未识别</option><option value="DISABLED">无照片</option><option value="OPTIONAL">照片可选</option><option value="REQUIRED">含照片</option></UiSelect></UiField><UiField id="catalog-thumbnail" label="缩略图 URI"><UiInput id="catalog-thumbnail" v-model="catalogForm.thumbnailUri" maxlength="1024" /></UiField></div>
         <p class="fine">标签每行使用“编码|显示名”。职业大类、岗位、风格和职业阶段可分别维护。</p>
-        <div class="form-grid-2"><AppField id="catalog-occupations" label="职业大类"><textarea id="catalog-occupations" v-model="catalogForm.occupations" class="textarea code-editor code-editor--small" /></AppField><AppField id="catalog-jobs" label="岗位标签"><textarea id="catalog-jobs" v-model="catalogForm.jobs" class="textarea code-editor code-editor--small" /></AppField><AppField id="catalog-styles" label="版式风格"><textarea id="catalog-styles" v-model="catalogForm.styles" class="textarea code-editor code-editor--small" /></AppField><AppField id="catalog-stages" label="职业阶段"><textarea id="catalog-stages" v-model="catalogForm.careerStages" class="textarea code-editor code-editor--small" /></AppField></div>
+        <div class="form-grid-2"><UiField id="catalog-occupations" label="职业大类"><UiTextarea id="catalog-occupations" v-model="catalogForm.occupations" class="code-editor code-editor--small" /></UiField><UiField id="catalog-jobs" label="岗位标签"><UiTextarea id="catalog-jobs" v-model="catalogForm.jobs" class="code-editor code-editor--small" /></UiField><UiField id="catalog-styles" label="版式风格"><UiTextarea id="catalog-styles" v-model="catalogForm.styles" class="code-editor code-editor--small" /></UiField><UiField id="catalog-stages" label="职业阶段"><UiTextarea id="catalog-stages" v-model="catalogForm.careerStages" class="code-editor code-editor--small" /></UiField></div>
       </div>
-      <template #footer><AppButton variant="ghost" @click="catalogTarget = null">取消</AppButton><AppButton :pending="pending === 'catalog-save'" :disabled="!catalogForm.title.trim()" @click="saveCatalog">保存校正</AppButton></template>
-    </AppModal>
+      <template #footer><UiButton variant="secondary" @click="catalogTarget = null">取消</UiButton><UiButton :pending="pending === 'catalog-save'" :disabled="!catalogForm.title.trim()" @click="saveCatalog">保存校正</UiButton></template>
+    </UiDialog>
 
-    <AppModal :open="Boolean(reviewTarget)" :title="reviewForm.decision === 'APPROVED' ? '批准候选资产' : '驳回候选资产'" @close="reviewTarget = null">
+    <UiDialog :open="Boolean(reviewTarget)" :title="reviewForm.decision === 'APPROVED' ? '批准候选资产' : '驳回候选资产'" :width="520" @close="reviewTarget = null">
       <div class="modal-form">
         <p class="object-line"><strong>{{ reviewTarget?.sourceName }}</strong><code>{{ reviewTarget?.fileHash }}</code></p>
         <template v-if="reviewForm.decision === 'APPROVED'">
-          <AppField id="review-license" label="权利结论">
-            <AppSelect id="review-license" v-model="reviewForm.licenseStatus" ariaLabel="权利结论">
+          <UiField id="review-license" label="权利结论">
+            <UiSelect id="review-license" v-model="reviewForm.licenseStatus" aria-label="权利结论" placeholder="权利结论">
               <option value="APPROVED">商业授权</option>
               <option value="INDEPENDENT_DESIGN">独立设计</option>
-            </AppSelect>
-          </AppField>
-          <AppField id="review-evidence" label="不可变权利证据">
-            <AppSelect id="review-evidence" v-model="reviewForm.licenseEvidenceId" ariaLabel="不可变权利证据" required searchable search-placeholder="搜索权利证据">
+            </UiSelect>
+          </UiField>
+          <UiField id="review-evidence" label="不可变权利证据">
+            <UiSelect id="review-evidence" v-model="reviewForm.licenseEvidenceId" aria-label="不可变权利证据" placeholder="不可变权利证据" required searchable search-placeholder="搜索权利证据">
               <option value="">请选择</option>
               <option v-for="item in licenseEvidence" :key="item.id" :value="item.id">{{ item.description }}</option>
-            </AppSelect>
-          </AppField>
+            </UiSelect>
+          </UiField>
         </template>
-        <AppField v-else id="review-reason" label="驳回原因">
-          <textarea id="review-reason" v-model="reviewForm.reason" class="textarea" maxlength="1024" required />
-        </AppField>
+        <UiField v-else id="review-reason" label="驳回原因">
+          <UiTextarea id="review-reason" v-model="reviewForm.reason" maxlength="1024" required />
+        </UiField>
       </div>
       <template #footer>
-        <AppButton variant="ghost" @click="reviewTarget = null">取消</AppButton>
-        <AppButton :variant="reviewForm.decision === 'APPROVED' ? 'primary' : 'danger'" :pending="pending === 'review'" :disabled="!reviewReady" @click="submitReview">
+        <UiButton variant="secondary" @click="reviewTarget = null">取消</UiButton>
+        <UiButton :variant="reviewForm.decision === 'APPROVED' ? 'primary' : 'danger'" :pending="pending === 'review'" :disabled="!reviewReady" @click="submitReview">
           {{ reviewForm.decision === 'APPROVED' ? '确认批准' : '确认驳回' }}
-        </AppButton>
+        </UiButton>
       </template>
-    </AppModal>
+    </UiDialog>
 
-    <AppModal :open="draftOpen" :title="editingVersion ? `编辑 R${editingVersion.revisionNo}` : '新建模板修订'" :width="760" @close="draftOpen = false">
+    <UiDialog :open="draftOpen" :title="editingVersion ? `编辑 R${editingVersion.revisionNo}` : '新建模板修订'" :width="760" @close="draftOpen = false">
       <div class="modal-form">
         <div class="form-grid-2">
-          <AppField id="draft-protocol" label="渲染协议">
-            <input id="draft-protocol" v-model="draftForm.rendererProtocol" class="input" required />
-          </AppField>
-          <AppField id="draft-thumbnail" label="缩略图 URI">
-            <input id="draft-thumbnail" v-model="draftForm.thumbnailUri" class="input" />
-          </AppField>
+          <UiField id="draft-protocol" label="渲染协议">
+            <UiInput id="draft-protocol" v-model="draftForm.rendererProtocol" required />
+          </UiField>
+          <UiField id="draft-thumbnail" label="缩略图 URI">
+            <UiInput id="draft-thumbnail" v-model="draftForm.thumbnailUri" />
+          </UiField>
         </div>
         <div class="source-switch" :class="{ 'is-independent': draftSourceMode === 'independent' }" aria-label="来源类型">
           <button type="button" :class="{ active: draftSourceMode === 'asset' }" :disabled="provenanceLocked" @click="draftSourceMode = 'asset'">已批准候选</button>
           <button type="button" :class="{ active: draftSourceMode === 'independent' }" :disabled="provenanceLocked" @click="draftSourceMode = 'independent'">独立设计</button>
         </div>
         <Transition name="source-field" mode="out-in">
-        <AppField v-if="draftSourceMode === 'asset'" id="draft-asset" key="asset" label="来源资产">
-          <AppSelect id="draft-asset" v-model="draftForm.sourceAssetId" ariaLabel="来源资产" required searchable search-placeholder="搜索来源资产">
+        <UiField v-if="draftSourceMode === 'asset'" id="draft-asset" key="asset" label="来源资产">
+          <UiSelect id="draft-asset" v-model="draftForm.sourceAssetId" aria-label="来源资产" placeholder="来源资产" required searchable search-placeholder="搜索来源资产">
             <option value="">请选择</option>
             <option v-for="item in approvedAssets" :key="item.id" :value="item.id">{{ item.sourceName }} · {{ shortHash(item.fileHash) }}</option>
-          </AppSelect>
-        </AppField>
-        <AppField v-else id="draft-independent" key="independent" label="独立设计证据">
-          <AppSelect id="draft-independent" v-model="draftForm.independentDesignEvidenceId" ariaLabel="独立设计证据" required searchable search-placeholder="搜索独立设计证据">
+          </UiSelect>
+        </UiField>
+        <UiField v-else id="draft-independent" key="independent" label="独立设计证据">
+          <UiSelect id="draft-independent" v-model="draftForm.independentDesignEvidenceId" aria-label="独立设计证据" placeholder="独立设计证据" required searchable search-placeholder="搜索独立设计证据">
             <option value="">请选择</option>
             <option v-for="item in independentEvidence" :key="item.id" :value="item.id">{{ item.description }}</option>
-          </AppSelect>
-        </AppField>
+          </UiSelect>
+        </UiField>
         </Transition>
-        <AppField id="draft-definition" label="受控版式定义">
-          <textarea id="draft-definition" v-model="draftForm.definitionJson" class="textarea code-editor" required />
-        </AppField>
+        <UiField id="draft-definition" label="受控版式定义">
+          <UiTextarea id="draft-definition" v-model="draftForm.definitionJson" class="code-editor" required />
+        </UiField>
       </div>
       <template #footer>
-        <AppButton variant="ghost" @click="draftOpen = false">取消</AppButton>
-        <AppButton :pending="pending === 'draft'" :disabled="!draftReady" @click="submitDraft">保存修订</AppButton>
+        <UiButton variant="secondary" @click="draftOpen = false">取消</UiButton>
+        <UiButton :pending="pending === 'draft'" :disabled="!draftReady" @click="submitDraft">保存修订</UiButton>
       </template>
-    </AppModal>
+    </UiDialog>
 
-    <AppModal :open="Boolean(testTarget)" title="记录发布门禁" :width="620" @close="testTarget = null">
+    <UiDialog :open="Boolean(testTarget)" title="记录发布门禁" :width="620" @close="testTarget = null">
       <div class="modal-form">
         <div class="form-grid-2">
-          <AppField id="test-gate" label="门禁">
-            <AppSelect id="test-gate" v-model="testForm.gateCode" ariaLabel="门禁">
+          <UiField id="test-gate" label="门禁">
+            <UiSelect id="test-gate" v-model="testForm.gateCode" aria-label="门禁" placeholder="门禁">
               <option v-for="gate in GATES" :key="gate.code" :value="gate.code">{{ gate.label }}</option>
-            </AppSelect>
-          </AppField>
-          <AppField id="test-outcome" label="结论">
-            <AppSelect id="test-outcome" v-model="testForm.outcome" ariaLabel="结论">
+            </UiSelect>
+          </UiField>
+          <UiField id="test-outcome" label="结论">
+            <UiSelect id="test-outcome" v-model="testForm.outcome" aria-label="结论" placeholder="结论">
               <option value="PASSED">通过</option>
               <option value="FAILED">失败</option>
-            </AppSelect>
-          </AppField>
+            </UiSelect>
+          </UiField>
         </div>
-        <AppField id="test-evidence" label="不可变证据">
-          <AppSelect id="test-evidence" v-model="testForm.evidenceId" ariaLabel="不可变证据" required searchable search-placeholder="搜索证据">
+        <UiField id="test-evidence" label="不可变证据">
+          <UiSelect id="test-evidence" v-model="testForm.evidenceId" aria-label="不可变证据" placeholder="不可变证据" required searchable search-placeholder="搜索证据">
             <option value="">请选择</option>
             <option v-for="item in testEvidenceOptions" :key="item.id" :value="item.id">{{ item.description }}</option>
-          </AppSelect>
-        </AppField>
-        <AppField id="test-summary" label="测试结论摘要">
-          <textarea id="test-summary" v-model="testForm.summary" class="textarea" maxlength="2048" required />
-        </AppField>
-        <AppField id="test-environment" label="环境 JSON">
-          <textarea id="test-environment" v-model="testForm.environmentJson" class="textarea code-editor code-editor--small" required />
-        </AppField>
+          </UiSelect>
+        </UiField>
+        <UiField id="test-summary" label="测试结论摘要">
+          <UiTextarea id="test-summary" v-model="testForm.summary" maxlength="2048" required />
+        </UiField>
+        <UiField id="test-environment" label="环境 JSON">
+          <UiTextarea id="test-environment" v-model="testForm.environmentJson" class="code-editor code-editor--small" required />
+        </UiField>
       </div>
       <template #footer>
-        <AppButton variant="ghost" @click="testTarget = null">取消</AppButton>
-        <AppButton :pending="pending === 'test'" :disabled="!testReady" @click="submitTest">追加记录</AppButton>
+        <UiButton variant="secondary" @click="testTarget = null">取消</UiButton>
+        <UiButton :pending="pending === 'test'" :disabled="!testReady" @click="submitTest">追加记录</UiButton>
       </template>
-    </AppModal>
+    </UiDialog>
 
-    <AppModal :open="Boolean(confirmAction)" :title="confirmAction?.kind === 'publish' ? '发布模板版本' : '退休模板版本'" @close="confirmAction = null">
+    <UiDialog :open="Boolean(confirmAction)" :title="confirmAction?.kind === 'publish' ? '发布模板版本' : '退休模板版本'" :width="520" :mobile-sheet="false" @close="confirmAction = null">
       <p class="confirm-copy">
         {{ confirmAction?.kind === 'publish' ? '发布后版本内容不可原地修改。' : '退休后禁止新选择，历史冻结快照保持可用。' }}
       </p>
       <template #footer>
-        <AppButton variant="ghost" @click="confirmAction = null">取消</AppButton>
-        <AppButton :variant="confirmAction?.kind === 'publish' ? 'primary' : 'danger'" :pending="pending === confirmAction?.kind" @click="runConfirmedAction">
+        <UiButton variant="secondary" @click="confirmAction = null">取消</UiButton>
+        <UiButton :variant="confirmAction?.kind === 'publish' ? 'primary' : 'danger'" :pending="pending === confirmAction?.kind" @click="runConfirmedAction">
           确认{{ confirmAction?.kind === 'publish' ? '发布' : '退休' }}
-        </AppButton>
+        </UiButton>
       </template>
-    </AppModal>
+    </UiDialog>
 </template>
 
 <style scoped>
-.admin-page{max-width:1540px;margin:0 auto}.ops-summary{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}.ops-summary>div{min-height:82px;padding:16px 20px;display:grid;align-content:center;border-right:1px solid var(--border)}.ops-summary>div:last-child{border-right:0}.ops-summary strong{font-size:24px;line-height:1.15}.ops-summary span{font-size:12px;color:var(--text-tertiary)}.scanner-ready{color:var(--color-success)}.scanner-blocked{color:var(--color-danger)}.ops-tabs,.source-switch{display:inline-flex;width:max-content;padding:3px;background:var(--surface-3);border-radius:var(--radius)}.ops-tabs button,.source-switch button{height:32px;padding:0 15px;border:0;border-radius:6px;background:transparent;color:var(--text-secondary);font-size:13px}.ops-tabs button.active,.source-switch button.active{background:var(--surface);color:var(--text);box-shadow:var(--shadow-s);font-weight:600}.source-switch button:disabled{cursor:not-allowed;opacity:.7}.ops-loading{display:grid;gap:12px;padding:24px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius)}.ops-panel{display:grid;gap:18px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}.upload-grid{display:grid;grid-template-columns:180px minmax(220px,1fr) minmax(240px,1fr) auto;gap:12px;align-items:end;padding:18px;border-bottom:1px solid var(--border)}.asset-upload{display:grid;grid-template-columns:repeat(4,minmax(160px,1fr));gap:12px;align-items:end;padding:18px;border-bottom:1px solid var(--border)}.asset-upload>.btn{justify-self:start}.file-input{padding:5px 8px;height:40px}.table-scroll{overflow:auto}.tbl td{max-width:280px}.tbl td strong,.tbl td small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.tbl td small{color:var(--text-tertiary);font-size:12px;margin-top:2px}.description-cell{min-width:220px}.row-actions{display:flex;gap:4px}.row-actions .btn{height:30px;padding:0 9px;font-size:12px}.version-layout{display:grid;grid-template-columns:300px minmax(0,1fr);gap:16px;align-items:start}.family-list{display:grid;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;max-height:calc(100vh - 260px);overflow-y:auto}.family-list>button{min-height:64px;border:0;border-bottom:1px solid var(--border);background:var(--surface);padding:10px 12px;display:flex;align-items:center;gap:10px;text-align:left;color:var(--text)}.family-list>button:last-child{border-bottom:0}.family-list>button:hover{background:var(--surface-2)}.family-list>button.active{background:var(--color-primary-soft);box-shadow:inset 3px 0 var(--color-primary)}.family-list>button>span:first-child{display:grid;flex:1;min-width:0}.family-list strong,.family-list small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.family-list small{font-size:12px;color:var(--text-tertiary)}.version-workspace{min-width:0;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}.workspace-head{min-height:76px;padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:16px}.workspace-head h2{font-size:17px}.version-list{display:grid}.version-row{display:grid;gap:12px;padding:16px 18px;border-bottom:1px solid var(--border)}.version-row:last-child{border-bottom:0}.version-row__main{display:flex;align-items:center;gap:12px}.version-row__main>div{display:grid;flex:1;min-width:0}.version-row__main small{font-size:12px;color:var(--text-tertiary)}.revision{width:42px;height:32px;border-radius:6px;background:var(--surface-2);display:grid;place-items:center;font-family:var(--mono);font-size:12px;font-weight:600}.gate-strip{display:flex;flex-wrap:wrap;gap:6px}.gate-strip span{display:inline-flex;align-items:center;gap:4px;height:26px;padding:0 8px;border:1px solid var(--border);border-radius:6px;color:var(--text-tertiary);font-size:12px}.gate-strip span.passed{border-color:var(--border-default);background:var(--success-soft);color:var(--color-success)}.version-row__actions{display:flex;flex-wrap:wrap;gap:6px}.version-row__actions .btn{height:30px;padding:0 11px;font-size:12px}.modal-form{display:grid;gap:16px}.form-grid-2{display:grid;grid-template-columns:1fr 1fr;gap:12px}.code-editor{min-height:280px;font-family:var(--mono);font-size:12px;white-space:pre;overflow:auto}.code-editor--small{min-height:100px}.object-line{display:grid;gap:4px;padding:10px 12px;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius)}.object-line code{word-break:break-all;color:var(--text-tertiary)}.confirm-copy{color:var(--text-secondary)}@media(max-width:1100px){.ops-summary{grid-template-columns:repeat(2,minmax(0,1fr))}.ops-summary>div{border-right:1px solid var(--border);border-bottom:1px solid var(--border)}.ops-summary>div:nth-child(2n){border-right:0}.ops-summary>div:last-child{grid-column:1/-1;border-right:0;border-bottom:0}.upload-grid,.asset-upload{grid-template-columns:repeat(2,minmax(0,1fr))}.version-layout{grid-template-columns:240px minmax(0,1fr)}}@media(max-width:760px){.admin-page{padding:18px 14px 40px}.upload-grid,.asset-upload,.version-layout,.form-grid-2{grid-template-columns:1fr}.family-list{max-height:300px}.workspace-head{align-items:flex-start;flex-direction:column}.upload-grid>.btn,.asset-upload>.btn{width:100%}.table-scroll{max-width:calc(100vw - 92px)}}
-.panel-toolbar{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px 18px;border-bottom:1px solid var(--border)}.panel-toolbar h2{font-size:16px}.panel-toolbar p{margin-top:3px;color:var(--text-tertiary);font-size:12px}.batch-layout{display:grid;grid-template-columns:250px minmax(0,1fr);min-height:420px}.batch-list{display:grid;align-content:start;border-right:1px solid var(--border)}.batch-list button{min-height:58px;display:flex;align-items:center;gap:8px;padding:10px 12px;border:0;border-bottom:1px solid var(--border);background:var(--surface);color:var(--text);text-align:left}.batch-list button.active{background:var(--color-primary-soft);box-shadow:inset 3px 0 var(--color-primary)}.batch-list button>span{min-width:0;display:grid;flex:1}.batch-list small{color:var(--text-tertiary);font-size:12px}.batch-detail{min-width:0;display:grid;align-content:start;gap:12px;padding:14px}.batch-metrics{display:grid;grid-template-columns:repeat(5,minmax(80px,1fr));border:1px solid var(--border)}.batch-metrics span{display:grid;padding:10px 12px;border-right:1px solid var(--border);color:var(--text-tertiary);font-size:12px}.batch-metrics span:last-child{border-right:0}.batch-metrics strong{color:var(--text);font-size:18px}@media(max-width:900px){.batch-layout{grid-template-columns:1fr}.batch-list{grid-template-columns:repeat(2,minmax(0,1fr));border-right:0;border-bottom:1px solid var(--border)}.batch-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:640px){.panel-toolbar{align-items:stretch;flex-direction:column}.batch-list,.batch-metrics{grid-template-columns:1fr}.ops-tabs{max-width:100%;overflow-x:auto}}
-@media(max-width:760px){.admin-page{grid-template-columns:minmax(0,1fr)}.admin-page>*{min-width:0}.page-head,.page-head>div,.ops-summary>div{min-width:0}.page-head__sub,.ops-summary span{overflow-wrap:anywhere}}
+.admin-page{display:grid;gap:var(--space-6);align-content:start;max-width:1540px;margin:0 auto}.ops-summary{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));background:var(--surface-1);border:1px solid var(--border-default);border-radius:var(--radius-md);overflow:hidden}.ops-summary>div{min-height:82px;padding:16px 20px;display:grid;align-content:center;border-right:1px solid var(--border-default)}.ops-summary>div:last-child{border-right:0}.ops-summary strong{font-size:24px;line-height:1.15}.ops-summary span{font-size:12px;color:var(--text-tertiary)}.scanner-ready{color:var(--color-success)}.scanner-blocked{color:var(--color-danger)}.ops-tabs,.source-switch{display:inline-flex;width:max-content;padding:3px;background:var(--surface-3);border-radius:var(--radius-md)}.ops-tabs button,.source-switch button{height:32px;padding:0 15px;border:0;border-radius:6px;background:transparent;color:var(--text-secondary);font-size:13px}.ops-tabs button.active,.source-switch button.active{background:var(--surface-1);color:var(--text-primary);box-shadow:var(--shadow-sm);font-weight:600}.source-switch button:disabled{cursor:not-allowed;opacity:.7}.ops-loading{display:grid;gap:12px;padding:24px;background:var(--surface-1);border:1px solid var(--border-default);border-radius:var(--radius-md)}.ops-panel{display:grid;gap:18px;background:var(--surface-1);border:1px solid var(--border-default);border-radius:var(--radius-md);overflow:hidden}.upload-grid{display:grid;grid-template-columns:180px minmax(220px,1fr) minmax(240px,1fr) auto;gap:12px;align-items:end;padding:18px;border-bottom:1px solid var(--border-default)}.asset-upload{display:grid;grid-template-columns:repeat(4,minmax(160px,1fr));gap:12px;align-items:end;padding:18px;border-bottom:1px solid var(--border-default)}.asset-upload>.form-submit{justify-self:start}.table-scroll{overflow:auto}.data-table td{max-width:280px}.data-table td strong,.data-table td small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.data-table td small{color:var(--text-tertiary);font-size:12px;margin-top:2px}.description-cell{min-width:220px}.row-actions{display:flex;gap:4px}.version-layout{display:grid;grid-template-columns:300px minmax(0,1fr);gap:16px;align-items:start}.family-list{display:grid;background:var(--surface-1);border:1px solid var(--border-default);border-radius:var(--radius-md);overflow:hidden;max-height:calc(100vh - 260px);overflow-y:auto}.family-list>button{min-height:64px;border:0;border-bottom:1px solid var(--border-default);background:var(--surface-1);padding:10px 12px;display:flex;align-items:center;gap:10px;text-align:left;color:var(--text-primary)}.family-list>button:last-child{border-bottom:0}.family-list>button:hover{background:var(--surface-2)}.family-list>button.active{background:var(--color-primary-soft);box-shadow:inset 3px 0 var(--color-primary)}.family-list>button>span:first-child{display:grid;flex:1;min-width:0}.family-list strong,.family-list small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.family-list small{font-size:12px;color:var(--text-tertiary)}.version-workspace{min-width:0;background:var(--surface-1);border:1px solid var(--border-default);border-radius:var(--radius-md);overflow:hidden}.workspace-head{min-height:76px;padding:14px 18px;border-bottom:1px solid var(--border-default);display:flex;align-items:center;justify-content:space-between;gap:16px}.workspace-head h2{font-size:17px}.version-list{display:grid}.version-row{display:grid;gap:12px;padding:16px 18px;border-bottom:1px solid var(--border-default)}.version-row:last-child{border-bottom:0}.version-row__main{display:flex;align-items:center;gap:12px}.version-row__main>div{display:grid;flex:1;min-width:0}.version-row__main small{font-size:12px;color:var(--text-tertiary)}.revision{width:42px;height:32px;border-radius:6px;background:var(--surface-2);display:grid;place-items:center;font-family:var(--font-mono);font-size:12px;font-weight:600}.gate-strip{display:flex;flex-wrap:wrap;gap:6px}.gate-strip span{display:inline-flex;align-items:center;gap:4px;height:26px;padding:0 8px;border:1px solid var(--border-default);border-radius:6px;color:var(--text-tertiary);font-size:12px}.gate-strip span.passed{border-color:var(--border-default);background:var(--color-success-soft);color:var(--color-success)}.version-row__actions{display:flex;flex-wrap:wrap;gap:6px}.modal-form{display:grid;gap:16px}.form-grid-2{display:grid;grid-template-columns:1fr 1fr;gap:12px}.modal-form .code-editor{min-height:280px;font-family:var(--font-mono);font-size:12px;white-space:pre;overflow:auto}.modal-form .code-editor--small{min-height:100px}.object-line{display:grid;gap:4px;padding:10px 12px;background:var(--surface-2);border:1px solid var(--border-default);border-radius:var(--radius-md)}.object-line code{word-break:break-all;color:var(--text-tertiary)}.confirm-copy{color:var(--text-secondary)}@media(max-width:1100px){.ops-summary{grid-template-columns:repeat(2,minmax(0,1fr))}.ops-summary>div{border-right:1px solid var(--border-default);border-bottom:1px solid var(--border-default)}.ops-summary>div:nth-child(2n){border-right:0}.ops-summary>div:last-child{grid-column:1/-1;border-right:0;border-bottom:0}.upload-grid,.asset-upload{grid-template-columns:repeat(2,minmax(0,1fr))}.version-layout{grid-template-columns:240px minmax(0,1fr)}}@media(max-width:760px){.admin-page{padding:18px 14px 40px}.upload-grid,.asset-upload,.version-layout,.form-grid-2{grid-template-columns:1fr}.family-list{max-height:300px}.workspace-head{align-items:flex-start;flex-direction:column}.upload-grid>.form-submit,.asset-upload>.form-submit{width:100%}.table-scroll{max-width:calc(100vw - 92px)}}
+.panel-toolbar{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px 18px;border-bottom:1px solid var(--border-default)}.panel-toolbar h2{font-size:16px}.panel-toolbar p{margin-top:3px;color:var(--text-tertiary);font-size:12px}.batch-layout{display:grid;grid-template-columns:250px minmax(0,1fr);min-height:420px}.batch-list{display:grid;align-content:start;border-right:1px solid var(--border-default)}.batch-list button{min-height:58px;display:flex;align-items:center;gap:8px;padding:10px 12px;border:0;border-bottom:1px solid var(--border-default);background:var(--surface-1);color:var(--text-primary);text-align:left}.batch-list button.active{background:var(--color-primary-soft);box-shadow:inset 3px 0 var(--color-primary)}.batch-list button>span{min-width:0;display:grid;flex:1}.batch-list small{color:var(--text-tertiary);font-size:12px}.batch-detail{min-width:0;display:grid;align-content:start;gap:12px;padding:14px}.batch-metrics{display:grid;grid-template-columns:repeat(5,minmax(80px,1fr));border:1px solid var(--border-default)}.batch-metrics span{display:grid;padding:10px 12px;border-right:1px solid var(--border-default);color:var(--text-tertiary);font-size:12px}.batch-metrics span:last-child{border-right:0}.batch-metrics strong{color:var(--text-primary);font-size:18px}@media(max-width:900px){.batch-layout{grid-template-columns:1fr}.batch-list{grid-template-columns:repeat(2,minmax(0,1fr));border-right:0;border-bottom:1px solid var(--border-default)}.batch-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:640px){.panel-toolbar{align-items:stretch;flex-direction:column}.batch-list,.batch-metrics{grid-template-columns:1fr}.ops-tabs{max-width:100%;overflow-x:auto}}
+@media(max-width:760px){.admin-page{grid-template-columns:minmax(0,1fr)}.admin-page>*{min-width:0}.ops-summary>div{min-width:0}.ops-summary span,.admin-page :deep(.ui-page-header__desc){overflow-wrap:anywhere}}
+
+/* Native file picker, drawn like the UiInput beside it. */
+.file-input {
+  width: 100%;
+  height: var(--control-md);
+  padding: 4px 8px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--surface-1);
+  color: var(--text-primary);
+  font-size: var(--fs-sm);
+  box-shadow: var(--shadow-xs);
+  transition: border-color var(--dur-fast) var(--ease-standard), box-shadow var(--dur-base) var(--ease-out);
+}
+.file-input:hover {
+  border-color: var(--border-strong);
+}
+.file-input:focus-visible {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: var(--focus-ring);
+}
+.file-input::file-selector-button {
+  height: 100%;
+  margin-right: var(--space-2);
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: var(--surface-3);
+  color: var(--text-primary);
+  font: inherit;
+  cursor: pointer;
+}
 
 .catalog-more {
   display: flex;
@@ -1005,17 +1034,17 @@ onUnmounted(() => {
   inset: 3px auto 3px 3px;
   width: calc((100% - 6px) / 5);
   border-radius: 6px;
-  background: var(--surface);
-  box-shadow: var(--shadow-s);
+  background: var(--surface-1);
+  box-shadow: var(--shadow-sm);
   content: '';
   transform: translateX(calc(var(--ops-tab-index) * 100%));
-  transition: transform var(--motion-slow) var(--motion-ease);
+  transition: transform var(--dur-slow) var(--ease-standard);
 }
 .ops-tabs button,
 .source-switch button {
   position: relative;
   z-index: 1;
-  transition: color var(--motion-base) ease, transform var(--motion-fast) var(--motion-ease);
+  transition: color var(--dur-base) ease, transform var(--dur-fast) var(--ease-standard);
 }
 .ops-tabs button:active,
 .source-switch button:active:not(:disabled) { transform: scale(.97); }
@@ -1028,7 +1057,7 @@ onUnmounted(() => {
 .ops-panel-swap-leave-active,
 .source-field-enter-active,
 .source-field-leave-active {
-  transition: opacity var(--motion-base) ease, transform var(--motion-base) var(--motion-ease);
+  transition: opacity var(--dur-base) ease, transform var(--dur-base) var(--ease-standard);
 }
 .ops-panel-swap-enter-from,
 .source-field-enter-from { opacity: 0; transform: translateY(7px); }
@@ -1036,10 +1065,10 @@ onUnmounted(() => {
 .source-field-leave-to { opacity: 0; transform: translateY(-3px); }
 .family-list > button,
 .batch-list button {
-  transition: background-color var(--motion-base) ease, box-shadow var(--motion-base) ease, color var(--motion-fast) ease;
+  transition: background-color var(--dur-base) ease, box-shadow var(--dur-base) ease, color var(--dur-fast) ease;
 }
 .version-list,
-.batch-detail { animation: ops-detail-in var(--motion-base) var(--motion-ease-out) both; }
+.batch-detail { animation: ops-detail-in var(--dur-base) var(--ease-out) both; }
 @keyframes ops-detail-in {
   from { opacity: 0; transform: translateY(5px); }
   to { opacity: 1; transform: translateY(0); }
@@ -1054,10 +1083,10 @@ onUnmounted(() => {
   inset: 3px auto 3px 3px;
   width: calc((100% - 6px) / 2);
   border-radius: 6px;
-  background: var(--surface);
-  box-shadow: var(--shadow-s);
+  background: var(--surface-1);
+  box-shadow: var(--shadow-sm);
   content: '';
-  transition: transform var(--motion-slow) var(--motion-ease);
+  transition: transform var(--dur-slow) var(--ease-standard);
 }
 .source-switch.is-independent::before { transform: translateX(100%); }
 @media (prefers-reduced-motion: reduce) {

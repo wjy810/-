@@ -2,9 +2,9 @@
 /** Resumes and their versions as a table; versions sit indented under their resume in "全部". */
 import AppIcon from '@/shared/ui/AppIcon.vue'
 import JobProofIcon from '@/shared/ui/JobProofIcon.vue'
-import UiBadge, { type BadgeTone } from '@/shared/ui/UiBadge.vue'
+import UiBadge from '@/shared/ui/UiBadge.vue'
 import { formatWhen } from '@/shared/lib/datetime'
-import { coverageSub, rowAction, rowLink, type ResumeRow, type RowTone } from '../utils/resumeRows'
+import { coverageSub, rowAction, rowLink, ROW_BADGE_TONE, type ResumeRow } from '../utils/resumeRows'
 
 defineProps<{
   rows: ResumeRow[]
@@ -22,7 +22,6 @@ const emit = defineEmits<{
   delete: [row: ResumeRow]
 }>()
 
-const BADGE_TONE: Record<RowTone, BadgeTone> = { blue: 'primary', green: 'success', orange: 'accent' }
 </script>
 
 <template>
@@ -47,7 +46,7 @@ const BADGE_TONE: Record<RowTone, BadgeTone> = { blue: 'primary', green: 'succes
               <div class="rname__body">
                 <div class="rname__line">
                   <span class="rname__title" :title="row.title">{{ row.title }}</span>
-                  <UiBadge :tone="BADGE_TONE[row.rowTone]">{{ row.rowType }}<template v-if="row.ordinal"> · 第 {{ row.ordinal }} 版</template></UiBadge>
+                  <UiBadge :tone="ROW_BADGE_TONE[row.rowTone]">{{ row.rowType }}<template v-if="row.ordinal"> · 第 {{ row.ordinal }} 版</template></UiBadge>
                 </div>
                 <p v-if="row.lockNote" class="rname__lock">
                   <AppIcon name="lock" :size="12" />

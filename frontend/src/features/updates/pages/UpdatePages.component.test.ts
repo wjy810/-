@@ -25,7 +25,7 @@ import UpdateDetailPage from './UpdateDetailPage.vue'
 import UpdateListPage from './UpdateListPage.vue'
 
 const failure = new ApiClientError({ category: 'SYSTEM_FAILURE', reason: 'X', message: '服务暂时不可用' }, 503, 'req-updates')
-const stubs = { UiIllustration: true, AppSelect: true, UpdateContent: true }
+const stubs = { UiIllustration: true, UiSelect: true, UpdateContent: true }
 const release = (slug: string): ReleaseDetail => ({
   release: {
     id: slug, versionLabel: slug, slug, title: `版本 ${slug}`, summary: '摘要', releaseType: 'FEATURE', status: 'PUBLISHED',

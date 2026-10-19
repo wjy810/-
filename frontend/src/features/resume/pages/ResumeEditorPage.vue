@@ -5,17 +5,17 @@
  */
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { PenLine } from 'lucide-vue-next'
-import AppBanner from '@/shared/ui/AppBanner.vue'
-import AppButton from '@/shared/ui/AppButton.vue'
-import AppCard from '@/shared/ui/AppCard.vue'
+import { Download, GitCompareArrows, LinkIcon, Lock, PenLine, RefreshCw, RotateCcw } from 'lucide-vue-next'
 import AppIcon from '@/shared/ui/AppIcon.vue'
-import AppModal from '@/shared/ui/AppModal.vue'
-import AppTag from '@/shared/ui/AppTag.vue'
 import ForbidState from '@/shared/ui/ForbidState.vue'
 import PageState from '@/shared/ui/PageState.vue'
+import UiBadge, { type BadgeTone } from '@/shared/ui/UiBadge.vue'
+import UiBanner from '@/shared/ui/UiBanner.vue'
 import UiButton from '@/shared/ui/UiButton.vue'
+import UiCard from '@/shared/ui/UiCard.vue'
+import UiDialog from '@/shared/ui/UiDialog.vue'
 import UiEmptyState from '@/shared/ui/UiEmptyState.vue'
+import UiPageHeader from '@/shared/ui/UiPageHeader.vue'
 import UiSkeleton from '@/shared/ui/UiSkeleton.vue'
 import { confirm } from '@/shared/ui/confirm'
 import { useToastFeedback } from '@/shared/ui/toast'
@@ -110,12 +110,12 @@ const pendingAiCount = computed(() => {
   const ids = master.value?.pendingCandidateIds
   return Array.isArray(ids) ? ids.length : null
 })
-const statusTone = computed(() => {
+const statusTone = computed<BadgeTone>(() => {
   const status = master.value?.status
-  if (status === 'READY_TO_EXPORT') return 'green'
-  if (status === 'PENDING_CONFIRMATION') return 'orange'
-  if (status === 'ARCHIVED') return 'gray'
-  return 'blue'
+  if (status === 'READY_TO_EXPORT') return 'success'
+  if (status === 'PENDING_CONFIRMATION') return 'accent'
+  if (status === 'ARCHIVED') return 'neutral'
+  return 'primary'
 })
 const canMarkReady = computed(() => Boolean(master.value) && !archived.value
   && master.value?.status !== 'READY_TO_EXPORT' && unresolved.value.length === 0)
@@ -151,9 +151,9 @@ const outcomeStats = computed(() => {
 })
 const layoutStatusLabel = computed(() => {
   const status = currentLayout.value?.layout?.status
-  if (status === 'OVERFLOW') return { tone: 'red' as const, text: '内容超出页面' }
-  if (status === 'FROZEN') return { tone: 'blue' as const, text: '已随版本冻结' }
-  return { tone: 'green' as const, text: '未超出页面' }
+  if (status === 'OVERFLOW') return { tone: 'danger' as const, text: '内容超出页面' }
+  if (status === 'FROZEN') return { tone: 'primary' as const, text: '已随版本冻结' }
+  return { tone: 'success' as const, text: '未超出页面' }
 })
 
 function versionLabel(item: ResumeVersionView): string {
@@ -166,10 +166,10 @@ function versionIcon(item: ResumeVersionView): IconName {
   return 'clock'
 }
 
-function versionTone(item: ResumeVersionView): 'blue' | 'orange' | 'gray' {
-  if (item.status === 'FROZEN') return 'blue'
-  if (item.status === 'PENDING_USER_CONFIRMATION') return 'orange'
-  return 'gray'
+function versionTone(item: ResumeVersionView): 'primary' | 'accent' | 'neutral' {
+  if (item.status === 'FROZEN') return 'primary'
+  if (item.status === 'PENDING_USER_CONFIRMATION') return 'accent'
+  return 'neutral'
 }
 
 function taskStateText(task: TaskView): string {
@@ -470,35 +470,26 @@ onUnmounted(stopPoll)
 
 <template>
   <ForbidState v-if="forbidden" :error="forbidden" />
-  <section v-else class="page">
-    <header class="page-head">
-      <div class="page-head__left">
-        <RouterLink class="text-link" to="/resumes">
-          <AppIcon name="chevron-left" :size="14" />
-          简历列表
-        </RouterLink>
-        <div class="page-head__titleline">
-          <h1 class="page-head__title">{{ master ? master.title || '未命名简历' : '版本与导出' }}</h1>
-          <AppTag v-if="master" :tone="statusTone">{{ glossMasterStatus(master.status) }}</AppTag>
-        </div>
-        <p class="page-head__sub">
-          版本与导出<template v-if="master"> · 最后更新 {{ formatWhen(master.updatedAt) }}</template>
-        </p>
-      </div>
-      <div class="page-head__actions">
-        <AppButton variant="ghost" :disabled="versions.length < 2" @click="compareOpen = true">
-          <AppIcon name="copy" :size="15" />
+  <section v-else class="page-container resume-versions">
+    <UiPageHeader :title="master ? master.title || '未命名简历' : '版本与导出'" back="/resumes" back-label="简历列表">
+      <template v-if="master" #title-suffix>
+        <UiBadge :tone="statusTone">{{ glossMasterStatus(master.status) }}</UiBadge>
+      </template>
+      <template #description>
+        版本与导出<template v-if="master"> · 最后更新 {{ formatWhen(master.updatedAt) }}</template>
+      </template>
+      <template #actions>
+        <UiButton variant="secondary" :icon="GitCompareArrows" :disabled="versions.length < 2" @click="compareOpen = true">
           版本对比
-        </AppButton>
-        <AppButton variant="ghost" :pending="page.loading.value && page.loaded.value" @click="reload">
-          <AppIcon name="refresh" :size="15" />
+        </UiButton>
+        <UiButton variant="secondary" :icon="RefreshCw" :pending="page.loading.value && page.loaded.value" @click="reload">
           刷新
-        </AppButton>
+        </UiButton>
         <UiButton v-if="master && !archived" data-testid="open-workbench" :icon="PenLine" :to="`/resumes/${master.id}`">
           在工作台中编辑
         </UiButton>
-      </div>
-    </header>
+      </template>
+    </UiPageHeader>
 
     <PageState
       :loading="page.loading.value"
@@ -509,19 +500,25 @@ onUnmounted(stopPoll)
     >
       <template #skeleton>
         <div class="editor-grid" aria-busy="true">
-          <div class="card bones"><UiSkeleton height="22px" width="40%" /><UiSkeleton :lines="4" /></div>
-          <div class="card bones"><UiSkeleton :lines="5" /></div>
+          <UiCard><div class="bones"><UiSkeleton height="22px" width="40%" /><UiSkeleton :lines="4" /></div></UiCard>
+          <UiCard><div class="bones"><UiSkeleton :lines="5" /></div></UiCard>
         </div>
       </template>
 
       <div v-if="master" class="editor-grid">
         <div class="editor-main">
-          <AppBanner v-if="archived" tone="warn">这份简历已归档。恢复后才能继续编辑、冻结或导出。</AppBanner>
+          <UiBanner v-if="archived" tone="warning">这份简历已归档。恢复后才能继续编辑、冻结或导出。</UiBanner>
 
-          <AppCard id="export" title="版本" sub="每个版本都是一份冻结的快照，导出的文件与它的内容完全一致。">
-            <template #actions>
-              <button class="text-link" type="button" :disabled="versions.length < 2" @click="compareOpen = true">版本对比</button>
-            </template>
+          <UiCard id="export">
+            <header class="panel-head">
+              <div>
+                <h2 class="panel-head__title">版本</h2>
+                <p class="panel-head__sub">每个版本都是一份冻结的快照，导出的文件与它的内容完全一致。</p>
+              </div>
+              <div class="panel-head__actions">
+                <button class="text-link" type="button" :disabled="versions.length < 2" @click="compareOpen = true">版本对比</button>
+              </div>
+            </header>
             <div v-if="versions.length" class="ver-list">
               <div v-for="item in versions" :key="item.id" class="ver" :class="{ 'is-focus': item.id === focusedVersionId }" data-testid="version-row">
                 <span class="ver__icon" :class="`ver__icon--${versionTone(item)}`">
@@ -530,48 +527,48 @@ onUnmounted(stopPoll)
                 <div class="ver__body">
                   <div class="ver__line">
                     <strong>{{ versionLabel(item) }}</strong>
-                    <AppTag :tone="versionTone(item)">{{ glossVersionStatus(item.status) }}</AppTag>
+                    <UiBadge :tone="versionTone(item)">{{ glossVersionStatus(item.status) }}</UiBadge>
                   </div>
                   <p class="fine">{{ versionSourceLabel(item.source) }} · {{ formatWhen(item.frozenAt || item.createdAt) }}</p>
                   <p v-if="item.status === 'GENERATING' || item.status === 'PENDING_USER_CONFIRMATION'" class="fine">确认后才能导出。</p>
                   <div class="ver__ops">
-                    <AppButton
+                    <UiButton
                       v-if="item.status === 'PENDING_USER_CONFIRMATION'"
                       :pending="pending === `${item.id}-confirm`"
                       @click="onConfirmVersion(item)"
                     >
                       确认并冻结
-                    </AppButton>
-                    <AppButton
-                      variant="ghost"
-                      :disabled="!isPdfExportable(item.status) || Boolean(pending)"
+                    </UiButton>
+                    <UiButton
+                      variant="secondary"
+                      :icon="Download"
+                      :disabled="!isPdfExportable(item.status) || (Boolean(pending) && pending !== `${item.id}-pdf`)"
                       :pending="pending === `${item.id}-pdf`"
                       @click="runExport(item, 'pdf')"
                     >
-                      <AppIcon name="download" :size="13" />
                       导出 PDF
-                    </AppButton>
-                    <AppButton
+                    </UiButton>
+                    <UiButton
                       v-if="docxAvailable && item.layoutInstanceId"
-                      variant="ghost"
-                      :disabled="!isPdfExportable(item.status) || Boolean(pending)"
+                      variant="secondary"
+                      :icon="Download"
+                      :disabled="!isPdfExportable(item.status) || (Boolean(pending) && pending !== `${item.id}-docx`)"
                       :pending="pending === `${item.id}-docx`"
                       @click="runExport(item, 'docx')"
                     >
-                      <AppIcon name="download" :size="13" />
                       导出 Word
-                    </AppButton>
-                    <AppButton
+                    </UiButton>
+                    <UiButton
                       v-if="isRestorableVersion(item) && !archived"
-                      variant="ghost"
-                      :disabled="Boolean(pending)"
+                      variant="secondary"
+                      :icon="RotateCcw"
+                      :disabled="Boolean(pending) && pending !== `${item.id}-restore`"
                       :pending="pending === `${item.id}-restore`"
                       data-testid="restore-version"
                       @click="onRestoreVersion(item)"
                     >
-                      <AppIcon name="rotate-ccw" :size="13" />
                       恢复此版本
-                    </AppButton>
+                    </UiButton>
                     <button
                       v-if="item.status !== 'ARCHIVED'"
                       class="text-link link-danger"
@@ -592,80 +589,86 @@ onUnmounted(stopPoll)
               title="还没有版本"
               description="在工作台导出 PDF，或把当前内容冻结为版本后，会出现在这里。"
             />
-            <template v-if="pdfRun || docxRun" #footer>
-              <div class="export-results">
-                <div v-if="pdfRun" class="export-box" data-testid="pdf-run">
-                  <p class="fine">{{ runLabel(pdfRun) }}的 PDF：{{ taskStateText(pdfRun.task) }}</p>
-                  <AppButton
-                    variant="ghost"
-                    :disabled="Boolean(pdfDownloadBlockReason)"
-                    :pending="pending === 'pdf-download'"
-                    @click="onDownload('pdf')"
-                  >
-                    <AppIcon name="download" :size="13" />
-                    下载 PDF
-                  </AppButton>
-                  <p v-if="pdfDownloadBlockReason && pdfRun.task.status === 'SUCCEEDED'" class="fine">{{ pdfDownloadBlockReason }}</p>
-                </div>
-                <div v-if="docxRun" class="export-box">
-                  <p class="fine">{{ runLabel(docxRun) }}的 Word 文件：{{ taskStateText(docxRun.task) }}</p>
-                  <AppButton
-                    variant="ghost"
-                    :disabled="Boolean(docxDownloadBlockReason)"
-                    :pending="pending === 'docx-download'"
-                    @click="onDownload('docx')"
-                  >
-                    <AppIcon name="download" :size="13" />
-                    下载 Word
-                  </AppButton>
-                  <p v-if="docxDownloadBlockReason && docxRun.task.status === 'SUCCEEDED'" class="fine">{{ docxDownloadBlockReason }}</p>
-                </div>
+            <footer v-if="pdfRun || docxRun" class="panel-foot export-results">
+              <div v-if="pdfRun" class="export-box" data-testid="pdf-run">
+                <p class="fine">{{ runLabel(pdfRun) }}的 PDF：{{ taskStateText(pdfRun.task) }}</p>
+                <UiButton
+                  variant="secondary"
+                  :icon="Download"
+                  :disabled="Boolean(pdfDownloadBlockReason)"
+                  :pending="pending === 'pdf-download'"
+                  @click="onDownload('pdf')"
+                >
+                  下载 PDF
+                </UiButton>
+                <p v-if="pdfDownloadBlockReason && pdfRun.task.status === 'SUCCEEDED'" class="fine">{{ pdfDownloadBlockReason }}</p>
               </div>
-            </template>
-          </AppCard>
+              <div v-if="docxRun" class="export-box">
+                <p class="fine">{{ runLabel(docxRun) }}的 Word 文件：{{ taskStateText(docxRun.task) }}</p>
+                <UiButton
+                  variant="secondary"
+                  :icon="Download"
+                  :disabled="Boolean(docxDownloadBlockReason)"
+                  :pending="pending === 'docx-download'"
+                  @click="onDownload('docx')"
+                >
+                  下载 Word
+                </UiButton>
+                <p v-if="docxDownloadBlockReason && docxRun.task.status === 'SUCCEEDED'" class="fine">{{ docxDownloadBlockReason }}</p>
+              </div>
+            </footer>
+          </UiCard>
 
-          <AppCard
-            v-if="outcomes.length"
-            title="关键成果与证据"
-            sub="冻结前，每条关键成果需要关联求职资料，或在冻结时逐条确认暂无证据。"
-          >
+          <UiCard v-if="outcomes.length">
+            <header class="panel-head">
+              <div>
+                <h2 class="panel-head__title">关键成果与证据</h2>
+                <p class="panel-head__sub">冻结前，每条关键成果需要关联求职资料，或在冻结时逐条确认暂无证据。</p>
+              </div>
+            </header>
             <p class="fine outcome-stats">
               已关联 {{ outcomeStats.linked }} · 已确认暂无证据 {{ outcomeStats.waived }} · 待处理 {{ outcomeStats.open }} / 共 {{ outcomeStats.total }} 条
             </p>
-            <AppBanner v-if="evidenceError" tone="bad">
+            <UiBanner v-if="evidenceError" tone="danger" class="outcome-error">
               {{ evidenceError }}读取成功前不能关联证据。
               <button class="text-link" type="button" :disabled="evidenceLoading" @click="loadEvidence">重试</button>
-            </AppBanner>
+            </UiBanner>
             <div class="outcome-list">
               <div v-for="(item, index) in outcomes" :key="item.id || `outcome-${index}`" class="outcome">
                 <div class="outcome__head">
                   <span class="outcome__no">成果 {{ index + 1 }}</span>
-                  <AppTag v-if="item.evidenceId" tone="green">已关联资料</AppTag>
-                  <AppTag v-else-if="item.waiveNoEvidence" tone="orange">已确认暂无资料</AppTag>
-                  <AppTag v-else tone="red">待处理</AppTag>
+                  <UiBadge v-if="item.evidenceId" tone="success">已关联资料</UiBadge>
+                  <UiBadge v-else-if="item.waiveNoEvidence" tone="accent">已确认暂无资料</UiBadge>
+                  <UiBadge v-else tone="danger">待处理</UiBadge>
                 </div>
                 <p class="outcome__text">{{ item.text }}</p>
                 <div class="outcome__foot">
-                  <AppButton
-                    variant="ghost"
+                  <UiButton
+                    variant="secondary"
+                    :icon="LinkIcon"
                     :disabled="archived || !item.id || Boolean(evidenceError) || evidenceLoading"
                     @click="openDrawer(item)"
                   >
-                    <AppIcon name="link" :size="14" />
                     {{ outcomeResolved(item) && item.evidenceId ? '更换证据' : '关联证据' }}
-                  </AppButton>
+                  </UiButton>
                 </div>
               </div>
             </div>
-          </AppCard>
+          </UiCard>
         </div>
 
         <aside class="rail">
-          <AppCard title="简历状态" sub="标为可导出后，才能把当前内容冻结为新版本。">
+          <UiCard>
+            <header class="panel-head">
+              <div>
+                <h2 class="panel-head__title">简历状态</h2>
+                <p class="panel-head__sub">标为可导出后，才能把当前内容冻结为新版本。</p>
+              </div>
+            </header>
             <dl class="facts">
               <div class="facts__row">
                 <dt>状态</dt>
-                <dd><AppTag :tone="statusTone">{{ glossMasterStatus(master.status) }}</AppTag></dd>
+                <dd><UiBadge :tone="statusTone">{{ glossMasterStatus(master.status) }}</UiBadge></dd>
               </div>
               <div class="facts__row">
                 <dt>来源</dt>
@@ -679,22 +682,20 @@ onUnmounted(stopPoll)
             <template v-if="!archived">
               <p v-if="readyBlockReason" class="fine">{{ readyBlockReason }}</p>
               <div class="rail__ops">
-                <AppButton
+                <UiButton
                   v-if="master.status !== 'READY_TO_EXPORT'"
-                  variant="ink"
                   :disabled="!canMarkReady"
                   :pending="pending === 'ready'"
                   @click="onReady"
                 >
                   标为可导出
-                </AppButton>
-                <AppButton data-testid="open-freeze" @click="freezeOpen = true">
-                  <AppIcon name="lock" :size="14" />
+                </UiButton>
+                <UiButton data-testid="open-freeze" :icon="Lock" @click="freezeOpen = true">
                   冻结当前版本
-                </AppButton>
+                </UiButton>
               </div>
             </template>
-            <template #footer>
+            <footer class="panel-foot">
               <button
                 v-if="!archived"
                 class="text-link link-danger"
@@ -703,19 +704,25 @@ onUnmounted(stopPoll)
               >
                 归档简历
               </button>
-              <AppButton v-else :pending="pending === 'restore-master'" @click="onRestoreMaster">恢复简历</AppButton>
-            </template>
-          </AppCard>
+              <UiButton v-else :pending="pending === 'restore-master'" @click="onRestoreMaster">恢复简历</UiButton>
+            </footer>
+          </UiCard>
 
-          <AppCard title="当前模板" sub="冻结时会一并保存当时的模板与设计。">
-            <AppBanner v-if="layoutReadFailed" tone="warn">
+          <UiCard>
+            <header class="panel-head">
+              <div>
+                <h2 class="panel-head__title">当前模板</h2>
+                <p class="panel-head__sub">冻结时会一并保存当时的模板与设计。</p>
+              </div>
+            </header>
+            <UiBanner v-if="layoutReadFailed" tone="warning">
               模板状态读取失败，暂时不能冻结。
               <button class="text-link" type="button" @click="loadLayout(master.id)">重试</button>
-            </AppBanner>
+            </UiBanner>
             <div v-else-if="currentLayout?.selected && currentLayout.layout" class="layout-current">
               <div class="layout-current__head">
                 <strong>{{ currentLayout.layout.templateName || '历史模板' }}</strong>
-                <AppTag :tone="layoutStatusLabel.tone">{{ layoutStatusLabel.text }}</AppTag>
+                <UiBadge :tone="layoutStatusLabel.tone">{{ layoutStatusLabel.text }}</UiBadge>
               </div>
               <dl class="facts">
                 <div class="facts__row">
@@ -729,7 +736,7 @@ onUnmounted(stopPoll)
               </p>
             </div>
             <p v-else class="fine">还没有选择模板。可以在工作台的“模板”里挑选。</p>
-          </AppCard>
+          </UiCard>
         </aside>
       </div>
     </PageState>
@@ -763,35 +770,67 @@ onUnmounted(stopPoll)
     @waive="onWaive"
   />
   <ResumeCompareModal :open="compareOpen" :versions="versions" @close="compareOpen = false" @forbidden="writeForbidden = $event" />
-  <AppModal :open="Boolean(archiveTarget)" :title="archiveTarget?.kind === 'master' ? '归档简历' : '归档版本'" :width="440" @close="archiveTarget = null">
+  <UiDialog
+    :open="Boolean(archiveTarget)"
+    :title="archiveTarget?.kind === 'master' ? '归档简历' : '归档版本'"
+    width="sm"
+    :mobile-sheet="false"
+    @close="archiveTarget = null"
+  >
     <p class="muted">
       {{ archiveTarget?.kind === 'master' ? '归档后简历会移到「已归档」，可以随时恢复。' : '归档后这个版本不能再导出，记录仍会保留。' }}
     </p>
     <template #footer>
-      <AppButton variant="ghost" :disabled="Boolean(pending)" @click="archiveTarget = null">取消</AppButton>
-      <AppButton variant="danger" :pending="Boolean(pending)" @click="onConfirmArchive">确认归档</AppButton>
+      <UiButton variant="secondary" :disabled="Boolean(pending)" @click="archiveTarget = null">取消</UiButton>
+      <UiButton variant="danger" :pending="Boolean(pending)" @click="onConfirmArchive">确认归档</UiButton>
     </template>
-  </AppModal>
+  </UiDialog>
 </template>
 
 <style scoped>
-.page-head__left {
+.resume-versions {
   display: grid;
-  gap: 6px;
-  justify-items: start;
-}
-
-.page-head__titleline {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
+  gap: var(--space-6);
+  align-content: start;
 }
 
 .bones {
-  padding: 20px;
   display: grid;
-  gap: 12px;
+  gap: var(--space-3);
+}
+
+.panel-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.panel-head__title {
+  font-size: var(--fs-h3);
+  line-height: var(--lh-h3);
+  font-weight: 600;
+}
+
+.panel-head__sub {
+  margin-top: 2px;
+  color: var(--text-tertiary);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-xs);
+}
+
+.panel-head__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+.panel-foot {
+  margin-top: var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border-subtle);
 }
 
 .editor-grid {
@@ -834,14 +873,18 @@ onUnmounted(stopPoll)
   margin-bottom: 12px;
 }
 
+.outcome-error {
+  margin-bottom: var(--space-3);
+}
+
 .outcome-list {
   display: grid;
   gap: 12px;
 }
 
 .outcome {
-  border: 1px solid var(--border);
-  border-radius: var(--radius-l);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
   padding: 12px 14px;
   display: grid;
   gap: 8px;
@@ -934,8 +977,8 @@ onUnmounted(stopPoll)
 .ver {
   display: flex;
   gap: 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-l);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
   padding: 12px;
 }
 
@@ -953,17 +996,17 @@ onUnmounted(stopPoll)
   flex-shrink: 0;
 }
 
-.ver__icon--blue {
+.ver__icon--primary {
   background: var(--color-primary-soft);
   color: var(--color-primary);
 }
 
-.ver__icon--orange {
-  background: var(--warning-soft);
-  color: var(--color-warning);
+.ver__icon--accent {
+  background: var(--color-accent-soft);
+  color: var(--color-accent-text);
 }
 
-.ver__icon--gray {
+.ver__icon--neutral {
   background: var(--surface-2);
   color: var(--text-tertiary);
 }
@@ -993,7 +1036,6 @@ onUnmounted(stopPoll)
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16px;
-  width: 100%;
 }
 
 .export-box {

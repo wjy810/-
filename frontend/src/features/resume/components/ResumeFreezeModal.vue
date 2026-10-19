@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { computed, reactive } from 'vue'
-import AppBanner from '@/shared/ui/AppBanner.vue'
-import AppButton from '@/shared/ui/AppButton.vue'
+import { Lock } from 'lucide-vue-next'
 import AppIcon from '@/shared/ui/AppIcon.vue'
-import AppModal from '@/shared/ui/AppModal.vue'
+import UiBanner from '@/shared/ui/UiBanner.vue'
+import UiButton from '@/shared/ui/UiButton.vue'
+import UiCheckbox from '@/shared/ui/UiCheckbox.vue'
+import UiDialog from '@/shared/ui/UiDialog.vue'
 import { outcomeResolved } from '../labels'
 import type { KeyOutcome } from '../types'
 
@@ -56,6 +58,12 @@ function outcomeKey(item: KeyOutcome, index: number): string {
   return item.id || `new-${index}`
 }
 
+function setWaiveAck(item: KeyOutcome, value: boolean): void {
+  if (item.id) {
+    waiveAck[item.id] = value
+  }
+}
+
 function onWaive(item: KeyOutcome): void {
   if (!item.id || !waiveAck[item.id]) {
     return
@@ -66,7 +74,7 @@ function onWaive(item: KeyOutcome): void {
 </script>
 
 <template>
-  <AppModal :open="open" title="冻结当前版本" :width="660" @close="emit('close')">
+  <UiDialog :open="open" title="冻结当前版本" :width="660" @close="emit('close')">
     <div class="freeze">
       <p class="muted">把当前已确认的简历内容保存为一份不可修改的版本，之后可以导出 PDF 或用来对比。</p>
 
@@ -114,7 +122,7 @@ function onWaive(item: KeyOutcome): void {
             <AppIcon :name="unresolved.length ? 'alert-circle' : 'check-circle'" :size="15" />
           </span>
           <span class="check__label">已关联证据或已确认暂无证据</span>
-          <span class="check__value" :class="{ 'is-warn': unresolved.length }">{{ resolvedCount }} / {{ listed.length }} 条</span>
+          <span class="check__value" :class="{ 'check__value--warn': unresolved.length }">{{ resolvedCount }} / {{ listed.length }} 条</span>
         </div>
         <div class="check">
           <span class="check__icon" :class="readyToApply ? 'check__icon--ok' : 'check__icon--bad'">
@@ -135,7 +143,7 @@ function onWaive(item: KeyOutcome): void {
             <AppIcon :name="pendingAiState === 'none' ? 'check-circle' : pendingAiState === 'some' ? 'alert-circle' : 'help'" :size="15" />
           </span>
           <span class="check__label">AI 待确认内容</span>
-          <span class="check__value" :class="{ 'is-warn': pendingAiState === 'some' }">
+          <span class="check__value" :class="{ 'check__value--warn': pendingAiState === 'some' }">
             {{ pendingAiState === 'unknown' ? '无法确认' : pendingAiState === 'some' ? `${pendingAi} 条未处理` : '没有' }}
           </span>
         </div>
@@ -144,31 +152,29 @@ function onWaive(item: KeyOutcome): void {
         </p>
       </section>
 
-      <AppBanner v-if="!canFreeze && freezeBlockReason" tone="bad">{{ freezeBlockReason }}</AppBanner>
-      <AppBanner v-if="evidenceError" tone="bad">
+      <UiBanner v-if="!canFreeze && freezeBlockReason" tone="danger">{{ freezeBlockReason }}</UiBanner>
+      <UiBanner v-if="evidenceError" tone="danger">
         {{ evidenceError }}资料列表读取成功前，不能关联证据或确认「暂无证据」。
-      </AppBanner>
+      </UiBanner>
 
       <div v-if="unresolved.length" class="waive-list">
         <div v-for="(item, index) in unresolved" :key="outcomeKey(item, index)" class="waive">
           <p class="waive__text">{{ item.text }}</p>
           <template v-if="item.id">
-            <label class="waive__ack">
-              <input
-                v-model="waiveAck[item.id]"
-                type="checkbox"
-                :disabled="Boolean(evidenceError) || Boolean(waivePending)"
-              />
-              <span>我确认暂无证据，仍要冻结这一条。</span>
-            </label>
-            <AppButton
-              variant="ghost"
-              :disabled="!waiveAck[item.id] || Boolean(evidenceError)"
+            <UiCheckbox
+              :model-value="Boolean(waiveAck[item.id])"
+              :disabled="Boolean(evidenceError) || Boolean(waivePending)"
+              label="我确认暂无证据，仍要冻结这一条。"
+              @update:model-value="setWaiveAck(item, $event)"
+            />
+            <UiButton
+              variant="secondary"
+              :disabled="(!waiveAck[item.id] && waivePending !== item.id) || Boolean(evidenceError)"
               :pending="waivePending === item.id"
               @click="onWaive(item)"
             >
               确认暂无证据仍要冻结
-            </AppButton>
+            </UiButton>
           </template>
           <p v-else class="fine">这条成果还没有保存完成，请刷新页面后再处理。</p>
         </div>
@@ -201,13 +207,12 @@ function onWaive(item: KeyOutcome): void {
     </div>
 
     <template #footer>
-      <AppButton variant="ghost" :disabled="freezePending" @click="emit('close')">取消</AppButton>
-      <AppButton :disabled="!canFreeze" :pending="freezePending" @click="emit('freeze')">
-        <AppIcon name="lock" :size="15" />
+      <UiButton variant="secondary" :disabled="freezePending" @click="emit('close')">取消</UiButton>
+      <UiButton :icon="Lock" :disabled="!canFreeze" :pending="freezePending" @click="emit('freeze')">
         冻结并创建版本
-      </AppButton>
+      </UiButton>
     </template>
-  </AppModal>
+  </UiDialog>
 </template>
 
 <style scoped>
@@ -221,8 +226,8 @@ function onWaive(item: KeyOutcome): void {
   align-items: center;
   gap: 12px;
   background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
   padding: 12px 14px;
 }
 
@@ -230,7 +235,7 @@ function onWaive(item: KeyOutcome): void {
   width: 36px;
   height: 36px;
   border-radius: 9px;
-  background: var(--success-soft);
+  background: var(--color-success-soft);
   color: var(--color-success);
   display: grid;
   place-items: center;
@@ -247,8 +252,8 @@ function onWaive(item: KeyOutcome): void {
 }
 
 .freeze__panel {
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
   padding: 12px 14px;
   display: grid;
   gap: 8px;
@@ -296,7 +301,7 @@ function onWaive(item: KeyOutcome): void {
   font-weight: 500;
 }
 
-.check__value.is-warn {
+.check__value--warn {
   color: var(--color-warning);
 }
 
@@ -307,8 +312,8 @@ function onWaive(item: KeyOutcome): void {
 
 .waive {
   border: 1px solid color-mix(in srgb, var(--color-warning) 35%, var(--border-subtle));
-  background: var(--warning-soft);
-  border-radius: var(--radius);
+  background: var(--color-warning-soft);
+  border-radius: var(--radius-md);
   padding: 10px 12px;
   display: grid;
   gap: 8px;
@@ -317,21 +322,12 @@ function onWaive(item: KeyOutcome): void {
 
 .waive__text {
   font-size: 13px;
-  color: var(--text);
-}
-
-.waive__ack {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
-  color: var(--text-secondary);
-  cursor: pointer;
+  color: var(--text-primary);
 }
 
 .freeze__impact {
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
   padding: 12px 14px;
   display: grid;
   gap: 10px;
@@ -363,12 +359,12 @@ function onWaive(item: KeyOutcome): void {
 }
 
 .impact__icon--green {
-  background: var(--success-soft);
+  background: var(--color-success-soft);
   color: var(--color-success);
 }
 
 .impact__icon--orange {
-  background: var(--warning-soft);
+  background: var(--color-warning-soft);
   color: var(--color-warning);
 }
 

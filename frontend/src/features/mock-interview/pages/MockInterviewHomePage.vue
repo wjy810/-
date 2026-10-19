@@ -2,7 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ChevronRight, LoaderCircle, Plus, Search } from 'lucide-vue-next'
-import AppSelect from '@/shared/ui/AppSelect.vue'
+import UiSelect from '@/shared/ui/UiSelect.vue'
 import UiEmptyState from '@/shared/ui/UiEmptyState.vue'
 import JobProofIcon from '@/shared/ui/JobProofIcon.vue'
 import { formatWhen } from '@/shared/lib/datetime'
@@ -144,9 +144,9 @@ onMounted(load)
               <header><div><h2>{{ showHistory ? '模拟面试记录' : '最近的模拟面试' }}</h2><p v-if="showHistory">查看、继续或复盘全部训练</p></div><button class="mi-secondary" type="button" @click="showHistory = !showHistory">{{ showHistory ? '收起记录' : '查看全部' }}</button></header>
               <div v-if="showHistory" class="mi-filters">
                 <label><Search :size="16" /><input v-model="keyword" placeholder="搜索岗位、公司或面试名称" /></label>
-                <AppSelect v-model="statusFilter" aria-label="面试状态" @change="load()"><option value="">全部状态</option><option value="IN_PROGRESS">进行中</option><option value="PAUSED">已暂停</option><option value="COMPLETED">已完成</option><option value="ABANDONED">已放弃</option></AppSelect>
-                <AppSelect v-model="modeFilter" aria-label="面试方式" @change="load()"><option value="">全部方式</option><option value="TEXT">文字模拟</option><option value="VOICE">语音模拟</option></AppSelect>
-                <AppSelect v-model="typeFilter" aria-label="面试类型" @change="load()"><option value="">全部类型</option><option value="COMPREHENSIVE">综合面试</option><option value="BEHAVIORAL">行为面试</option><option value="PROFESSIONAL">专业面试</option><option value="PRESSURE">压力面试</option></AppSelect>
+                <UiSelect v-model="statusFilter" aria-label="面试状态" @change="load()"><option value="">全部状态</option><option value="IN_PROGRESS">进行中</option><option value="PAUSED">已暂停</option><option value="COMPLETED">已完成</option><option value="ABANDONED">已放弃</option></UiSelect>
+                <UiSelect v-model="modeFilter" aria-label="面试方式" @change="load()"><option value="">全部方式</option><option value="TEXT">文字模拟</option><option value="VOICE">语音模拟</option></UiSelect>
+                <UiSelect v-model="typeFilter" aria-label="面试类型" @change="load()"><option value="">全部类型</option><option value="COMPREHENSIVE">综合面试</option><option value="BEHAVIORAL">行为面试</option><option value="PROFESSIONAL">专业面试</option><option value="PRESSURE">压力面试</option></UiSelect>
               </div>
               <div class="mi-table-wrap">
                 <table v-if="displayed.length" class="mi-history-table">
