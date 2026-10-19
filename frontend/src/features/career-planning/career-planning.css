@@ -93,3 +93,5 @@
   .cp-unfinished { flex-wrap: wrap; }
   .cp-unfinished .cp-primary { width: 100%; }
 }
+
+.cp-ai-notice { width: min(760px, 100%); margin: 0 auto 14px; }

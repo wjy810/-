@@ -58,6 +58,10 @@ public final class CareerPlanningExecutionModels {
             String parentRevisionId, String restoredFromRevisionId, String reason,
             String planHash, JsonNode snapshot, String createdBy, Instant createdAt) {}
 
+    public record ValidationQuizCommand(String requestId, String nodeId) {}
+    public record ValidationQuizQuestion(String id, String question, String focus) {}
+    public record ValidationQuizView(String nodeId, List<ValidationQuizQuestion> questions, String model,
+            String promptVersion) {}
     public record StartValidationCommand(String requestId, String nodeId, String method,
             List<String> evidenceIds, JsonNode submission, Integer expectedCanvasVersion) {}
     public record StartValidationBatchItem(String nodeId, List<String> evidenceIds, JsonNode submission) {}

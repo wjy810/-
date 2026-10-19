@@ -2,16 +2,17 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import {
   Check, ChevronRight, CircleAlert, ClipboardCheck, Code2, FileCheck2, FlaskConical,
-  LoaderCircle, Play, RefreshCw, Route, ShieldCheck, Sparkles, UploadCloud,
+  BookmarkPlus, LoaderCircle, Play, RefreshCw, Route, ShieldCheck, Sparkles, UploadCloud,
 } from 'lucide-vue-next'
 import UiSelect from '@/shared/ui/UiSelect.vue'
 import { errorMessage } from '@/shared/api/types'
 import { fetchTask, retryTask, type TaskView } from '@/shared/api/task'
 import { isAbortError, pollTask } from '@/shared/lib/pollTask'
 import {
-  confirmCareerAbilityValidation, fetchCareerAbilityValidations,
+  confirmCareerAbilityValidation, fetchCareerAbilityValidations, generateCareerValidationQuiz,
   startCareerAbilityValidation, startCareerValidationBatch,
 } from '../services/careerPlanningApi'
+import { createCareerRecord } from '@/features/career-library/services/careerLibraryApi'
 import type { CanvasNode, CareerAbilityValidation, CareerCanvas, CareerLearningPlan } from '../types'
 import { careerEvidenceStatusLabel, careerValidationCheckpointLabel } from '../utils/presentation'
 
@@ -31,7 +32,10 @@ const emit = defineEmits<{
   canvas: []
 }>()
 
-type ValidationDraft = { submission: string; evidenceIds: string[] }
+type QuizAnswer = { id: string; question: string; focus?: string | null; answer: string }
+type ValidationDraft = { submission: string; evidenceIds: string[]; quiz: QuizAnswer[] }
+/** A quiz answer shorter than this is not an answer (the server applies the same floor). */
+const QUIZ_MIN_ANSWER = 10
 type StoredBatchTask = { taskId: string; requestId: string; nodeIds: string[] }
 
 const selectedNodeIds = ref<string[]>([])
@@ -43,6 +47,7 @@ const selectedValidationId = ref('')
 const batchTask = ref<TaskView | null>(null)
 const batchResults = ref<CareerAbilityValidation[]>([])
 const singleRequestId = ref('')
+const savedToLibrary = ref<Set<string>>(new Set())
 let batchController: AbortController | null = null
 
 const nodes = computed(() => props.canvas.nodes.filter(node => !['CAREER', 'DOMAIN', 'EVIDENCE'].includes(node.type)))
@@ -57,6 +62,9 @@ const selectedNode = computed(() => nodes.value.find(node => node.logicalNodeId 
 const availableEvidence = computed(() => evidenceFor(activeNodeId.value))
 const submission = computed({ get: () => draftFor(activeNodeId.value).submission, set: value => { draftFor(activeNodeId.value).submission = value } })
 const evidenceIds = computed(() => draftFor(activeNodeId.value).evidenceIds)
+const quiz = computed(() => draftFor(activeNodeId.value).quiz)
+const isQuiz = computed(() => method.value === 'QUIZ' && !isBatch.value)
+const quizAnswered = computed(() => quiz.value.filter(item => item.answer.trim().length >= QUIZ_MIN_ANSWER).length)
 const allValidations = computed(() => {
   const values = [...batchResults.value, ...props.validations]
   return values.filter((value, index) => values.findIndex(item => item.id === value.id) === index)
@@ -78,6 +86,8 @@ watch(activeNodeId, () => {
   const latest = allValidations.value.find(value => value.nodeId === activeNodeId.value)
   selectedValidationId.value = latest?.id ?? ''
 })
+// A quiz is set for one node at a time, so a batch falls back to the default method.
+watch(isBatch, batch => { if (batch && method.value === 'QUIZ') method.value = 'PROJECT_CHECK' })
 watch(() => props.sessionId, () => {
   batchController?.abort()
   batchTask.value = null
@@ -128,8 +138,8 @@ function applyInitialSelection(): void {
   }
 }
 function draftFor(id: string): ValidationDraft {
-  if (!id) return { submission: '', evidenceIds: [] }
-  drafts[id] ??= { submission: '', evidenceIds: [] }
+  if (!id) return { submission: '', evidenceIds: [], quiz: [] }
+  drafts[id] ??= { submission: '', evidenceIds: [], quiz: [] }
   return drafts[id]
 }
 function evidenceFor(id: string) {
@@ -137,7 +147,51 @@ function evidenceFor(id: string) {
 }
 function materialReady(id: string): boolean {
   const draft = draftFor(id)
+  if (method.value === 'QUIZ' && !isBatch.value) {
+    return draft.quiz.length >= 3 && draft.quiz.every(item => item.answer.trim().length >= QUIZ_MIN_ANSWER)
+  }
   return Boolean(draft.submission.trim() || draft.evidenceIds.length)
+}
+
+async function generateQuiz(): Promise<void> {
+  const nodeIdValue = activeNodeId.value
+  if (!nodeIdValue || pending.value) return
+  pending.value = 'quiz'
+  try {
+    const value = await generateCareerValidationQuiz(props.sessionId, { nodeId: nodeIdValue, requestId: crypto.randomUUID() })
+    draftFor(nodeIdValue).quiz = value.questions.map(item => ({ ...item, answer: '' }))
+    emit('notice', `已出 ${value.questions.length} 道题，答完后提交 AI 评估。`)
+  } catch (reason) { emit('error', errorMessage(reason, '专项测试出题失败')) }
+  finally { pending.value = '' }
+}
+
+function submissionFor(id: string): Record<string, unknown> {
+  const draft = draftFor(id)
+  const summary = draft.submission.trim()
+  if (method.value !== 'QUIZ' || isBatch.value) return { summary }
+  return { summary: summary || '专项测试作答', quiz: draft.quiz.map(item => ({ question: item.question, answer: item.answer.trim() })) }
+}
+
+function canSaveToLibrary(validation: CareerAbilityValidation | null): boolean {
+  return Boolean(validation && validation.status === 'CONFIRMED' && validation.result === 'PASSED' && validation.userConfirmed)
+}
+
+/** A confirmed skill goes into the career library, where resumes and job matches can cite it. */
+async function saveToLibrary(validation: CareerAbilityValidation): Promise<void> {
+  const node = props.canvas.nodes.find(item => item.logicalNodeId === validation.nodeId)
+  if (!node || pending.value) return
+  pending.value = `library:${validation.id}`
+  try {
+    const summary = typeof validation.feedback?.summary === 'string' ? validation.feedback.summary : ''
+    await createCareerRecord({
+      type: 'SKILL', title: node.title,
+      description: summary ? `通过能力验证：${summary}` : '已在职业规划中通过能力验证并由本人确认。',
+      payload: { origin: 'CAREER_PLANNING_VALIDATION', validationId: validation.id, method: validation.method },
+    })
+    savedToLibrary.value = new Set(savedToLibrary.value).add(validation.id)
+    emit('notice', `“${node.title}”已写进资料库的专业技能。`)
+  } catch (reason) { emit('error', errorMessage(reason, '写入资料库失败')) }
+  finally { pending.value = '' }
 }
 function toggleEvidence(id: string): void {
   const draft = draftFor(activeNodeId.value)
@@ -161,13 +215,16 @@ function clearTask(): void {
 async function evaluate(): Promise<void> {
   if (!selectedNodes.value.length) { emit('error', '请先选择需要验证的能力节点。'); return }
   if (isBatch.value) { await evaluateBatch(); return }
-  if (!materialReady(activeNodeId.value)) { emit('error', '请填写验证说明或至少关联一项证据。'); return }
+  if (!materialReady(activeNodeId.value)) {
+    emit('error', isQuiz.value ? `请先让 AI 出题，并回答全部题目（每题至少 ${QUIZ_MIN_ANSWER} 个字）。` : '请填写验证说明或至少关联一项证据。')
+    return
+  }
   pending.value = 'evaluate'
   try {
     singleRequestId.value ||= crypto.randomUUID()
     const value = await startCareerAbilityValidation(props.sessionId, {
       requestId: singleRequestId.value, nodeId: activeNodeId.value, method: method.value,
-      evidenceIds: evidenceIds.value, submission: { summary: submission.value.trim() },
+      evidenceIds: evidenceIds.value, submission: submissionFor(activeNodeId.value),
       expectedCanvasVersion: props.canvas.version,
     })
     singleRequestId.value = ''
@@ -310,8 +367,15 @@ onBeforeUnmount(() => batchController?.abort())
       <main>
         <section v-if="!isBatch" class="node-select"><label>验证节点<UiSelect v-model="nodeId" :options="nodeOptions" aria-label="验证能力节点" placeholder="验证能力节点" /></label><p><CircleAlert :size="15" />只能验证技能、知识或任务节点；职业根节点和能力域不能直接标记为掌握。</p></section>
         <section v-else class="batch-queue"><header><div><h2>批量材料队列</h2><p>统一验证方式，每个节点分别填写说明和选择证据。</p></div><strong>{{ selectedNodes.filter(node => materialReady(node.logicalNodeId)).length }} / {{ selectedNodes.length }} 已就绪</strong></header><div><button v-for="(node,index) in selectedNodes" :key="node.logicalNodeId" type="button" :class="{ active: activeNodeId === node.logicalNodeId, ready: materialReady(node.logicalNodeId) }" @click="selectQueueNode(node.logicalNodeId)"><span>{{ materialReady(node.logicalNodeId) ? '✓' : index + 1 }}</span><strong>{{ node.title }}</strong><small>{{ materialReady(node.logicalNodeId) ? '材料已就绪' : '待填写材料' }}</small></button></div></section>
-        <section><h2>选择验证方式</h2><div class="method-grid"><button v-for="item in methods" :key="item.value" type="button" :aria-pressed="method === item.value" :class="{ active: method === item.value }" @click="method = item.value"><component :is="item.icon" :size="21" /><p><strong>{{ item.label }}</strong><small>{{ item.copy }}</small></p><Transition name="validation-check"><Check v-if="method === item.value" :size="16" /></Transition></button></div></section>
-        <section><h2>{{ isBatch ? '当前节点材料' : '任务详情' }}</h2><div class="validation-task"><span><Play :size="20" /></span><div><strong>{{ selectedNode?.title || '尚未选择节点' }}</strong><p>{{ selectedNode?.detail?.summary || '根据节点掌握标准提交可复核的实践说明。' }}</p></div></div><label class="submission-field">验证说明<textarea v-model="submission" rows="5" maxlength="4000" placeholder="说明你完成了什么、如何验证，以及有哪些结果可以复核"></textarea><small>{{ submission.length }} / 4000</small></label></section>
+        <section><h2>选择验证方式</h2><div class="method-grid"><button v-for="item in methods" :key="item.value" type="button" :aria-pressed="method === item.value" :class="{ active: method === item.value }" :disabled="isBatch && item.value === 'QUIZ'" :title="isBatch && item.value === 'QUIZ' ? '专项测试一次验证一个节点' : undefined" @click="method = item.value"><component :is="item.icon" :size="21" /><p><strong>{{ item.label }}</strong><small>{{ item.copy }}</small></p><Transition name="validation-check"><Check v-if="method === item.value" :size="16" /></Transition></button></div></section>
+        <section><h2>{{ isBatch ? '当前节点材料' : '任务详情' }}</h2><div class="validation-task"><span><Play :size="20" /></span><div><strong>{{ selectedNode?.title || '尚未选择节点' }}</strong><p>{{ selectedNode?.detail?.summary || '根据节点掌握标准提交可复核的实践说明。' }}</p></div></div><div v-if="isQuiz" class="quiz-block">
+          <template v-if="quiz.length">
+            <header><strong>专项测试 · 已答 {{ quizAnswered }} / {{ quiz.length }}</strong><button type="button" :disabled="Boolean(pending)" @click="generateQuiz"><RefreshCw :size="14" :class="{ spin: pending === 'quiz' }" />换一组题</button></header>
+            <ol><li v-for="(item, index) in quiz" :key="item.id"><label><span><strong>{{ index + 1 }}. {{ item.question }}</strong><small v-if="item.focus">考查：{{ item.focus }}</small></span><textarea v-model="item.answer" rows="3" maxlength="2000" :placeholder="`用自己的话回答，至少 ${QUIZ_MIN_ANSWER} 个字`"></textarea></label></li></ol>
+          </template>
+          <div v-else class="quiz-empty"><p>AI 会按这个节点的学习内容和掌握标准出 3–5 道简答题，答完后再提交评估。出题消耗 1 次 AI 额度。</p><button type="button" class="quiz-generate" :disabled="Boolean(pending) || !selectedNode" @click="generateQuiz"><LoaderCircle v-if="pending === 'quiz'" class="spin" :size="16" /><Sparkles v-else :size="16" />让 AI 出题</button></div>
+        </div>
+        <label class="submission-field">{{ isQuiz ? '补充说明（可选）' : '验证说明' }}<textarea v-model="submission" :rows="isQuiz ? 3 : 5" maxlength="4000" :placeholder="isQuiz ? '想补充的项目经历或学习情况' : '说明你完成了什么、如何验证，以及有哪些结果可以复核'"></textarea><small>{{ submission.length }} / 4000</small></label></section>
         <p class="important-rule"><ShieldCheck :size="22" /><span><strong>重要规则</strong>{{ isBatch ? '整批只消耗 1 次 AI 额度，但结果仍需逐条确认。' : 'AI 只给出辅助评估；最终状态需要证据与用户确认。' }} 任何 AI 结果都不会自动把节点标记为已掌握。</span></p>
       </main>
 
@@ -319,7 +383,7 @@ onBeforeUnmount(() => batchController?.abort())
         <section class="criteria"><h2>验收标准</h2><ol><li v-for="(value,index) in (Array.isArray(selectedNode?.detail?.masteryCriteria) ? selectedNode?.detail?.masteryCriteria : ['能够独立说明核心概念','能够完成对应实践任务','结果可以通过证据复核'])" :key="String(value)"><span>{{ index + 1 }}</span>{{ value }}</li></ol></section>
         <section class="evidence-check"><h2>证据清单</h2><button v-for="item in availableEvidence" :key="item.id" type="button" :class="{ active: evidenceIds.includes(item.id) }" @click="toggleEvidence(item.id)"><UploadCloud :size="18" /><span><strong>{{ item.title }}</strong><small>{{ careerEvidenceStatusLabel(item.verificationStatus) }}</small></span><Check v-if="evidenceIds.includes(item.id)" :size="16" /></button><p v-if="!availableEvidence.length">当前节点还没有计划证据，可先回到学习计划添加说明或文件引用。</p></section>
         <section v-if="batchTask && (taskRunning || taskFailed)" class="batch-task-state" :class="{ failed: taskFailed }"><header><LoaderCircle v-if="taskRunning" class="spin" :size="20" /><CircleAlert v-else :size="20" /><div><strong>{{ taskRunning ? 'AI 正在批量评估' : '批量评估未完成' }}</strong><small>{{ batchStage || (taskRunning ? '正在评估' : '评估已停止') }}</small></div><em>{{ taskProgress }}%</em></header><div class="batch-task-progress"><i :style="{ width: `${taskProgress}%` }" /></div><template v-if="taskFailed"><p>{{ batchTask.failureReason || '评估没有完成，画布没有被修改。' }}</p><dl v-if="batchStage"><div><dt>停在</dt><dd>{{ batchStage }}</dd></div></dl><button type="button" :disabled="pending === 'retry-batch'" @click="retryBatchTask"><RefreshCw :class="{ spin: pending === 'retry-batch' }" :size="16" />重试此任务</button></template></section>
-        <Transition name="validation-result" mode="out-in"><section v-if="currentValidation && !isBatch" :key="currentValidation.id" class="evaluation-result" :class="`result-${currentValidation.result?.toLowerCase()}`"><header><span><Sparkles :size="20" /></span><div><strong>{{ resultLabel(currentValidation.result) }}</strong><small>AI 辅助评估</small></div><em v-if="overallScore(currentValidation) !== null">{{ overallScore(currentValidation) }}</em></header><p>{{ currentValidation.feedback?.summary || '评估已完成，请核对后确认。' }}</p><ul><li v-for="item in feedbackList(currentValidation,'strengths')" :key="item">{{ item }}</li><li v-for="item in feedbackList(currentValidation,'gaps')" :key="item">{{ item }}</li></ul><footer v-if="currentValidation.status === 'EVALUATED'"><button type="button" :disabled="pending === `reject:${currentValidation.id}`" @click="confirm(currentValidation,false)">拒绝结果</button><button type="button" :disabled="pending === `confirm:${currentValidation.id}`" @click="confirm(currentValidation,true)"><LoaderCircle v-if="pending === `confirm:${currentValidation.id}`" class="spin" :size="16" /><Check v-else :size="16" />确认评估结果</button></footer><p v-else class="confirmed"><Check :size="15" />用户决定已记录</p></section><button v-else-if="!isBatch || !batchResults.length" key="evaluate" class="evaluate-button" type="button" :disabled="pending === 'evaluate' || pending === 'evaluate-batch' || taskRunning" @click="evaluate"><LoaderCircle v-if="pending === 'evaluate' || pending === 'evaluate-batch' || taskRunning" class="spin" :size="17" /><Sparkles v-else :size="17" />{{ isBatch ? `提交 ${selectedNodes.length} 个节点并评估 · 消耗 1 次` : '提交证据并评估' }}</button></Transition>
+        <Transition name="validation-result" mode="out-in"><section v-if="currentValidation && !isBatch" :key="currentValidation.id" class="evaluation-result" :class="`result-${currentValidation.result?.toLowerCase()}`"><header><span><Sparkles :size="20" /></span><div><strong>{{ resultLabel(currentValidation.result) }}</strong><small>AI 辅助评估</small></div><em v-if="overallScore(currentValidation) !== null">{{ overallScore(currentValidation) }}</em></header><p>{{ currentValidation.feedback?.summary || '评估已完成，请核对后确认。' }}</p><ul><li v-for="item in feedbackList(currentValidation,'strengths')" :key="item">{{ item }}</li><li v-for="item in feedbackList(currentValidation,'gaps')" :key="item">{{ item }}</li></ul><footer v-if="currentValidation.status === 'EVALUATED'"><button type="button" :disabled="pending === `reject:${currentValidation.id}`" @click="confirm(currentValidation,false)">拒绝结果</button><button type="button" :disabled="pending === `confirm:${currentValidation.id}`" @click="confirm(currentValidation,true)"><LoaderCircle v-if="pending === `confirm:${currentValidation.id}`" class="spin" :size="16" /><Check v-else :size="16" />确认评估结果</button></footer><template v-else><p class="confirmed"><Check :size="15" />用户决定已记录</p><button v-if="canSaveToLibrary(currentValidation)" type="button" class="save-library" :disabled="savedToLibrary.has(currentValidation.id) || Boolean(pending)" @click="saveToLibrary(currentValidation)"><LoaderCircle v-if="pending === `library:${currentValidation.id}`" class="spin" :size="15" /><Check v-else-if="savedToLibrary.has(currentValidation.id)" :size="15" /><BookmarkPlus v-else :size="15" />{{ savedToLibrary.has(currentValidation.id) ? '已写进资料库' : '把这项能力写进资料库' }}</button></template></section><button v-else-if="!isBatch || !batchResults.length" key="evaluate" class="evaluate-button" type="button" :disabled="pending === 'evaluate' || pending === 'evaluate-batch' || taskRunning" @click="evaluate"><LoaderCircle v-if="pending === 'evaluate' || pending === 'evaluate-batch' || taskRunning" class="spin" :size="17" /><Sparkles v-else :size="17" />{{ isBatch ? `提交 ${selectedNodes.length} 个节点并评估 · 消耗 1 次` : '提交证据并评估' }}</button></Transition>
       </aside>
     </div>
 
@@ -332,6 +396,7 @@ onBeforeUnmount(() => batchController?.abort())
 <style scoped>
 .validation-workspace{padding:18px 20px 96px;color:var(--text-primary);background:var(--bg-app);min-height:calc(100vh - 144px)}.validation-title>div{display:flex;align-items:center;gap:7px;color:var(--text-secondary);font-size:12px}.validation-title button{border:0;color:var(--color-primary);background:transparent}.validation-title h1{display:flex;align-items:center;gap:10px;margin:14px 0 0;font-size:26px}.validation-title h1 em{padding:4px 8px;border-radius:6px;color:var(--color-warning-text);background:var(--surface-2);font-size:12px;font-style:normal}.validation-steps{display:grid;grid-template-columns:repeat(5,1fr);gap:0;margin:18px 0;padding:0;list-style:none}.validation-steps li{position:relative;display:flex;align-items:center;gap:7px;color:var(--text-secondary);font-size:12px}.validation-steps li:after{content:'';height:1px;flex:1;background:var(--border-strong)}.validation-steps li:last-child:after{display:none}.validation-steps span{display:grid;place-items:center;width:29px;height:29px;border:1px solid var(--border-default);border-radius:50%;color:var(--text-secondary);background:var(--surface-1)}.validation-steps li.active{color:var(--color-primary-text)}.validation-steps li.active span{color:var(--color-primary);border-color:var(--color-primary-border)}.validation-steps li.current span{color:var(--text-on-primary);border-color:var(--color-primary);background:var(--color-primary)}.validation-layout{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:14px}.validation-layout main,.validation-layout aside{display:grid;align-content:start;gap:14px}.validation-layout main>section,.validation-layout aside>section,.important-rule,.evaluate-button{padding:16px;border:1px solid var(--border-subtle);border-radius:10px;background:var(--surface-1)}.validation-layout h2{margin:0 0 12px;font-size:18px}.node-select{display:grid;grid-template-columns:minmax(260px,420px) 1fr;gap:18px;align-items:end}.node-select label{display:grid;gap:7px;color:var(--text-secondary);font-size:13px}.node-select p{display:flex;align-items:center;gap:6px;margin:0;color:var(--color-warning-text);font-size:12px}.method-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:9px}.method-grid button{position:relative;display:flex;align-items:flex-start;gap:8px;min-height:96px;padding:12px;border:1px solid var(--border-subtle);border-radius:9px;text-align:left;color:var(--color-primary);background:var(--surface-1)}.method-grid button.active{border-color:var(--color-primary);background:var(--surface-2);box-shadow:0 0 0 2px color-mix(in srgb, var(--color-primary) 6%, transparent)}.method-grid button p{display:grid;gap:5px;margin:0;color:var(--text-primary)}.method-grid button small{color:var(--text-secondary);line-height:1.45}.method-grid button>svg:last-child{position:absolute;right:8px;top:8px}.validation-task{display:flex;gap:10px;padding:12px;border-radius:8px;background:var(--surface-2)}.validation-task>span{display:grid;place-items:center;width:38px;height:38px;border-radius:9px;color:var(--text-on-primary);background:var(--color-success)}.validation-task p{margin:5px 0 0;color:var(--text-secondary);line-height:1.55}.submission-field{position:relative;display:grid;gap:7px;margin-top:12px;color:var(--text-secondary);font-size:13px}.submission-field textarea{padding:11px;border:1px solid var(--border-subtle);border-radius:8px;resize:vertical}.submission-field small{position:absolute;right:8px;bottom:7px;color:var(--text-tertiary)}.important-rule{display:flex;gap:10px;margin:0;color:var(--color-warning-text)!important;background:var(--surface-2)!important;font-size:12px;line-height:1.6}.important-rule span{display:grid}.criteria ol{display:grid;gap:8px;margin:0;padding:0;list-style:none}.criteria li{display:flex;align-items:center;gap:8px;min-height:42px;padding:8px;border:1px solid var(--border-default);border-radius:7px;color:var(--text-secondary);background:var(--surface-2)}.criteria li span{display:grid;place-items:center;width:21px;height:21px;border-radius:50%;color:var(--text-on-primary);background:var(--color-success);font-size:12px}.evidence-check>button{display:grid;grid-template-columns:30px 1fr auto;gap:8px;align-items:center;width:100%;min-height:52px;margin-top:7px;padding:8px;border:1px solid var(--border-subtle);border-radius:8px;text-align:left;color:var(--color-primary);background:var(--surface-1)}.evidence-check>button.active{border-color:var(--color-primary-border);background:var(--surface-2)}.evidence-check>button span{display:grid;color:var(--text-primary)}.evidence-check>button small{color:var(--text-tertiary)}.evidence-check>p{color:var(--text-secondary);font-size:12px;line-height:1.6}.evaluation-result header{display:flex;align-items:center;gap:8px}.evaluation-result header>span{display:grid;place-items:center;width:38px;height:38px;border-radius:10px;color:var(--color-primary);background:var(--surface-2)}.evaluation-result header div{display:grid;flex:1}.evaluation-result header small{color:var(--text-tertiary)}.evaluation-result header em{display:grid;place-items:center;width:44px;height:44px;border-radius:50%;color:var(--color-success-text);background:var(--surface-2);font-style:normal;font-weight:700}.evaluation-result>p,.evaluation-result li{color:var(--text-secondary);line-height:1.55}.evaluation-result footer{display:flex;gap:7px}.evaluation-result footer button,.evaluate-button{display:flex;align-items:center;justify-content:center;gap:6px;min-height:39px;padding:0 12px;border:1px solid var(--border-subtle);border-radius:7px;background:var(--surface-1)}.evaluation-result footer button:last-child,.evaluate-button{color:var(--text-on-primary);border-color:var(--color-primary);background:var(--color-primary)}.evaluation-result .confirmed{display:flex;align-items:center;gap:6px;color:var(--color-success-text)}.evaluate-button{width:100%;min-height:44px}.validation-history{display:flex;align-items:center;gap:8px;margin-top:14px;padding:12px;overflow:auto;border:1px solid var(--border-subtle);border-radius:10px;background:var(--surface-1)}.validation-history h2{flex:0 0 auto;margin:0 6px 0 0;font-size:14px}.validation-history button{display:grid;gap:2px;flex:0 0 210px;padding:8px;border:1px solid var(--border-subtle);border-radius:7px;text-align:left;background:var(--surface-1)}.validation-history button.active{border-color:var(--color-primary)}.validation-history em{color:var(--color-primary);font-size:12px;font-style:normal}.validation-history small{color:var(--text-tertiary);font-size:12px}.spin{animation:spin .8s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}
 @media(max-width:1180px) and (min-width:901px){.validation-layout{grid-template-columns:1fr}.validation-layout aside{grid-row:auto}}
+.quiz-block{display:grid;gap:10px;margin:14px 0}.quiz-block>header{display:flex;align-items:center;justify-content:space-between;gap:10px}.quiz-block>header strong{font-size:14px}.quiz-block>header button{display:inline-flex;align-items:center;gap:5px;min-height:32px;padding:0 10px;border:1px solid var(--border-subtle);border-radius:7px;color:var(--color-primary-text);background:var(--surface-1);font-size:12px;cursor:pointer}.quiz-block ol{margin:0;padding:0;list-style:none;display:grid;gap:10px}.quiz-block li label{display:grid;gap:7px;padding:12px;border:1px solid var(--border-subtle);border-radius:8px;background:var(--surface-1)}.quiz-block li span{display:grid;gap:3px}.quiz-block li strong{font-size:14px;line-height:1.6}.quiz-block li small{color:var(--text-tertiary);font-size:12px}.quiz-block textarea{width:100%;padding:9px 10px;border:1px solid var(--border-default);border-radius:7px;resize:vertical;font:inherit;font-size:13px}.quiz-block textarea:focus{outline:0;border-color:var(--color-primary);box-shadow:0 0 0 3px color-mix(in srgb, var(--color-primary) 8%, transparent)}.quiz-empty{display:grid;justify-items:start;gap:10px;padding:14px;border:1px dashed var(--border-default);border-radius:8px;background:var(--surface-2)}.quiz-empty p{margin:0;color:var(--text-secondary);font-size:13px;line-height:1.65}.quiz-generate{display:inline-flex;align-items:center;gap:6px;min-height:38px;padding:0 14px;border:0;border-radius:8px;color:var(--text-on-primary);background:var(--color-primary);cursor:pointer}.quiz-generate:disabled{opacity:.55;cursor:not-allowed}.save-library{display:inline-flex;align-items:center;justify-content:center;gap:6px;width:100%;min-height:38px;margin-top:10px;border:1px solid var(--color-primary-border);border-radius:8px;color:var(--color-primary);background:var(--surface-1);cursor:pointer}.save-library:disabled{opacity:.7;cursor:default}.method-grid button:disabled{opacity:.45;cursor:not-allowed}
 @media(max-width:900px){.validation-workspace{padding:12px 10px 100px}.validation-title h1{font-size:20px}.validation-steps{overflow:auto}.validation-steps li{flex:0 0 120px}.validation-layout{grid-template-columns:1fr}.node-select{grid-template-columns:1fr}.method-grid{grid-template-columns:1fr 1fr}.method-grid button{min-height:90px}.validation-layout aside{grid-row:auto}.validation-history{margin-bottom:0}}
 .validation-step-scroll{overflow-x:auto;overflow-y:hidden;overscroll-behavior-inline:contain;scrollbar-width:none}.validation-step-scroll::-webkit-scrollbar{display:none}.validation-step-scroll:focus-visible{outline:2px solid color-mix(in srgb, var(--color-primary) 42%, transparent);outline-offset:2px}.validation-steps{position:relative;min-width:680px}.validation-steps:before{position:absolute;left:14px;right:14px;top:14px;height:2px;background:var(--surface-3);content:''}.validation-step-progress{position:absolute;z-index:0;left:14px;top:14px;max-width:calc(100% - 29px);height:2px;background:var(--color-primary);transition:width .22s cubic-bezier(.2,.8,.2,1)}.validation-steps li{z-index:1;display:grid;grid-template-columns:29px minmax(0,1fr);align-items:center}.validation-steps li:after{display:none}.validation-steps li strong{position:relative;width:max-content;max-width:100%;padding:0 6px;font-size:12px;font-weight:500;background:var(--bg-app)}.validation-steps li.active span{background:var(--surface-1)}.validation-steps li.current span{background:var(--color-primary)}.validation-layout main>section,.validation-layout aside>section,.important-rule,.evaluate-button,.validation-history{border-radius:8px}.method-grid button{border-radius:8px;transition:border-color .18s ease,background-color .18s ease,box-shadow .18s ease,transform .18s ease}.method-grid button:hover{transform:none;border-color:var(--color-primary-border)}.method-grid button:focus-visible,.validation-history button:focus-visible,.evaluation-result button:focus-visible,.evaluate-button:focus-visible,textarea:focus-visible{outline:2px solid color-mix(in srgb, var(--color-primary) 42%, transparent);outline-offset:2px}.validation-check-enter-active,.validation-check-leave-active,.validation-result-enter-active,.validation-result-leave-active{transition:opacity .18s ease,transform .22s cubic-bezier(.2,.8,.2,1)}.validation-check-enter-from,.validation-check-leave-to{opacity:0;transform:scale(.8)}.validation-result-enter-from,.validation-result-leave-to{opacity:0;transform:translateY(8px)}
 @media(max-width:900px){.validation-steps{overflow:visible;margin:14px 0;min-width:620px}.validation-steps li{flex:initial}.validation-step-scroll{margin:0 -10px;padding:0 10px}.validation-history{scrollbar-width:none}.validation-history::-webkit-scrollbar{display:none}}

@@ -407,6 +407,15 @@ export type CareerLearningEvidence = {
   confirmedAt?: string | null
 }
 
+export type CareerValidationQuizQuestion = { id: string; question: string; focus?: string | null }
+
+export type CareerValidationQuiz = {
+  nodeId: string
+  questions: CareerValidationQuizQuestion[]
+  model?: string | null
+  promptVersion?: string | null
+}
+
 export type CareerWeeklyReview = {
   id: string
   week: number

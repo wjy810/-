@@ -6,6 +6,7 @@ import { SelectStub } from '../../../../tests/vueStubs'
 const api = vi.hoisted(() => ({
   confirmCareerAbilityValidation: vi.fn(),
   fetchCareerAbilityValidations: vi.fn(),
+  generateCareerValidationQuiz: vi.fn(),
   startCareerAbilityValidation: vi.fn(),
   startCareerValidationBatch: vi.fn(),
 }))
@@ -14,6 +15,8 @@ const polling = vi.hoisted(() => ({ pollTask: vi.fn(), isAbortError: vi.fn(() =>
 vi.mock('../services/careerPlanningApi', () => api)
 vi.mock('@/shared/api/task', () => tasks)
 vi.mock('@/shared/lib/pollTask', () => polling)
+const library = vi.hoisted(() => ({ createCareerRecord: vi.fn() }))
+vi.mock('@/features/career-library/services/careerLibraryApi', () => library)
 
 import CareerValidationWorkspace from './CareerValidationWorkspace.vue'
 
@@ -22,8 +25,59 @@ describe('CareerValidationWorkspace', () => {
     Object.values(api).forEach(mock => mock.mockReset())
     Object.values(tasks).forEach(mock => mock.mockReset())
     Object.values(polling).forEach(mock => mock.mockReset())
+    library.createCareerRecord.mockReset()
     polling.isAbortError.mockReturnValue(false)
     window.sessionStorage.clear()
+  })
+
+  it('runs a quiz the AI sets, sends the answers, and offers to save a confirmed skill to the library', async () => {
+    const canvas = makeCanvas()
+    api.generateCareerValidationQuiz.mockResolvedValue({ nodeId: 'skill-oop', questions: [
+      { id: 'q1', question: '什么是单一职责？', focus: '概念' },
+      { id: 'q2', question: '举例说明接口隔离。', focus: '应用' },
+      { id: 'q3', question: '过度拆分有什么代价？', focus: '边界' },
+    ] })
+    const evaluated = { ...makeValidation(), method: 'QUIZ' }
+    api.startCareerAbilityValidation.mockResolvedValue(evaluated)
+    const wrapper = mount(CareerValidationWorkspace, {
+      props: { sessionId: 'session-1', canvas, plan: makePlan(canvas), validations: [], initialNodeId: 'skill-oop' },
+      global: { stubs: { UiSelect: SelectStub } },
+    })
+
+    await wrapper.get('.method-grid button:nth-child(1)').trigger('click')
+    await wrapper.get('.quiz-generate').trigger('click')
+    await flushPromises()
+    expect(api.generateCareerValidationQuiz).toHaveBeenCalledWith('session-1', { nodeId: 'skill-oop', requestId: expect.any(String) })
+    const answers = wrapper.findAll('.quiz-block textarea')
+    expect(answers).toHaveLength(3)
+
+    await answers[0].setValue('一个类只因为一种原因而变化')
+    await wrapper.get('.evaluate-button').trigger('click')
+    await flushPromises()
+    expect(api.startCareerAbilityValidation).not.toHaveBeenCalled()
+    expect(wrapper.emitted('error')?.at(-1)?.[0]).toContain('回答全部题目')
+
+    await answers[1].setValue('把支付和退款接口拆成两个调用方各自依赖的接口')
+    await answers[2].setValue('类和调用链变多，理解与追踪的成本上升')
+    await wrapper.get('.evaluate-button').trigger('click')
+    await flushPromises()
+    expect(api.startCareerAbilityValidation).toHaveBeenCalledWith('session-1', expect.objectContaining({
+      method: 'QUIZ',
+      submission: { summary: '专项测试作答', quiz: [
+        { question: '什么是单一职责？', answer: '一个类只因为一种原因而变化' },
+        { question: '举例说明接口隔离。', answer: '把支付和退款接口拆成两个调用方各自依赖的接口' },
+        { question: '过度拆分有什么代价？', answer: '类和调用链变多，理解与追踪的成本上升' },
+      ] },
+    }))
+
+    const confirmed = { ...evaluated, status: 'CONFIRMED', result: 'PASSED', userConfirmed: true }
+    library.createCareerRecord.mockResolvedValue({ id: 'record-1' })
+    await wrapper.setProps({ validations: [confirmed] })
+    await wrapper.get('.save-library').trigger('click')
+    await flushPromises()
+    expect(library.createCareerRecord).toHaveBeenCalledWith(expect.objectContaining({ type: 'SKILL', title: '面向对象建模' }))
+    expect(wrapper.get('.save-library').text()).toContain('已写进资料库')
+    expect(wrapper.get('.save-library').attributes('disabled')).toBeDefined()
   })
 
   it('submits a scenario for AI evaluation but requires a separate user confirmation', async () => {

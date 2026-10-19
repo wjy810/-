@@ -11,7 +11,11 @@ import com.jobproof.modules.careerplanning.application.CareerPlanningAiService.A
 import com.jobproof.modules.careerplanning.application.CareerPlanningAiService.BatchValidationItem;
 import com.jobproof.modules.careerplanning.application.CareerPlanningAiService.BatchValidationPayload;
 import com.jobproof.modules.careerplanning.application.CareerPlanningAiService.ProposalPayload;
+import com.jobproof.modules.careerplanning.application.CareerPlanningAiService.QuizPayload;
 import com.jobproof.modules.careerplanning.application.CareerPlanningAiService.ValidationPayload;
+import com.jobproof.modules.careerplanning.domain.CareerPlanningExecutionModels.ValidationQuizQuestion;
+import com.jobproof.modules.careerplanning.domain.CareerPlanningExecutionModels.ValidationQuizView;
+import com.jobproof.modules.careerplanning.domain.CareerPlanningExecutionModels.ValidationQuizCommand;
 import com.jobproof.modules.careerplanning.domain.CareerPlanningExecutionModels.ConfirmValidationCommand;
 import com.jobproof.modules.careerplanning.domain.CareerPlanningExecutionModels.CreateEvidenceCommand;
 import com.jobproof.modules.careerplanning.domain.CareerPlanningExecutionModels.CreateLearningPlanCommand;
@@ -85,6 +89,11 @@ public class CareerPlanningExecutionService {
     private static final Set<String> EDITABLE_STATUSES = Set.of(
             "NOT_STARTED", "PLANNED", "LEARNING", "PENDING_VALIDATION", "PAUSED");
     private static final Set<String> INTENSITIES = Set.of("LIGHT", "STANDARD", "FOCUSED");
+    /**
+     * Share of the weekly hours filled with new tasks; the rest stays free for review and catching up.
+     * 轻量 keeps 30% free, 标准 15%, 集中 fills the week and adds a checkpoint every week.
+     */
+    static final Map<String, Double> INTENSITY_SHARE = Map.of("LIGHT", 0.7, "STANDARD", 0.85, "FOCUSED", 1.0);
     private static final Set<String> PLAN_STATUSES = Set.of("ACTIVE", "PAUSED", "COMPLETED", "ARCHIVED");
     private static final Set<String> TASK_STATUSES = Set.of(
             "TODO", "IN_PROGRESS", "BLOCKED", "DONE", "SKIPPED");
@@ -293,7 +302,7 @@ public class CareerPlanningExecutionService {
         jdbc.update("INSERT INTO career_learning_plans(id,session_id,goal_id,account_id,canvas_version_id,canvas_version_no,duration_weeks,intensity,weekly_hours,learning_days_json,start_date,target_date,status,version_no,generation_method,prompt_version,schema_version,model_code,response_hash,created_at,updated_at,completed_at,archived_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,'ACTIVE',0,'SYSTEM',NULL,NULL,NULL,NULL,?,?,NULL,NULL)",
                 planId, sessionId, session.goalId(), current.accountId(), graph.base().id(), graph.base().version(),
                 weeks, intensity, command.weeklyHours(), json(days), start, target, now, now);
-        int weeklyBudget = command.weeklyHours() * 60;
+        int weeklyBudget = Math.max(30, (int) Math.round(command.weeklyHours() * 60 * INTENSITY_SHARE.get(intensity)));
         int used = 0;
         int order = 0;
         for (GraphNode node : candidates) {
@@ -305,7 +314,8 @@ public class CareerPlanningExecutionService {
                     detailText(node.detail(), "summary"), priority(node), minutes,
                     weekDueDate(start, week, days), true, order++, now);
         }
-        for (int week = 2; week <= weeks; week += 2) {
+        int checkpointEvery = "FOCUSED".equals(intensity) ? 1 : 2;
+        for (int week = checkpointEvery; week <= weeks; week += checkpointEvery) {
             insertPlanTask(planId, current.accountId(), null, "CHECKPOINT", week,
                     "第 " + week + " 周检查点", "回顾完成情况、证据和阻塞项，并调整后续任务。",
                     "HIGH", 30, weekDueDate(start, week, days), false, order++, now);
@@ -491,11 +501,46 @@ public class CareerPlanningExecutionService {
         String requestId = clean(command.requestId()) == null ? Ids.newId() : command.requestId().trim();
         AiResult<ValidationPayload> result = ai.evaluateAbility(current.accountId(), requestId, context);
         return persistAiResult(current, result, () -> {
-            if ("PASSED".equals(result.value().result()) && evidence.isEmpty()) {
+            // A 专项测试 is its own evidence: the answers to the questions the AI set for this node.
+            if ("PASSED".equals(result.value().result()) && evidence.isEmpty() && !answeredQuiz(method, submission)) {
                 throw AppException.conflict("CP_VALIDATION_EVIDENCE_MISSING", "验证材料不足，不能判定为已通过");
             }
             return persistValidation(current, session, graph, node, method, evidenceIds, submission, result);
         });
+    }
+
+    /** 专项测试：the AI sets 3–5 short questions on one node; the answers come back as submission.quiz. */
+    public ValidationQuizView quiz(CurrentAccount current, String sessionId, ValidationQuizCommand command) {
+        SessionRow session = requireCanvasSession(current, sessionId);
+        if (!session.aiConsent()) throw AppException.conflict("CP_AI_CONSENT_REQUIRED", "专项测试出题前需要明确授权 AI");
+        String nodeId = required(command == null ? null : command.nodeId(), "CP_VALIDATION_NODE_REQUIRED", "请选择需要验证的能力节点");
+        GraphNode node = requireNode(latestGraph(current.accountId(), session.goalId(), false), nodeId);
+        if (Set.of("CAREER", "DOMAIN", "EVIDENCE").contains(node.type())) {
+            throw AppException.user("CP_VALIDATION_NODE_INVALID", "请选择技能、知识或实践任务节点进行验证");
+        }
+        ObjectNode context = mapper.createObjectNode();
+        context.put("title", node.title());
+        context.put("type", node.type());
+        context.set("detail", node.detail());
+        String requestId = clean(command.requestId()) == null ? Ids.newId() : command.requestId().trim();
+        AiResult<QuizPayload> result = ai.generateQuiz(current.accountId(), requestId, context);
+        return persistAiResult(current, result, () -> {
+            audit.append(current.accountId(), "CAREER_VALIDATION_QUIZ_GENERATED", "CAREER_PLANNING_SESSION", sessionId,
+                    "node=" + nodeId + " questions=" + result.value().questions().size());
+            return new ValidationQuizView(nodeId, result.value().questions().stream()
+                    .map(item -> new ValidationQuizQuestion(item.id(), item.question(), item.focus())).toList(),
+                    result.model(), CareerPlanningAiService.QUIZ_PROMPT_VERSION);
+        });
+    }
+
+    /** At least three quiz questions with a real answer each. */
+    static boolean answeredQuiz(String method, JsonNode submission) {
+        if (!"QUIZ".equals(method) || submission == null) return false;
+        int answered = 0;
+        for (JsonNode item : submission.path("quiz")) {
+            if (item.path("question").asText("").trim().length() >= 6 && item.path("answer").asText("").trim().length() >= 10) answered++;
+        }
+        return answered >= 3;
     }
 
     @Transactional(readOnly = true)
@@ -1726,9 +1771,18 @@ public class CareerPlanningExecutionService {
         return value == null ? "完成节点学习内容，并产出可验证成果。" : value;
     }
 
-    private static LocalDate weekDueDate(LocalDate start, int week, List<Integer> days) {
-        int lastDay = days.stream().max(Integer::compareTo).orElse(7);
-        return start.plusWeeks(week - 1L).plusDays(Math.max(0, lastDay - 1L));
+    /**
+     * The last chosen learning day inside plan week {@code week} (the 7 days from start + (week-1) weeks).
+     * Learning days are ISO weekdays (1 = Monday), so a plan starting on a Wednesday with 周一/周三/周六 is due
+     * on that week's Monday, not on "start + 5 days".
+     */
+    static LocalDate weekDueDate(LocalDate start, int week, List<Integer> days) {
+        LocalDate first = start.plusWeeks(week - 1L);
+        for (int offset = 6; offset >= 0; offset--) {
+            LocalDate day = first.plusDays(offset);
+            if (days.contains(day.getDayOfWeek().getValue())) return day;
+        }
+        return first.plusDays(6);
     }
 
     private static List<Integer> normalizedDays(List<Integer> values) {

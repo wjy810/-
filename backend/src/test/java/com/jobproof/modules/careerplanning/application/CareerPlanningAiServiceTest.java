@@ -31,6 +31,38 @@ class CareerPlanningAiServiceTest {
     private final ObjectMapper mapper = new ObjectMapper();
 
     @Test
+    void aQuizHasThreeToFiveDistinctQuestionsNumberedByTheServer() throws Exception {
+        CareerPlanningAiService service = new CareerPlanningAiService(null, null, mapper, "qwen-plus");
+        var quiz = service.parseQuiz(mapper.readTree("""
+                {"questions":[{"id":"x","question":"什么是幂等接口？","focus":"概念"},
+                 {"id":"x","question":"如何为下单接口实现幂等？","focus":"应用"},
+                 {"question":"重试时幂等键过期会怎样？"}]}
+                """));
+        assertThat(quiz.questions()).extracting(CareerPlanningAiService.QuizQuestion::id).containsExactly("q1", "q2", "q3");
+        assertThat(quiz.questions().get(2).focus()).isEmpty();
+
+        for (String bad : new String[] {
+                "{\"questions\":[{\"question\":\"只有一道题可以吗？\"},{\"question\":\"第二道题在这里\"}]}",
+                "{\"questions\":[{\"question\":\"重复的题目文字\"},{\"question\":\"重复的题目文字\"},{\"question\":\"第三道不同的题\"}]}",
+                "{\"questions\":\"不是数组\"}"}) {
+            assertThatThrownBy(() -> service.parseQuiz(mapper.readTree(bad))).as(bad).isInstanceOf(AppException.class);
+        }
+    }
+
+    @Test
+    void onlyAQuizWithThreeRealAnswersCountsAsItsOwnEvidence() throws Exception {
+        String answered = """
+                {"quiz":[{"question":"问题一的内容","answer":"一个足够长的真实回答内容"},
+                 {"question":"问题二的内容","answer":"另一个足够长的真实回答"},
+                 {"question":"问题三的内容","answer":"第三个足够长的真实回答"}]}
+                """;
+        assertThat(CareerPlanningExecutionService.answeredQuiz("QUIZ", mapper.readTree(answered))).isTrue();
+        assertThat(CareerPlanningExecutionService.answeredQuiz("PROJECT_CHECK", mapper.readTree(answered))).isFalse();
+        assertThat(CareerPlanningExecutionService.answeredQuiz("QUIZ", mapper.readTree(answered.replace("第三个足够长的真实回答", "不知道"))))
+                .isFalse();
+    }
+
+    @Test
     void recommendationPromptKeepsLargeStructuredContextAndSourceRefsIntact() throws Exception {
         ObjectNode context = mapper.createObjectNode();
         context.put("padding", "x".repeat(36_000));

@@ -7,6 +7,7 @@ import {
 } from 'lucide-vue-next'
 import JobProofIcon from '@/shared/ui/JobProofIcon.vue'
 import PageState from '@/shared/ui/PageState.vue'
+import AiUnavailableNotice from '@/shared/ui/AiUnavailableNotice.vue'
 import UiButton from '@/shared/ui/UiButton.vue'
 import UiDialog from '@/shared/ui/UiDialog.vue'
 import UiEmptyState from '@/shared/ui/UiEmptyState.vue'
@@ -318,6 +319,7 @@ onBeforeUnmount(() => window.clearTimeout(reloadTimer))
 
     <UiDialog :open="newOpen" title="新建能力画布" :width="760" @close="closeNew">
       <section class="new-canvas-dialog">
+        <AiUnavailableNotice kind="careerPlanning" feature="生成能力树" fallback="画布可以先建好，AI 恢复后再生成能力树。" />
         <header><span><Sparkles :size="23" /></span><div><h2>选择新的目标职业</h2><p>新画布不会复制旧节点。确认目标后只创建根节点，由 AI 重新生成完整能力树。</p></div></header>
         <JobTaxonomyPicker :selected-name="selectedTargetName" :selected-node-id="selectedTargetId" :disabled="pending === 'create'" @select="chooseTarget" />
         <p class="dialog-safety"><CheckCircle2 :size="16" />旧画布、学习计划、验证和版本记录均会完整保留。</p>

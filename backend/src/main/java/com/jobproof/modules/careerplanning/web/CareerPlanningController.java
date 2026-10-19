@@ -35,6 +35,8 @@ import com.jobproof.modules.careerplanning.domain.CareerPlanningModels.Recommend
 import com.jobproof.modules.careerplanning.domain.CareerPlanningModels.ReviewProfileCommand;
 import com.jobproof.modules.careerplanning.domain.CareerPlanningModels.SessionView;
 import com.jobproof.modules.careerplanning.domain.CareerPlanningModels.StartCommand;
+import com.jobproof.modules.careerplanning.domain.CareerPlanningExecutionModels.ValidationQuizView;
+import com.jobproof.modules.careerplanning.domain.CareerPlanningExecutionModels.ValidationQuizCommand;
 import com.jobproof.modules.careerplanning.domain.CareerPlanningExecutionModels.ConfirmValidationCommand;
 import com.jobproof.modules.careerplanning.domain.CareerPlanningExecutionModels.CreateEvidenceCommand;
 import com.jobproof.modules.careerplanning.domain.CareerPlanningExecutionModels.CreateLearningPlanCommand;
@@ -384,6 +386,12 @@ public class CareerPlanningController {
             @PathVariable String planId, @PathVariable int week,
             @RequestBody WeeklyReviewCommand command) {
         return ApiResponse.ok(execution.saveWeeklyReview(current(), sessionId, planId, week, command));
+    }
+
+    @PostMapping("/sessions/{sessionId}/validations/quiz")
+    public ApiResponse<ValidationQuizView> validationQuiz(@PathVariable String sessionId,
+            @RequestBody ValidationQuizCommand command) {
+        return ApiResponse.ok(execution.quiz(current(), sessionId, command));
     }
 
     @PostMapping("/sessions/{sessionId}/validations")

@@ -7,6 +7,7 @@ import {
   LoaderCircle, LockKeyhole, MessageCircle, Pencil, Save, Send, ShieldCheck, Sparkles, Target, Trash2, UserRound, X,
 } from 'lucide-vue-next'
 import PageState from '@/shared/ui/PageState.vue'
+import AiUnavailableNotice from '@/shared/ui/AiUnavailableNotice.vue'
 import UiDialog from '@/shared/ui/UiDialog.vue'
 import UiErrorState from '@/shared/ui/UiErrorState.vue'
 import UiSelect from '@/shared/ui/UiSelect.vue'
@@ -943,6 +944,7 @@ onBeforeUnmount(() => {
             <h1>先确定职业方向，再生成你的能力树</h1>
             <p>结合你确认的经历、技能与限制，给出 3–6 个可比较方向；最终选择始终由你确认。</p>
           </div>
+          <AiUnavailableNotice kind="careerPlanning" feature="职业方向判定和能力画布" class="cp-ai-notice" />
           <aside v-if="unfinishedSession" class="cp-unfinished" role="status">
             <History :size="18" aria-hidden="true" />
             <p><strong>你有一次没走完的规划</strong><span>停在「{{ UNFINISHED_PHASE_LABELS[unfinishedSession.phase] ?? '进行中' }}」，已填写的内容都还在。</span></p>

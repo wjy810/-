@@ -3,15 +3,17 @@ import { computed, reactive, ref, watch } from 'vue'
 import {
   AlertTriangle, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, CalendarDays, Check,
   ChevronDown, ChevronRight, CircleAlert,
-  ClipboardCheck, Clock3, FilePlus2, LoaderCircle, Pause, Play, RotateCcw, ShieldCheck,
+  ClipboardCheck, Clock3, FilePlus2, FileText, LoaderCircle, NotebookPen, Pause, Play, RotateCcw, ShieldCheck,
   Sparkles, Target,
 } from 'lucide-vue-next'
 import UiDialog from '@/shared/ui/UiDialog.vue'
+import { confirm } from '@/shared/ui/confirm'
 import { errorMessage } from '@/shared/api/types'
+import { fetchCareerFiles, fetchCareerRecords } from '@/features/career-library/services/careerLibraryApi'
 import {
   addCareerLearningEvidence, saveCareerWeeklyReview, updateCareerLearningPlan, updateCareerPlanTask,
 } from '../services/careerPlanningApi'
-import type { CareerCanvas, CareerLearningPlan, CareerPlanTask, CareerPlanTaskStatus } from '../types'
+import type { CareerCanvas, CareerLearningEvidence, CareerLearningPlan, CareerPlanTask, CareerPlanTaskStatus } from '../types'
 import { careerEvidenceStatusLabel } from '../utils/presentation'
 
 const props = defineProps<{
@@ -34,6 +36,16 @@ const pending = ref('')
 const evidenceTask = ref<CareerPlanTask | null>(null)
 const evidenceTitle = ref('')
 const evidenceNote = ref('')
+type EvidenceSource = 'USER_NOTE' | 'CAREER_RECORD' | 'CAREER_FILE'
+type LibraryOption = { id: string; title: string; meta: string }
+const evidenceSource = ref<EvidenceSource>('USER_NOTE')
+const evidenceSourceId = ref('')
+const libraryOptions = ref<Record<'CAREER_RECORD' | 'CAREER_FILE', LibraryOption[] | null>>({ CAREER_RECORD: null, CAREER_FILE: null })
+const libraryLoading = ref(false)
+const viewedEvidence = ref<CareerLearningEvidence | null>(null)
+const EVIDENCE_SOURCES: Array<{ value: EvidenceSource; label: string }> = [
+  { value: 'USER_NOTE', label: '写一段说明' }, { value: 'CAREER_RECORD', label: '资料库经历' }, { value: 'CAREER_FILE', label: '资料库文件' },
+]
 const reviewOpen = ref(true)
 const review = reactive({ completedSummary: '', blockers: '', adjustment: '', nextWeekFocus: '' })
 
@@ -59,6 +71,10 @@ const completedCount = computed(() => props.plan?.tasks.filter(task => task.stat
 const validationCount = computed(() => props.canvas.nodes.filter(node => node.status === 'PENDING_VALIDATION').length)
 const progress = computed(() => props.plan?.tasks.length ? Math.round(completedCount.value / props.plan.tasks.length * 100) : 0)
 const weekCompleted = computed(() => tasks.value.filter(task => task.status === 'DONE').length)
+/** Minutes planned this week against the hours the user said they have; tasks moved here can overfill it. */
+const weekMinutes = computed(() => tasks.value.reduce((sum, task) => sum + task.estimatedMinutes, 0))
+const weekOverloaded = computed(() => Boolean(props.plan) && weekMinutes.value > props.plan!.weeklyHours * 60)
+const weekEvidence = computed(() => props.plan?.evidences.filter(value => tasks.value.some(task => task.id === value.taskId)) ?? [])
 const focusTitle = computed(() => {
   const task = tasks.value.find(item => item.status === 'IN_PROGRESS') ?? tasks.value.find(item => item.status === 'TODO')
   if (!task?.nodeId) return '按计划推进本周任务'
@@ -122,6 +138,44 @@ function openEvidence(task: CareerPlanTask): void {
   evidenceTask.value = task
   evidenceTitle.value = `${task.title} - 学习证据`
   evidenceNote.value = ''
+  evidenceSource.value = 'USER_NOTE'
+  evidenceSourceId.value = ''
+}
+
+async function chooseEvidenceSource(source: EvidenceSource): Promise<void> {
+  evidenceSource.value = source
+  evidenceSourceId.value = ''
+  if (source === 'USER_NOTE' || libraryOptions.value[source]) return
+  libraryLoading.value = true
+  try {
+    // Only what the server accepts as evidence: confirmed records and files that finished scanning.
+    libraryOptions.value[source] = source === 'CAREER_RECORD'
+      ? (await fetchCareerRecords({ status: 'ACTIVE', size: 100 })).items.filter(item => item.confirmed)
+        .map(item => ({ id: item.id, title: item.title, meta: [item.organization, item.role].filter(Boolean).join(' · ') }))
+      : (await fetchCareerFiles({ status: 'ACTIVE', processingStatus: 'READY', size: 100 })).items
+        .map(item => ({ id: item.id, title: item.displayName, meta: item.originalFilename }))
+  } catch (reason) {
+    emit('error', errorMessage(reason, '资料库读取失败'))
+    evidenceSource.value = 'USER_NOTE'
+  } finally { libraryLoading.value = false }
+}
+
+function chooseLibraryItem(option: LibraryOption): void {
+  evidenceSourceId.value = option.id
+  evidenceTitle.value = option.title
+}
+
+function evidenceSourceLabel(value: string): string {
+  return value === 'CAREER_RECORD' ? '资料库经历' : value === 'CAREER_FILE' ? '资料库文件' : '文字说明'
+}
+
+async function replan(): Promise<void> {
+  const ok = await confirm({
+    title: '按当前画布重新规划？',
+    message: '现在的计划会归档，已完成的任务、证据和复盘仍留在计划历史里；新计划从你设定的开始日期重新排期。',
+    confirmText: '重新规划',
+  })
+  if (ok) emit('create')
 }
 
 async function addEvidence(): Promise<void> {
@@ -129,7 +183,8 @@ async function addEvidence(): Promise<void> {
   pending.value = 'evidence'
   try {
     const value = await addCareerLearningEvidence(props.sessionId, props.plan.id, {
-      taskId: evidenceTask.value.id, nodeId: evidenceTask.value.nodeId, sourceType: 'USER_NOTE',
+      taskId: evidenceTask.value.id, nodeId: evidenceTask.value.nodeId, sourceType: evidenceSource.value,
+      ...(evidenceSource.value === 'USER_NOTE' ? {} : { sourceId: evidenceSourceId.value }),
       title: evidenceTitle.value.trim(), note: evidenceNote.value.trim(), expectedTaskVersion: evidenceTask.value.version,
     })
     emit('updated', value, false)
@@ -172,7 +227,7 @@ async function setPlanStatus(status: 'ACTIVE' | 'PAUSED' | 'COMPLETED' | 'ARCHIV
     <header class="plan-summary">
       <div><span><CalendarDays :size="22" /></span><p><strong>第 {{ activeWeek }} 周</strong><small>/ 共 {{ plan.durationWeeks }} 周</small></p></div>
       <dl><div><dt><ClipboardCheck :size="18" /></dt><dd><small>已完成</small><strong>{{ completedCount }} / {{ plan.tasks.length }}</strong></dd></div><div><dt class="validation"><ShieldCheck :size="18" /></dt><dd><small>待验证</small><strong>{{ validationCount }}</strong></dd></div><div><dt><Target :size="18" /></dt><dd><small>当前重点</small><strong>{{ focusTitle }}</strong></dd></div></dl>
-      <div class="plan-actions"><button v-if="plan.status === 'ACTIVE'" type="button" :disabled="pending === 'plan:PAUSED'" @click="setPlanStatus('PAUSED')"><Pause :size="15" />暂停</button><button v-else-if="plan.status === 'PAUSED'" type="button" @click="setPlanStatus('ACTIVE')"><Play :size="15" />恢复</button><button type="button" @click="emit('create')"><RotateCcw :size="15" />重新规划</button></div>
+      <div class="plan-actions"><button v-if="plan.status === 'ACTIVE'" type="button" :disabled="pending === 'plan:PAUSED'" @click="setPlanStatus('PAUSED')"><Pause :size="15" />暂停</button><button v-else-if="plan.status === 'PAUSED'" type="button" @click="setPlanStatus('ACTIVE')"><Play :size="15" />恢复</button><button type="button" @click="replan"><RotateCcw :size="15" />重新规划</button></div>
     </header>
 
     <div class="plan-progress"><span :style="{ width: `${progress}%` }"></span></div>
@@ -181,6 +236,7 @@ async function setPlanStatus(status: 'ACTIVE' | 'PAUSED' | 'COMPLETED' | 'ARCHIV
     <div class="plan-content">
       <main>
         <header class="week-goal"><div><h2>本周目标</h2><p>围绕 {{ focusTitle }} 完成任务并沉淀可复核证据。</p></div><em>完成 {{ weekCompleted }} / {{ tasks.length }}</em></header>
+        <p v-if="weekOverloaded" class="week-overload" role="status"><AlertTriangle :size="15" />本周安排约 {{ minutesLabel(weekMinutes) }}，超过你设定的每周 {{ plan.weeklyHours }} 小时，可以把部分任务移到下一周。</p>
         <TransitionGroup name="plan-task" tag="div" class="task-list">
           <article v-for="(task,index) in tasks" :key="task.id" :class="`status-${task.status.toLowerCase()}`">
             <button class="task-check" type="button" :disabled="pending === `task:${task.id}`" :aria-label="task.status === 'DONE' ? '恢复任务' : '完成任务'" @click="setTaskStatus(task, task.status === 'DONE' ? 'TODO' : 'DONE')"><LoaderCircle v-if="pending === `task:${task.id}`" class="spin" :size="17" /><Check v-else-if="task.status === 'DONE'" :size="17" /><span v-else>{{ index + 1 }}</span></button>
@@ -192,7 +248,7 @@ async function setPlanStatus(status: 'ACTIVE' | 'PAUSED' | 'COMPLETED' | 'ARCHIV
                 <button type="button" aria-label="下移任务" title="下移任务" :disabled="index === tasks.length - 1 || Boolean(pending)" @click="moveWithinWeek(task, 1)"><ArrowDown :size="14" /></button>
                 <button type="button" aria-label="移到下一周" title="移到下一周" :disabled="activeWeek >= plan.durationWeeks || Boolean(pending)" @click="repositionTask(task, activeWeek + 1)"><ArrowRight :size="14" /></button>
               </div>
-              <button type="button" @click="openEvidence(task)"><FilePlus2 :size="15" />{{ taskEvidence(task).length ? `${taskEvidence(task).length} 项证据` : '添加证据' }}</button>
+              <button v-if="task.nodeId" type="button" @click="openEvidence(task)"><FilePlus2 :size="15" />{{ taskEvidence(task).length ? `${taskEvidence(task).length} 项证据` : '添加证据' }}</button>
               <button v-if="task.nodeId && nodeNeedsValidation(task.nodeId)" type="button" @click="emit('validate', task.nodeId)">去验证<ChevronRight :size="14" /></button><button v-else-if="task.status === 'TODO'" type="button" @click="setTaskStatus(task, 'IN_PROGRESS')">开始</button>
             </div>
           </article>
@@ -202,7 +258,7 @@ async function setPlanStatus(status: 'ACTIVE' | 'PAUSED' | 'COMPLETED' | 'ARCHIV
       </main>
 
       <aside>
-        <section class="evidence-summary"><h3>本周证据</h3><button v-for="item in plan.evidences.filter(value => tasks.some(task => task.id === value.taskId))" :key="item.id" type="button"><FilePlus2 :size="17" /><span><strong>{{ item.title }}</strong><small>{{ careerEvidenceStatusLabel(item.verificationStatus) }}</small></span><ChevronRight :size="15" /></button><p v-if="!plan.evidences.some(value => tasks.some(task => task.id === value.taskId))">完成任务前添加代码、报告、作品或真实说明。</p></section>
+        <section class="evidence-summary"><h3>本周证据</h3><button v-for="item in weekEvidence" :key="item.id" type="button" @click="viewedEvidence = item"><FilePlus2 :size="17" /><span><strong>{{ item.title }}</strong><small>{{ evidenceSourceLabel(item.sourceType) }} · {{ careerEvidenceStatusLabel(item.verificationStatus) }}</small></span><ChevronRight :size="15" /></button><p v-if="!weekEvidence.length">完成任务前添加代码、报告、作品或真实说明。</p></section>
         <section class="weekly-review"><header><h3>本周复盘</h3><button type="button" :aria-expanded="reviewOpen" aria-controls="career-weekly-review" @click="reviewOpen = !reviewOpen"><ChevronDown :size="16" :class="{ rotated: !reviewOpen }" /></button></header><Transition name="review-expand"><div v-if="reviewOpen" id="career-weekly-review"><label>本周收获<textarea v-model="review.completedSummary" rows="3" maxlength="2000" placeholder="完成了什么，学会了什么"></textarea></label><label>阻塞问题<textarea v-model="review.blockers" rows="2" maxlength="2000" placeholder="遇到的问题与原因"></textarea></label><label>调整与下周重点<textarea v-model="review.adjustment" rows="2" maxlength="2000" placeholder="如何调整后续节奏"></textarea></label><input v-model="review.nextWeekFocus" maxlength="1000" placeholder="下周最重要的一件事"><button type="button" :disabled="pending === 'review'" @click="saveReview"><LoaderCircle v-if="pending === 'review'" class="spin" :size="16" />提交本周复盘</button></div></Transition></section>
         <p class="validation-rule"><AlertTriangle :size="17" /><span><strong>验证规则提醒</strong>任务完成只会进入待验证，AI 评估通过且由你确认后，节点才标记为已掌握。</span></p>
       </aside>
@@ -210,8 +266,30 @@ async function setPlanStatus(status: 'ACTIVE' | 'PAUSED' | 'COMPLETED' | 'ARCHIV
   </section>
 
   <UiDialog :open="Boolean(evidenceTask)" title="添加能力证据" :width="560" @close="evidenceTask = null">
-    <div class="evidence-dialog"><p><CircleAlert :size="16" />首版保存结构化证据说明，不会把未选择的资料文件发送给 AI。</p><label>证据名称<input v-model="evidenceTitle" maxlength="255" placeholder="例如：订单接口测试报告"></label><label>补充说明<textarea v-model="evidenceNote" rows="5" maxlength="2000" placeholder="写明你完成的工作、验证方式和可复核结果"></textarea></label></div>
-    <template #footer><button class="dialog-cancel" type="button" @click="evidenceTask = null">取消</button><button class="dialog-primary" type="button" :disabled="pending === 'evidence' || !evidenceTitle.trim()" @click="addEvidence"><LoaderCircle v-if="pending === 'evidence'" class="spin" :size="16" /><FilePlus2 v-else :size="16" />保存并关联</button></template>
+    <div class="evidence-dialog">
+      <div class="evidence-source" role="radiogroup" aria-label="证据来源"><button v-for="option in EVIDENCE_SOURCES" :key="option.value" type="button" role="radio" :aria-checked="evidenceSource === option.value" :class="{ active: evidenceSource === option.value }" @click="chooseEvidenceSource(option.value)">{{ option.label }}</button></div>
+      <template v-if="evidenceSource !== 'USER_NOTE'">
+        <p v-if="libraryLoading" class="library-state"><LoaderCircle class="spin" :size="15" />正在读取资料库</p>
+        <ul v-else-if="libraryOptions[evidenceSource]?.length" class="library-options" role="listbox" :aria-label="evidenceSource === 'CAREER_RECORD' ? '资料库经历' : '资料库文件'">
+          <li v-for="option in libraryOptions[evidenceSource]" :key="option.id"><button type="button" role="option" :aria-selected="evidenceSourceId === option.id" :class="{ active: evidenceSourceId === option.id }" @click="chooseLibraryItem(option)"><NotebookPen v-if="evidenceSource === 'CAREER_RECORD'" :size="15" /><FileText v-else :size="15" /><span><strong>{{ option.title }}</strong><small v-if="option.meta">{{ option.meta }}</small></span><Check v-if="evidenceSourceId === option.id" :size="15" /></button></li>
+        </ul>
+        <p v-else class="library-state">{{ evidenceSource === 'CAREER_RECORD' ? '资料库里还没有已确认的经历。' : '资料库里还没有处理完成的文件。' }}可以先到资料库添加，或改为写一段说明。</p>
+      </template>
+      <p v-else><CircleAlert :size="16" />写明你完成了什么、怎么验证的。不会把未选择的资料文件发送给 AI。</p>
+      <label>证据名称<input v-model="evidenceTitle" maxlength="255" placeholder="例如：订单接口测试报告"></label><label>补充说明<textarea v-model="evidenceNote" rows="4" maxlength="2000" placeholder="写明你完成的工作、验证方式和可复核结果"></textarea></label>
+    </div>
+    <template #footer><button class="dialog-cancel" type="button" @click="evidenceTask = null">取消</button><button class="dialog-primary" type="button" :disabled="pending === 'evidence' || !evidenceTitle.trim() || (evidenceSource !== 'USER_NOTE' && !evidenceSourceId)" @click="addEvidence"><LoaderCircle v-if="pending === 'evidence'" class="spin" :size="16" /><FilePlus2 v-else :size="16" />保存并关联</button></template>
+  </UiDialog>
+
+  <UiDialog :open="Boolean(viewedEvidence)" :title="viewedEvidence?.title ?? '证据'" :width="520" @close="viewedEvidence = null">
+    <dl v-if="viewedEvidence" class="evidence-detail">
+      <div><dt>来源</dt><dd>{{ evidenceSourceLabel(viewedEvidence.sourceType) }}</dd></div>
+      <div><dt>关联能力</dt><dd>{{ nodeTitle(viewedEvidence.nodeId) }}</dd></div>
+      <div><dt>状态</dt><dd>{{ careerEvidenceStatusLabel(viewedEvidence.verificationStatus) }}</dd></div>
+      <div><dt>添加时间</dt><dd>{{ new Date(viewedEvidence.createdAt).toLocaleString('zh-CN', { dateStyle: 'medium', timeStyle: 'short' }) }}</dd></div>
+      <div v-if="viewedEvidence.note" class="evidence-note"><dt>说明</dt><dd>{{ viewedEvidence.note }}</dd></div>
+    </dl>
+    <template #footer><button class="dialog-cancel" type="button" @click="viewedEvidence = null">关闭</button></template>
   </UiDialog>
   </div>
 </template>
@@ -224,5 +302,10 @@ async function setPlanStatus(status: 'ACTIVE' | 'PAUSED' | 'COMPLETED' | 'ARCHIV
 .plan-empty button:disabled{color:var(--text-secondary);background:var(--surface-3);cursor:not-allowed}
 .plan-empty>span,.plan-summary>div:first-child>span{border-radius:8px}.plan-content>main,.plan-content>aside>section,.validation-rule{border-radius:8px}.week-tabs{position:relative;overflow-x:auto;overflow-y:hidden;scrollbar-width:none}.week-tabs::-webkit-scrollbar{display:none}.week-tabs button{position:relative;z-index:1;justify-content:center;flex-basis:92px;width:92px;padding-inline:7px;background:transparent;transition:color .18s ease}.week-tabs button.active{background:transparent}.week-tab-indicator{position:absolute;left:16px;top:9px;width:92px;height:34px;border-radius:7px;background:var(--surface-2);transition:transform .22s cubic-bezier(.2,.8,.2,1)}.weekly-review>header button{display:grid;place-items:center;width:34px;height:34px;border-radius:7px;color:var(--text-secondary)}.weekly-review>header button:hover{background:var(--surface-2)}.weekly-review>div{overflow:hidden}.weekly-review svg{transition:transform .18s ease}.plan-task-move,.plan-task-enter-active,.plan-task-leave-active{transition:transform .22s cubic-bezier(.2,.8,.2,1),opacity .18s ease}.plan-task-enter-from,.plan-task-leave-to{opacity:0;transform:translateY(8px)}.plan-task-leave-active{position:absolute}.review-expand-enter-active,.review-expand-leave-active{transition:opacity .18s ease,transform .22s cubic-bezier(.2,.8,.2,1)}.review-expand-enter-from,.review-expand-leave-to{opacity:0;transform:translateY(-6px)}button:focus-visible,textarea:focus-visible,input:focus-visible{outline:2px solid color-mix(in srgb, var(--color-primary) 42%, transparent);outline-offset:2px}
 @media(max-width:900px){.week-tab-indicator{left:10px}}
+.week-overload{display:flex;align-items:flex-start;gap:7px;margin:0 0 12px;padding:9px 12px;border-radius:8px;color:var(--color-warning-text);background:var(--color-warning-soft);font-size:13px;line-height:1.55}.week-overload svg{flex:0 0 auto;margin-top:2px}
+.evidence-source{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;padding:4px;border-radius:9px;background:var(--surface-2)}.evidence-source button{min-height:36px;border:0;border-radius:7px;color:var(--text-secondary);background:transparent;font-size:13px;cursor:pointer}.evidence-source button.active{color:var(--color-primary);background:var(--surface-1);box-shadow:var(--shadow-sm);font-weight:600}
+.library-options{max-height:220px;margin:0;padding:0;list-style:none;display:grid;gap:6px;overflow:auto}.library-options button{width:100%;min-height:44px;display:flex;align-items:center;gap:9px;padding:8px 11px;border:1px solid var(--border-subtle);border-radius:8px;text-align:left;color:var(--text-primary);background:var(--surface-1);cursor:pointer}.library-options button.active{border-color:var(--color-primary);background:var(--color-primary-soft)}.library-options button>svg{flex:0 0 auto;color:var(--text-tertiary)}.library-options button.active>svg{color:var(--color-primary)}.library-options span{min-width:0;flex:1;display:grid;gap:2px}.library-options strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px}.library-options small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-tertiary);font-size:12px}
+.library-state{display:flex;align-items:center;gap:7px;margin:0;color:var(--text-secondary);font-size:13px;line-height:1.6}
+.evidence-detail{display:grid;gap:10px;margin:0}.evidence-detail>div{display:grid;grid-template-columns:72px minmax(0,1fr);gap:10px}.evidence-detail dt{color:var(--text-tertiary);font-size:13px}.evidence-detail dd{margin:0;color:var(--text-primary);font-size:14px;line-height:1.6;white-space:pre-wrap}
 @media(prefers-reduced-motion:reduce){.plan-progress span,.week-tab-indicator,.week-tabs button,.weekly-review svg,.plan-task-move,.plan-task-enter-active,.plan-task-leave-active,.review-expand-enter-active,.review-expand-leave-active{transition:none}.plan-task-enter-from,.plan-task-leave-to,.review-expand-enter-from,.review-expand-leave-to{transform:none}.spin{animation:none}}
 </style>

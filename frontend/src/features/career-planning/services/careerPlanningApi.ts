@@ -22,7 +22,7 @@ import type {
   CareerInferenceDirection,
   ConfirmationToken,
   EvidenceOption,
-  RecommendationSet,
+  RecommendationSet, CareerValidationQuiz,
 } from '../types'
 
 const ROOT = '/api/v1/career-planning'
@@ -237,6 +237,12 @@ export const updateCareerPlanTask = (
 ) => api<CareerLearningPlan>(`${ROOT}/sessions/${id(sessionId)}/plans/${id(planId)}/tasks/${id(taskId)}`, {
   method: 'PATCH', body: JSON.stringify(command),
 })
+
+/** 专项测试: the AI sets 3–5 short questions for one node (uses one AI credit). */
+export const generateCareerValidationQuiz = (sessionId: string, command: { nodeId: string; requestId?: string }) =>
+  api<CareerValidationQuiz>(`${ROOT}/sessions/${id(sessionId)}/validations/quiz`, {
+    method: 'POST', body: JSON.stringify(command),
+  })
 
 export const addCareerLearningEvidence = (
   sessionId: string,

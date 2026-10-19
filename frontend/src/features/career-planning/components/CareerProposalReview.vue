@@ -8,6 +8,8 @@ import {
 } from '../services/careerPlanningApi'
 import type { CareerCanvas, CareerCanvasProposal, CareerProposalApplyResult } from '../types'
 import { careerSourceRefLabels } from '../utils/presentation'
+import { proposalFieldChanges, type ProposalFieldChange } from '../utils/proposalDiff'
+import { parentMap } from '../utils/canvas'
 
 const props = defineProps<{
   open: boolean
@@ -65,6 +67,17 @@ function beforeTitle(item: CareerCanvasProposal['items'][number]): string {
   if (item.operation === 'ADD_RELATION') return '尚未建立前置依赖'
   const value = item.before?.title
   return typeof value === 'string' && value.trim() ? value : '新增节点'
+}
+
+const parents = computed(() => parentMap(props.canvas))
+
+/** Field-by-field changes; a move or an addition also names the parent it goes under. */
+function fieldChanges(item: CareerCanvasProposal['items'][number]): ProposalFieldChange[] {
+  const currentParent = item.targetNodeId ? parents.value.get(item.targetNodeId) : undefined
+  const parent = item.parentNodeId && (item.operation === 'ADD' || item.operation === 'MOVE')
+    ? { before: currentParent ? referenceTitle(currentParent) : '', after: referenceTitle(item.parentNodeId) }
+    : undefined
+  return proposalFieldChanges(item.operation, item.before ?? {}, item.after ?? {}, parent)
 }
 
 function operationLabel(value: CareerCanvasProposal['items'][number]['operation']): string {
@@ -141,7 +154,10 @@ async function discard(): Promise<void> {
         <div class="proposal-items">
           <article v-for="item in proposal.items" :key="item.id" :class="`is-${decisions[item.id]?.decision.toLowerCase() || 'pending'}`">
             <header><span>{{ operationLabel(item.operation) }}</span><strong>{{ afterTitle(item) }}</strong><small>{{ item.reason }}</small></header>
-            <div class="proposal-diff"><p><em>调整前</em>{{ beforeTitle(item) }}</p><span>→</span><p><em>调整后</em>{{ afterTitle(item) }}</p></div>
+            <dl v-if="fieldChanges(item).length" class="proposal-fields" :aria-label="`${afterTitle(item)} 的改动`">
+              <div v-for="change in fieldChanges(item)" :key="change.field"><dt>{{ change.label }}</dt><dd><del v-if="change.before">{{ change.before }}</del><span v-if="change.before" aria-hidden="true">→</span><ins>{{ change.after }}</ins></dd></div>
+            </dl>
+            <div v-else class="proposal-diff"><p><em>调整前</em>{{ beforeTitle(item) }}</p><span>→</span><p><em>调整后</em>{{ afterTitle(item) }}</p></div>
             <div v-if="item.sourceRefs.length" class="proposal-refs"><span v-for="source in careerSourceRefLabels(item.sourceRefs)" :key="source">{{ source }}</span></div>
             <footer><button type="button" :class="{ active: decisions[item.id]?.decision === 'ACCEPTED' }" @click="decisions[item.id] = { decision: 'ACCEPTED', reason: '' }"><Check :size="15" />接受</button><button type="button" :class="{ active: decisions[item.id]?.decision === 'REJECTED' }" @click="decisions[item.id] = { decision: 'REJECTED', reason: decisions[item.id]?.reason || '' }"><X :size="15" />拒绝</button></footer>
             <textarea v-if="decisions[item.id]?.decision === 'REJECTED'" v-model="decisions[item.id].reason" rows="2" maxlength="1000" placeholder="填写拒绝原因，便于保留审计记录"></textarea>
@@ -161,5 +177,6 @@ async function discard(): Promise<void> {
 
 <style scoped>
 .proposal-review{display:grid;gap:16px;color:var(--text-primary)}.proposal-prompt{display:grid;grid-template-columns:48px 1fr;gap:12px;padding:4px}.proposal-prompt>span{display:grid;place-items:center;width:44px;height:44px;border-radius:12px;color:var(--color-primary);background:var(--surface-2)}.proposal-prompt h2{margin:0 0 5px;font-size:19px}.proposal-prompt p{margin:0;color:var(--text-secondary);line-height:1.6}.proposal-prompt textarea{grid-column:1/-1;min-height:126px;padding:14px;border:1px solid var(--border-subtle);border-radius:10px;outline:0;resize:vertical}.proposal-prompt textarea:focus{border-color:var(--color-primary);box-shadow:0 0 0 3px color-mix(in srgb, var(--color-primary) 7%, transparent)}.proposal-prompt footer{grid-column:1/-1;display:flex;align-items:center;justify-content:flex-end;gap:14px}.proposal-prompt footer small{color:var(--text-tertiary)}.proposal-prompt footer button,.proposal-apply{display:flex;align-items:center;justify-content:center;gap:7px;min-height:42px;padding:0 18px;border:0;border-radius:8px;color:var(--text-on-primary);background:var(--color-primary)}.proposal-head,.proposal-head>div{display:flex;align-items:center;justify-content:space-between}.proposal-head>div{gap:10px}.proposal-head span{display:grid;place-items:center;width:40px;height:40px;border-radius:10px;color:var(--color-primary);background:var(--surface-2)}.proposal-head p{display:grid;margin:0}.proposal-head small{margin-top:3px;color:var(--text-secondary)}.proposal-head em{padding:5px 9px;border-radius:6px;color:var(--color-primary);background:var(--surface-2);font-style:normal;font-size:12px}.proposal-boundary,.proposal-error{display:flex;align-items:center;gap:7px;margin:0;padding:10px 12px;border-radius:8px;color:var(--color-warning-text);background:var(--surface-2);font-size:13px}.proposal-error{color:var(--color-danger-text);background:var(--surface-2)}.proposal-items{display:grid;gap:10px;max-height:52vh;overflow:auto}.proposal-items article{display:grid;gap:11px;padding:14px;border:1px solid var(--border-subtle);border-radius:10px;background:var(--surface-1)}.proposal-items article.is-accepted{border-color:color-mix(in srgb, var(--color-success) 35%, var(--border-subtle));background:var(--surface-1)}.proposal-items article.is-rejected{border-color:var(--border-default);background:var(--surface-1)}.proposal-items article>header{display:grid;grid-template-columns:auto 1fr;gap:3px 8px}.proposal-items article>header span{grid-row:1/3;padding:4px 7px;border-radius:5px;color:var(--color-primary);background:var(--surface-2);font-size:12px}.proposal-items article>header small{color:var(--text-secondary)}.proposal-diff{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:9px}.proposal-diff p{display:grid;gap:4px;margin:0;padding:10px;border-radius:7px;background:var(--surface-2)}.proposal-diff em{color:var(--text-secondary);font-size:12px;font-style:normal}.proposal-diff>span{color:var(--text-tertiary)}.proposal-refs{display:flex;flex-wrap:wrap;gap:5px}.proposal-refs span{padding:3px 6px;border-radius:4px;color:var(--color-primary-text);background:var(--surface-2);font-size:12px}.proposal-items article>footer{display:flex;gap:8px}.proposal-items article>footer button,.proposal-cancel,.proposal-secondary{display:flex;align-items:center;gap:5px;min-height:36px;padding:0 12px;border:1px solid var(--border-subtle);border-radius:7px;color:var(--text-secondary);background:var(--surface-1)}.proposal-items article>footer button.active:first-child{color:var(--color-success-text);border-color:var(--color-success);background:var(--surface-2)}.proposal-items article>footer button.active:last-child{color:var(--color-danger-text);border-color:color-mix(in srgb, var(--color-danger) 35%, var(--border-subtle));background:var(--surface-2)}.proposal-items article>textarea{padding:10px;border:1px solid var(--border-default);border-radius:7px;resize:vertical}.proposal-apply:disabled,.proposal-prompt button:disabled{opacity:.5}.proposal-secondary{color:var(--color-primary);border-color:var(--color-primary-border)}.spin{animation:spin .8s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}
+.proposal-fields{display:grid;gap:6px;margin:0;padding:10px 12px;border-radius:8px;background:var(--surface-2)}.proposal-fields>div{display:grid;grid-template-columns:64px minmax(0,1fr);gap:10px;align-items:baseline}.proposal-fields dt{color:var(--text-tertiary);font-size:12px}.proposal-fields dd{min-width:0;margin:0;display:flex;flex-wrap:wrap;align-items:baseline;gap:6px;font-size:13px;line-height:1.6}.proposal-fields del{color:var(--text-tertiary);text-decoration-color:color-mix(in srgb, var(--color-danger) 55%, transparent)}.proposal-fields dd>span{color:var(--text-tertiary)}.proposal-fields ins{color:var(--text-primary);text-decoration:none;background:color-mix(in srgb, var(--color-success) 12%, transparent);border-radius:3px;padding:0 3px}
 @media(max-width:700px){.proposal-head{align-items:flex-start;gap:8px}.proposal-head em{white-space:nowrap}.proposal-diff{grid-template-columns:1fr}.proposal-diff>span{display:none}.proposal-items{max-height:58vh}}
 </style>
