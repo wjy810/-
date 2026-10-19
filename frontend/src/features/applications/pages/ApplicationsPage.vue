@@ -5,7 +5,7 @@
  */
 import { computed, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Columns3, Eye, List, Plus, RefreshCw, Search, Send } from 'lucide-vue-next'
+import { Columns3, Eye, Link2, List, Plus, RefreshCw, Search, Send } from 'lucide-vue-next'
 import PageState from '@/shared/ui/PageState.vue'
 import UiButton from '@/shared/ui/UiButton.vue'
 import UiDialog from '@/shared/ui/UiDialog.vue'
@@ -23,12 +23,14 @@ import ApplicationBoard from '../components/ApplicationBoard.vue'
 import ApplicationDialog, { type ApplicationPrefill } from '../components/ApplicationDialog.vue'
 import ApplicationDrawer from '../components/ApplicationDrawer.vue'
 import ApplicationFunnel from '../components/ApplicationFunnel.vue'
+import ResumeLinksPanel from '../components/ResumeLinksPanel.vue'
 import { fetchApplications, moveApplication } from '../services/applicationsApi'
 import { OUTCOMES, channelLabel, outcomeLabel, stageLabel } from '../labels'
 import type { ApplicationOutcome, ApplicationStage, JobApplication } from '../types'
 import { dueOf, receiptOf } from '../utils/receipts'
 
-type View = 'board' | 'list'
+type View = 'board' | 'list' | 'links'
+const VIEWS: readonly View[] = ['board', 'list', 'links']
 const VIEW_KEY = 'jp:applications:view'
 
 const route = useRoute()
@@ -45,6 +47,8 @@ const drawerId = ref<string | null>(null)
 const closingId = ref<string | null>(null)
 const closingOutcome = ref<ApplicationOutcome>('REJECTED')
 const closingPending = ref(false)
+/** Set when the empty page asks for a general link: the links view opens its form once mounted. */
+const createLinkOnOpen = ref(false)
 let clock: number | undefined
 
 const stats = computed(() => page.data.value?.stats ?? null)
@@ -57,13 +61,15 @@ const freshOpens = computed(() => items.value.filter(item => receiptOf(item.link
 const viewItems = [
   { value: 'board' as const, label: '看板', icon: Columns3 },
   { value: 'list' as const, label: '列表', icon: List },
+  { value: 'links' as const, label: '链接', icon: Link2 },
 ]
 const outcomeOptions = OUTCOMES.map(item => ({ value: item.value, label: item.label }))
 const closingApplication = computed(() => items.value.find(item => item.id === closingId.value) ?? null)
 
 function readView(): View {
   try {
-    return window.localStorage.getItem(VIEW_KEY) === 'list' ? 'list' : 'board'
+    const saved = window.localStorage.getItem(VIEW_KEY) as View | null
+    return saved && VIEWS.includes(saved) ? saved : 'board'
   } catch {
     return 'board'
   }
@@ -160,15 +166,24 @@ function editFromDrawer(application: JobApplication): void {
   dialogOpen.value = true
 }
 
-/** `?focus=<id>` from a notification opens that application; `?new=1&company=…` starts a record. */
+function startGeneralLink(): void {
+  createLinkOnOpen.value = true
+  view.value = 'links'
+}
+
+/**
+ * `?focus=<id>` from a notification opens that application; `?tab=links` (a general link's notice)
+ * shows the links; `?new=1&company=…` starts a record.
+ */
 function applyQuery(): void {
   const focus = typeof route.query.focus === 'string' ? route.query.focus : ''
   if (focus) drawerId.value = focus
+  if (route.query.tab === 'links') view.value = 'links'
   if (route.query.new === '1') {
     const text = (key: string) => (typeof route.query[key] === 'string' ? (route.query[key] as string) : undefined)
     openCreate({ company: text('company'), positionTitle: text('position'), location: text('location'), jobMatchId: text('jobMatchId') })
   }
-  if (focus || route.query.new) void router.replace({ query: {} })
+  if (focus || route.query.new || route.query.tab) void router.replace({ query: {} })
 }
 
 watch(view, value => {
@@ -198,8 +213,8 @@ onUnmounted(() => window.clearInterval(clock))
         <div class="applications-skeleton"><UiSkeleton v-for="n in 4" :key="n" height="300px" radius="var(--radius-lg)" /></div>
       </template>
 
-      <template v-if="items.length">
-        <ApplicationFunnel v-if="stats" :stats="stats" />
+      <template v-if="items.length || view === 'links'">
+        <ApplicationFunnel v-if="stats && items.length" :stats="stats" />
 
         <aside v-if="freshOpens.length" class="fresh-strip" aria-live="polite">
           <span class="fresh-strip__icon"><Eye :size="16" /></span>
@@ -211,12 +226,19 @@ onUnmounted(() => window.clearInterval(clock))
           <UiButton size="sm" variant="ghost" @click="openDrawer(freshOpens[0]!.id)">看回执</UiButton>
         </aside>
 
-        <div class="applications-toolbar">
-          <UiInput v-model="query" :icon="Search" clearable placeholder="搜索公司或岗位" aria-label="搜索投递" class="applications-toolbar__search" />
+        <div class="applications-toolbar" :class="{ 'is-links': view === 'links' }">
+          <UiInput v-if="view !== 'links'" v-model="query" :icon="Search" clearable placeholder="搜索公司或岗位" aria-label="搜索投递" class="applications-toolbar__search" />
           <UiSegmented v-model="view" :items="viewItems" aria-label="显示方式" size="sm" />
         </div>
 
-        <ApplicationBoard v-if="view === 'board'" :items="filtered" :now="now" @open="openDrawer" @move="move" />
+        <ResumeLinksPanel
+          v-if="view === 'links'"
+          :now="now"
+          :create-on-mount="createLinkOnOpen"
+          @open-application="openDrawer"
+          @changed="refreshQuietly"
+        />
+        <ApplicationBoard v-else-if="view === 'board'" :items="filtered" :now="now" @open="openDrawer" @move="move" />
 
         <div v-else class="applications-table-wrap">
           <table class="applications-table">
@@ -251,6 +273,7 @@ onUnmounted(() => window.clearInterval(clock))
         description="记录投到了哪家公司、走到哪一步；附上专属简历链接，对方打开简历的那一刻你就会收到提醒。"
       >
         <UiButton :icon="Send" @click="openCreate()">记录第一条投递</UiButton>
+        <UiButton variant="secondary" :icon="Link2" @click="startGeneralLink">先建一条通用链接</UiButton>
       </UiEmptyState>
     </PageState>
 
@@ -334,6 +357,10 @@ onUnmounted(() => window.clearInterval(clock))
 
 .applications-toolbar__search {
   width: min(320px, 100%);
+}
+
+.applications-toolbar.is-links {
+  justify-content: flex-end;
 }
 
 .applications-table-wrap {

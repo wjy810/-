@@ -300,8 +300,8 @@ const year = new Date().getFullYear()
                 <div><dt>首次打开</dt><dd>12 分钟前</dd></div>
               </dl>
               <ul>
-                <li><Smartphone :size="14" /><span>手机 · 微信</span><em>读了 2 分 05 秒</em></li>
-                <li><FileText :size="14" /><span>电脑 · 飞书<small> · 来自 feishu.cn</small></span><em>读了 2 分 07 秒</em></li>
+                <li><Smartphone :size="14" /><span>手机 · 微信</span><em>读了 2 分 5 秒</em></li>
+                <li><FileText :size="14" /><span>电脑 · 飞书<small> · 来自 feishu.cn</small></span><em>读了 2 分 7 秒</em></li>
               </ul>
               <div class="receipt-card__next"><CalendarClock :size="14" />明天 14:00 二面 · 已提醒</div>
             </div>

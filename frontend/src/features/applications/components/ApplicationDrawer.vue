@@ -16,6 +16,7 @@ import UiSkeleton from '@/shared/ui/UiSkeleton.vue'
 import { confirm } from '@/shared/ui/confirm'
 import { toast } from '@/shared/ui/toast'
 import { errorMessage } from '@/shared/api/types'
+import { copyText } from '@/shared/lib/clipboard'
 import { formatRelative, formatWhen } from '@/shared/lib/datetime'
 import {
   createResumeLink, deleteApplication, fetchApplication, fetchShareableVersions, moveApplication, revokeResumeLink,
@@ -145,15 +146,9 @@ async function revoke(): Promise<void> {
 
 async function copyLink(): Promise<void> {
   if (!linkUrl.value) return
-  try {
-    await navigator.clipboard.writeText(linkUrl.value)
-  } catch {
-    const field = document.createElement('textarea')
-    field.value = linkUrl.value
-    document.body.append(field)
-    field.select()
-    document.execCommand('copy')
-    field.remove()
+  if (!(await copyText(linkUrl.value))) {
+    toast.error('浏览器不允许复制，请长按或选中链接手动复制')
+    return
   }
   copied.value = true
   toast.success('链接已复制，可以粘贴到邮件、招聘平台或微信里')
