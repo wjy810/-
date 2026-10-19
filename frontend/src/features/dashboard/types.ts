@@ -37,7 +37,7 @@ export type RecentCanvas = {
 }
 
 export type ApplicationsSummary = {
-  stats: { total: number; active: number; applied: number; opened: number; interviews: number; offers: number; overdue: number; upcoming: number }
+  stats: { total: number; active: number; applied: number; linked: number; opened: number; interviews: number; offers: number; overdue: number; upcoming: number }
   recentOpens: Array<{ id: string; company: string; positionTitle: string; lastViewedAt: string; viewCount: number }>
   nextSteps: Array<{ id: string; company: string; nextStep: string; nextStepAt: string }>
 }

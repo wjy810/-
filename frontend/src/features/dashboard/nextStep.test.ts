@@ -47,10 +47,28 @@ test('degraded modules (null) never crash the rules', () => {
   assert.equal(readiness(value).score, 0)
 })
 
-test('readiness averages the four preparation steps', () => {
+const applications = (total: number, linked: number) => ({
+  stats: { total, active: total, applied: total, linked, opened: 0, interviews: 0, offers: 0, overdue: 0, upcoming: 0 },
+  recentOpens: [],
+  nextSteps: [],
+})
+
+test('readiness averages the five preparation steps', () => {
   const value = overview({
     profile: { completeness: 100, missing: [] },
     resumes: { total: 1, exportable: 1, recent: [resume(8)] },
   })
-  assert.equal(readiness(value).score, 50)
+  assert.equal(readiness(value).score, 40)
+  assert.equal(readiness({ ...value, applications: applications(2, 0) }).score, 50)
+  assert.equal(readiness({ ...value, applications: applications(2, 1) }).items.find(item => item.key === 'apply')?.done, true)
+})
+
+test('with an exportable resume and a match, the next step is to send it with a link', () => {
+  const base = {
+    resumes: { total: 1, exportable: 1, recent: [resume(8)] },
+    jobMatches: { total: 1, completed: 1, recent: [] },
+  }
+  assert.equal(nextStep(overview({ ...base, applications: applications(0, 0) })).kind, 'track-application')
+  assert.equal(nextStep(overview({ ...base, applications: applications(0, 0) })).to, '/applications?new=1')
+  assert.equal(nextStep(overview({ ...base, applications: applications(1, 1) })).kind, 'practice-interview')
 })

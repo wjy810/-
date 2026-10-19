@@ -4,7 +4,7 @@
  */
 import type { WorkspaceOverview } from './types'
 
-export type NextStepKind = 'create-resume' | 'continue-resume' | 'first-match' | 'practice-interview' | 'plan-career' | 'continue-work'
+export type NextStepKind = 'create-resume' | 'continue-resume' | 'first-match' | 'track-application' | 'practice-interview' | 'plan-career' | 'continue-work'
 
 export type NextStep = {
   kind: NextStepKind
@@ -43,6 +43,16 @@ export function nextStep(overview: WorkspaceOverview): NextStep {
       description: '粘贴岗位描述，逐条对照你的简历证据，看清优势和需要补强的地方。',
       cta: '新建岗位匹配',
       to: '/job-match/new',
+    }
+  }
+  const applications = overview.applications
+  if (applications && applications.stats.total === 0 && (resumes?.exportable ?? 0) > 0) {
+    return {
+      kind: 'track-application',
+      title: '把简历投出去，并知道谁打开了它',
+      description: '记录一次投递，附上这家公司的专属链接：对方打开简历、读了多久，你都会收到提醒。',
+      cta: '记录投递',
+      to: '/applications?new=1',
     }
   }
   const interviews = overview.mockInterviews
@@ -92,6 +102,7 @@ export function readiness(overview: WorkspaceOverview): { score: number; items: 
     { key: 'resume', label: '一份可导出的简历', done: (overview.resumes?.exportable ?? 0) > 0, progress: Math.min(1, (overview.resumes?.recent[0]?.confirmedModules ?? 0) / 5), to: '/resumes' },
     { key: 'match', label: '完成一次岗位匹配', done: (overview.jobMatches?.completed ?? 0) > 0, progress: (overview.jobMatches?.total ?? 0) > 0 ? 0.5 : 0, to: '/job-match' },
     { key: 'interview', label: '练过一次面试', done: (overview.mockInterviews?.completed ?? 0) > 0, progress: (overview.mockInterviews?.total ?? 0) > 0 ? 0.5 : 0, to: '/mock-interviews' },
+    { key: 'apply', label: '投出一份带链接的简历', done: (overview.applications?.stats.linked ?? 0) > 0, progress: (overview.applications?.stats.total ?? 0) > 0 ? 0.5 : 0, to: '/applications' },
   ]
   const score = Math.round(items.reduce((sum, item) => sum + (item.done ? 1 : item.progress), 0) / items.length * 100)
   return { score, items }
