@@ -4,8 +4,8 @@ import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref } from 
 import { useRoute, useRouter } from 'vue-router'
 import { useWindowScroll } from '@vueuse/core'
 import {
-  ArrowRight, BadgeCheck, Check, ChevronDown, Compass, FileText, Menu, MessageSquareText, Mic, PlayCircle, ShieldCheck,
-  Sparkles, Target, Undo2, X,
+  ArrowRight, BadgeCheck, BellRing, CalendarClock, Check, ChevronDown, Compass, Eye, FileText, Menu, MessageSquareText, Mic,
+  PlayCircle, ShieldCheck, Smartphone, Sparkles, Target, Undo2, X,
 } from 'lucide-vue-next'
 import BrandMark from '@/shared/ui/BrandMark.vue'
 import { MANIFESTS } from '@/resume-render/templates/manifests'
@@ -91,7 +91,8 @@ const FAQ = [
   { q: 'AI 会不会编造我没有的经历？', a: '不会。系统规则要求 AI 只能基于你提供的事实生成候选，并在每条建议上标注来源；无法证明的数字会改成定性描述或标记“待补证”。' },
   { q: '导出的 PDF 能直接投递吗？', a: '可以。导出前会检查页数溢出、空模块和未确认内容，并提供保留联系方式的正式版与隐藏身份信息的匿名版。' },
   { q: '我的资料安全吗？', a: '资料只有你本人可见。首次使用 AI 前需要你授权，且只发送已确认的事实；照片不会发送给模型，你可以随时导出或删除全部数据。' },
-  { q: '收费吗？', a: '核心功能免费使用，AI 调用按月发放额度，额度用量在设置中随时可查。' },
+  { q: '对方打开我的简历，会记录什么？', a: '只记录打开时间、设备类型、所用应用（如微信、飞书）、来源网站和页面停留时长。不记录对方 IP，不需要对方登录，链接不会被搜索引擎收录；你可以隐藏手机号和邮箱，也可以随时撤回链接。' },
+  { q: '收费吗？', a: '免费版长期可用：投递追踪、查看回执、全部模板和 PDF 导出都不收费，每月还有 AI 额度。求职高峰期可以开通专业版，获得更多 AI 次数和同时有效的专属链接；学校和机构可以批量开通。详见页面顶部的“价格”。' },
 ]
 const openFaq = ref<number | null>(0)
 
@@ -107,6 +108,7 @@ const year = new Date().getFullYear()
         <nav class="nav__links" aria-label="页面导航">
           <a href="#flow" @click="mobileNav = false">如何使用</a>
           <a href="#features" @click="mobileNav = false">功能</a>
+          <a href="#receipts" @click="mobileNav = false">投递回执</a>
           <a href="#templates" @click="mobileNav = false">模板</a>
           <a href="#faq" @click="mobileNav = false">常见问题</a>
           <RouterLink to="/pricing">价格</RouterLink>
@@ -188,7 +190,7 @@ const year = new Date().getFullYear()
         <div class="stats__inner">
           <div v-reveal class="stat"><strong>{{ MANIFESTS.length }}</strong><span>款智能模板，一键换版</span></div>
           <div v-reveal="80" class="stat"><strong>2,000+</strong><span>份 Word 模板免费下载</span></div>
-          <div v-reveal="160" class="stat"><strong>4</strong><span>大模块：简历 · 匹配 · 规划 · 面试</span></div>
+          <div v-reveal="160" class="stat"><strong>5</strong><span>大模块：简历 · 投递 · 匹配 · 规划 · 面试</span></div>
           <div v-reveal="240" class="stat"><strong>0</strong><span>条编造的经历</span></div>
         </div>
       </section>
@@ -260,6 +262,57 @@ const year = new Date().getFullYear()
             <p>结合你的简历和目标岗位出题，文字或语音作答，逐题给出亮点与改进。</p>
             <UiIllustration name="empty-interview" :size="120" class="bento__art" />
           </article>
+        </div>
+      </section>
+
+      <!-- ================= RECEIPTS ================= -->
+      <section id="receipts" class="section">
+        <div class="receipts">
+          <div v-reveal class="receipts__copy">
+            <p class="section__eyebrow">投递之后</p>
+            <h2>简历投出去，<br />不再石沉大海</h2>
+            <p>给每家公司一条专属简历链接。对方什么时候打开、读了多久、有没有转给面试官，你都会第一时间知道，再决定要不要跟进。</p>
+            <ul class="receipts__list">
+              <li><span><Eye :size="16" /></span><div><strong>查看回执</strong>打开次数、读者人数、设备与应用、阅读时长</div></li>
+              <li><span><BellRing :size="16" /></span><div><strong>即时提醒</strong>首次打开、转给新读者时通知你，邮件同步送达</div></li>
+              <li><span><CalendarClock :size="16" /></span><div><strong>下一步不漏</strong>笔试、面试前一天提醒，一键模拟这家公司的面试</div></li>
+              <li><span><ShieldCheck :size="16" /></span><div><strong>尊重对方</strong>不记录 IP、无需登录，可隐藏联系方式、随时撤回</div></li>
+            </ul>
+            <div class="receipts__actions">
+              <UiButton :to="primaryTo" :icon-right="ArrowRight">免费开始追踪投递</UiButton>
+              <UiButton variant="ghost" to="/pricing">查看套餐</UiButton>
+            </div>
+          </div>
+          <div v-reveal="120" class="receipts__stage" aria-hidden="true">
+            <div class="receipt-toast">
+              <span class="receipt-toast__icon"><Eye :size="15" /></span>
+              <div><strong>合成科技打开了你的简历</strong><small>对方用手机在微信里打开 · 刚刚</small></div>
+            </div>
+            <div class="receipt-card">
+              <header>
+                <span class="receipt-card__logo">合</span>
+                <div><strong>合成科技</strong><small>Java 后端工程师 · 面试中</small></div>
+                <i class="receipt-card__badge">已打开 3 次</i>
+              </header>
+              <dl>
+                <div><dt>读者</dt><dd>2 位</dd></div>
+                <div><dt>累计阅读</dt><dd>4 分 12 秒</dd></div>
+                <div><dt>首次打开</dt><dd>12 分钟前</dd></div>
+              </dl>
+              <ul>
+                <li><Smartphone :size="14" /><span>手机 · 微信</span><em>读了 2 分 05 秒</em></li>
+                <li><FileText :size="14" /><span>电脑 · 飞书<small> · 来自 feishu.cn</small></span><em>读了 2 分 07 秒</em></li>
+              </ul>
+              <div class="receipt-card__next"><CalendarClock :size="14" />明天 14:00 二面 · 已提醒</div>
+            </div>
+            <div class="receipt-funnel">
+              <span style="--w: 100%"><b>12</b>已投递</span>
+              <span style="--w: 67%"><b>8</b>被打开</span>
+              <span style="--w: 25%"><b>3</b>面试</span>
+              <span style="--w: 9%"><b>1</b>Offer</span>
+            </div>
+            <UiIllustration name="resume-receipt" :size="132" class="receipts__art" />
+          </div>
         </div>
       </section>
 
@@ -1141,6 +1194,280 @@ const year = new Date().getFullYear()
   }
 }
 
+/* ---------- Receipts ---------- */
+.receipts {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr);
+  gap: var(--space-12);
+  align-items: center;
+}
+
+.receipts__copy h2 {
+  margin-top: var(--space-2);
+  font-size: clamp(26px, 3.4vw, 38px);
+  line-height: 1.25;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+.receipts__copy > p:not(.section__eyebrow) {
+  margin-top: var(--space-4);
+  color: var(--text-secondary);
+  font-size: var(--fs-body-lg);
+  line-height: 1.8;
+}
+
+.receipts__list {
+  display: grid;
+  gap: var(--space-3);
+  margin: var(--space-6) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.receipts__list li {
+  display: flex;
+  gap: var(--space-3);
+  color: var(--text-secondary);
+  font-size: var(--fs-body);
+  line-height: 1.6;
+}
+
+.receipts__list li > span {
+  width: 32px;
+  height: 32px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-md);
+  color: var(--color-primary-text);
+  background: var(--color-primary-soft);
+}
+
+.receipts__list strong {
+  display: block;
+  color: var(--text-primary);
+  font-weight: 650;
+}
+
+.receipts__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-6);
+}
+
+.receipts__stage {
+  position: relative;
+  display: grid;
+  gap: var(--space-4);
+  padding: var(--space-8) var(--space-6);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xl);
+  background:
+    radial-gradient(80% 60% at 100% 0%, color-mix(in srgb, var(--color-success-soft) 80%, transparent), transparent 70%),
+    radial-gradient(70% 60% at 0% 100%, var(--color-primary-soft), transparent 70%),
+    var(--surface-2);
+}
+
+.receipt-toast {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  justify-self: end;
+  width: min(100%, 340px);
+  padding: 12px 14px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--surface-1);
+  box-shadow: var(--shadow-md);
+  animation: jp-float 6s ease-in-out infinite;
+}
+
+.receipt-toast__icon {
+  width: 30px;
+  height: 30px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--color-success-text);
+  background: var(--color-success-soft);
+}
+
+.receipt-toast strong,
+.receipt-card strong {
+  display: block;
+  font-size: var(--fs-sm);
+  font-weight: 650;
+}
+
+.receipt-toast small,
+.receipt-card small {
+  color: var(--text-tertiary);
+  font-size: var(--fs-xs);
+}
+
+.receipt-card header small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.receipt-card {
+  display: grid;
+  gap: var(--space-3);
+  width: min(100%, 400px);
+  padding: var(--space-4) var(--space-5);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--surface-1);
+  box-shadow: var(--shadow-lg, var(--shadow-md));
+}
+
+.receipt-card header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.receipt-card header > div {
+  flex: 1;
+  min-width: 0;
+}
+
+.receipt-card__logo {
+  width: 34px;
+  height: 34px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-md);
+  color: var(--text-on-primary);
+  background: var(--color-primary);
+  font-weight: 700;
+}
+
+.receipt-card__badge {
+  padding: 3px 8px;
+  border-radius: var(--radius-full);
+  color: var(--color-success-text);
+  background: var(--color-success-soft);
+  font-size: var(--fs-xs);
+  font-style: normal;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.receipt-card dl {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-2);
+  margin: 0;
+}
+
+.receipt-card dl > div {
+  padding: 8px 10px;
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+}
+
+.receipt-card dt {
+  color: var(--text-tertiary);
+  font-size: var(--fs-xs);
+}
+
+.receipt-card dd {
+  margin: 0;
+  font-size: var(--fs-sm);
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+.receipt-card ul {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.receipt-card li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-secondary);
+  font-size: var(--fs-xs);
+}
+
+.receipt-card li span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.receipt-card li em {
+  color: var(--text-primary);
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+}
+
+.receipt-card__next {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-top: var(--space-3);
+  border-top: 1px dashed var(--border-subtle);
+  color: var(--color-warning-text);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+}
+
+.receipt-funnel {
+  display: grid;
+  gap: 6px;
+  width: min(100%, 300px);
+  justify-self: end;
+}
+
+.receipt-funnel span {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 5px 10px;
+  color: var(--text-secondary);
+  font-size: var(--fs-xs);
+}
+
+.receipt-funnel span::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  z-index: -1;
+  width: var(--w);
+  min-width: 18%;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--color-primary) 16%, transparent);
+}
+
+.receipt-funnel b {
+  color: var(--text-primary);
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.receipts__art {
+  position: absolute;
+  left: var(--space-5);
+  bottom: var(--space-5);
+  pointer-events: none;
+}
+
 /* ---------- Principles ---------- */
 .principles {
   display: grid;
@@ -1388,7 +1715,8 @@ const year = new Date().getFullYear()
     grid-template-columns: 1fr;
   }
 
-  .principles {
+  .principles,
+  .receipts {
     grid-template-columns: 1fr;
   }
 }
@@ -1434,6 +1762,18 @@ const year = new Date().getFullYear()
 }
 
 @media (max-width: 640px) {
+  .receipts__stage {
+    padding: var(--space-5) var(--space-4);
+  }
+
+  .receipts__art {
+    display: none;
+  }
+
+  .receipt-funnel {
+    width: 100%;
+  }
+
   .nav__inner {
     gap: var(--space-3);
     padding: 0 var(--space-4);
