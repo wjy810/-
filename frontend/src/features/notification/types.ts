@@ -9,6 +9,8 @@ export type NotificationType =
   | 'SECURITY'
   | 'DATA_RIGHTS'
   | 'APPLICATION_ACTIVITY'
+  | 'REMINDER'
+  | 'MEMBERSHIP'
 
 export type NotificationView = {
   id: string

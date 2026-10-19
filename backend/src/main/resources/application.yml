@@ -208,6 +208,10 @@ jobproof:
       monthly-quota: ${JOBPROOF_AI_MONTHLY_QUOTA:50}
       prompt-version: resume-workbench-v1
   # 会员 (docs/phase2/02)：免费版的 AI 次数即上面的 monthly-quota；专业版不会少于免费版。
+  # Next-step and membership-expiry reminders (docs/phase2/01 §2, 02 §2): a sweep every few minutes.
+  reminders:
+    enabled: ${JOBPROOF_REMINDERS_ENABLED:true}
+    poll-ms: ${JOBPROOF_REMINDERS_POLL_MS:300000}
   membership:
     free:
       active-links: ${JOBPROOF_FREE_ACTIVE_LINKS:3}

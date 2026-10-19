@@ -1,5 +1,6 @@
 import { api, apiDownload } from '@/shared/api/client'
 import { saveBlob } from '@/shared/lib/download'
+import { collectPages, type Collected } from '@/shared/lib/pages'
 import type {
   DraftInput,
   MalwareScannerStatus,
@@ -25,12 +26,13 @@ export function getMalwareScannerStatus(): Promise<MalwareScannerStatus> {
   return api<MalwareScannerStatus>(`${BASE}/malware-scanner/status`)
 }
 
-export function listTemplateAssets(): Promise<PageResult<TemplateAsset>> {
-  return api<PageResult<TemplateAsset>>(`${BASE}/assets?page=0&size=100`)
+/** Every asset, page by page (the server serves at most 100 per page). */
+export function listTemplateAssets(): Promise<Collected<TemplateAsset>> {
+  return collectPages((page, size) => api<PageResult<TemplateAsset>>(`${BASE}/assets?page=${page}&size=${size}`), 1000)
 }
 
-export function listTemplateEvidence(): Promise<PageResult<TemplateEvidence>> {
-  return api<PageResult<TemplateEvidence>>(`${BASE}/evidence-artifacts?page=0&size=100`)
+export function listTemplateEvidence(): Promise<Collected<TemplateEvidence>> {
+  return collectPages((page, size) => api<PageResult<TemplateEvidence>>(`${BASE}/evidence-artifacts?page=${page}&size=${size}`), 1000)
 }
 
 export function uploadTemplateEvidence(input: {
@@ -128,16 +130,17 @@ export function retireTemplateVersion(versionId: string, expectedVersion: number
   })
 }
 
-export function listImportBatches(): Promise<PageResult<TemplateImportBatch>> {
-  return api<PageResult<TemplateImportBatch>>(`${BASE}/import-batches?page=0&size=100`)
+export function listImportBatches(): Promise<Collected<TemplateImportBatch>> {
+  return collectPages((page, size) => api<PageResult<TemplateImportBatch>>(`${BASE}/import-batches?page=${page}&size=${size}`), 500)
 }
 
 export function startImportBatch(): Promise<TemplateImportBatch> {
   return api<TemplateImportBatch>(`${BASE}/import-batches`, { method: 'POST' })
 }
 
-export function listImportItems(batchId: string): Promise<PageResult<TemplateImportItem>> {
-  return api<PageResult<TemplateImportItem>>(`${BASE}/import-batches/${encodeURIComponent(batchId)}/items?page=0&size=100`)
+export function listImportItems(batchId: string): Promise<Collected<TemplateImportItem>> {
+  return collectPages((page, size) =>
+    api<PageResult<TemplateImportItem>>(`${BASE}/import-batches/${encodeURIComponent(batchId)}/items?page=${page}&size=${size}`), 2000)
 }
 
 export function pauseImportBatch(batchId: string): Promise<TemplateImportBatch> {

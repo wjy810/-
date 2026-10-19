@@ -13,6 +13,7 @@ import type { JobTaxonomySelection } from '@/features/ai-resume/types'
 import { errorMessage } from '@/shared/api/types'
 import { useToastFeedback } from '@/shared/ui/toast'
 import UiErrorState from '@/shared/ui/UiErrorState.vue'
+import { collectPages } from '@/shared/lib/pages'
 import { createMockInterview, createMockInterviewDraft, saveMockInterviewDraft } from '../services/mockInterviewApi'
 import type { MockInterviewCreate, MockInterviewDraft, MockInterviewMode } from '../types'
 import { fetchJobMatch, fetchMatchReport } from '@/features/job-match/services/jobMatchApi'
@@ -81,8 +82,8 @@ async function load(): Promise<void> {
   try {
     const jobMatchId = typeof route.query.jobMatchId === 'string' ? route.query.jobMatchId : ''
     const [resumeItems, recordPage, filePage, draftValue, matchValue, reportValue] = await Promise.all([
-      listResumes(), fetchCareerRecords({ status: 'ACTIVE', size: 100 }),
-      fetchCareerFiles({ status: 'ACTIVE', processingStatus: 'READY', size: 100 }), createMockInterviewDraft(),
+      listResumes(), collectPages((page, size) => fetchCareerRecords({ status: 'ACTIVE', page, size })),
+      collectPages((page, size) => fetchCareerFiles({ status: 'ACTIVE', processingStatus: 'READY', page, size })), createMockInterviewDraft(),
       jobMatchId ? fetchJobMatch(jobMatchId) : Promise.resolve(null),
       jobMatchId ? fetchMatchReport(jobMatchId) : Promise.resolve(null),
     ])
@@ -101,6 +102,8 @@ async function load(): Promise<void> {
         ? `优先覆盖岗位匹配报告中的面试主题：${topics.map((item) => typeof item === 'string' ? item : String(item.title ?? item.topic ?? '')).filter(Boolean).join('；')}`
         : '请围绕岗位匹配报告中的优势、缺口和高风险要求生成问题。'
       savedNotice.value = '已载入岗位匹配报告和投递简历'
+    } else {
+      applyApplicationPrefill()
     }
     if (!form.resumeId && resumes.value[0]) form.resumeId = resumes.value[0].id
   } catch (reason) {
@@ -108,6 +111,17 @@ async function load(): Promise<void> {
   } finally {
     loading.value = false
   }
+}
+
+/** Started from a tracked application (投递追踪): the company and the position come along. */
+function applyApplicationPrefill(): void {
+  const text = (value: unknown, max: number) => (typeof value === 'string' ? value.trim().slice(0, max) : '')
+  const company = text(route.query.company, 120)
+  const position = text(route.query.position, 120)
+  if (!company && !position) return
+  if (position && !form.positionName) form.positionName = position
+  if (company && !form.companyName) form.companyName = company
+  savedNotice.value = '已带入投递的公司与岗位'
 }
 
 function payload(): Record<string, unknown> { return JSON.parse(JSON.stringify(form)) as Record<string, unknown> }

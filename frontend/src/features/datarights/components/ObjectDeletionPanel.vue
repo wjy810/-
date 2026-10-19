@@ -33,6 +33,9 @@ const KINDS: Kind[] = ['CAREER_RECORD', 'CAREER_FILE', 'CAREER_PROFILE']
 const kind = ref<Kind>('CAREER_RECORD')
 const keyword = ref('')
 const candidates = shallowRef<Candidate[]>([])
+/** How many items the current search matches; the list shows the first {@link LIST_SIZE}. */
+const matched = ref(0)
+const LIST_SIZE = 50
 const totals = ref<Record<Kind, number | null>>({ CAREER_RECORD: null, CAREER_FILE: null, CAREER_PROFILE: null })
 const listLoading = ref(false)
 const listError = ref('')
@@ -80,8 +83,9 @@ async function loadCandidates(): Promise<void> {
   try {
     const search = keyword.value.trim() || undefined
     if (current === 'CAREER_RECORD') {
-      const page = await fetchCareerRecords({ status: 'ALL', keyword: search, size: 50 })
+      const page = await fetchCareerRecords({ status: 'ALL', keyword: search, size: LIST_SIZE })
       if (seq !== listSeq) return
+      matched.value = page.total
       totals.value.CAREER_RECORD = search ? totals.value.CAREER_RECORD ?? page.total : page.total
       candidates.value = page.items.map(record => ({
         id: record.id,
@@ -91,8 +95,9 @@ async function loadCandidates(): Promise<void> {
         archived: record.status === 'ARCHIVED',
       }))
     } else {
-      const page = await fetchCareerFiles({ status: 'ALL', keyword: search, size: 50, sort: 'RECENT' })
+      const page = await fetchCareerFiles({ status: 'ALL', keyword: search, size: LIST_SIZE, sort: 'RECENT' })
       if (seq !== listSeq) return
+      matched.value = page.total
       totals.value.CAREER_FILE = search ? totals.value.CAREER_FILE ?? page.total : page.total
       candidates.value = page.items.map(file => ({
         id: file.id,
@@ -231,6 +236,9 @@ onMounted(applyInitial)
               <em v-if="row.note">{{ row.note }}</em>
             </span>
           </button>
+          <p v-if="!listLoading && !listError && matched > candidates.length" class="object-more">
+            共 {{ matched }} 项，这里列出最近的 {{ candidates.length }} 项。输入关键词可以找到其余的。
+          </p>
         </div>
       </div>
 
@@ -271,6 +279,13 @@ onMounted(applyInitial)
 </template>
 
 <style scoped>
+.object-more {
+  padding: var(--space-2) var(--space-3);
+  color: var(--text-tertiary);
+  font-size: var(--fs-xs);
+  line-height: 1.6;
+}
+
 .object-body {
   display: grid;
   grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);

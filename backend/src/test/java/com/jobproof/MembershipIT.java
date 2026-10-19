@@ -10,9 +10,11 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jobproof.modules.identity.infra.AccountEntity;
 import com.jobproof.modules.identity.infra.AccountJpaRepository;
+import com.jobproof.modules.membership.application.MembershipReminders;
 import jakarta.servlet.http.Cookie;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -39,6 +41,7 @@ class MembershipIT {
     @Autowired ObjectMapper mapper;
     @Autowired JdbcTemplate jdbc;
     @Autowired AccountJpaRepository accounts;
+    @Autowired MembershipReminders reminders;
 
     @Test
     void codesFromABatchUpgradeOnceStackAndTopUpTheMonth() throws Exception {
@@ -124,6 +127,54 @@ class MembershipIT {
                         .content(mapper.writeValueAsString(Map.of("code", "JP-AAAA-BBBB-CCCC-DDDD"))))
                 .andExpect(status().isTooManyRequests())
                 .andExpect(jsonPath("$.error.reason").value("REDEEM_TOO_MANY_ATTEMPTS"));
+    }
+
+    @Test
+    void anEndingPlanIsAnnouncedAWeekAheadAndWhenItEndsOncePerExpiry() throws Exception {
+        Instant now = Instant.now().truncatedTo(ChronoUnit.SECONDS);
+        String yearly = accountId(account("membership-yearly", false));
+        String weekly = accountId(account("membership-weekly", false));
+        // A plan opened long ago that ends in five days, and a 7-day plan opened yesterday.
+        pro(yearly, now.plus(Duration.ofDays(5)), now.minus(Duration.ofDays(360)));
+        pro(weekly, now.plus(Duration.ofDays(6)), now.minus(Duration.ofDays(1)));
+
+        reminders.sendDue(now);
+        reminders.sendDue(now.plus(Duration.ofHours(1)));
+        assertThat(notices(yearly)).containsExactly("专业版还有 5 天到期");
+        assertThat(notices(weekly)).isEmpty();
+        assertThat(jdbc.queryForObject("SELECT action_path FROM notifications WHERE account_id=? AND type='MEMBERSHIP'",
+                String.class, yearly)).isEqualTo("/account/membership");
+
+        Instant afterBoth = now.plus(Duration.ofDays(6)).plus(Duration.ofHours(2));
+        reminders.sendDue(afterBoth);
+        reminders.sendDue(afterBoth.plus(Duration.ofHours(1)));
+        assertThat(notices(yearly)).containsExactly("专业版还有 5 天到期", "专业版已到期，已回到免费版");
+        assertThat(notices(weekly)).containsExactly("专业版已到期，已回到免费版");
+        assertThat(jdbc.queryForObject("SELECT body FROM notifications WHERE account_id=? AND type='MEMBERSHIP' AND title LIKE '%已到期%'",
+                String.class, weekly)).contains("每月 50 次 AI");
+
+        // Renewing moves the expiry, so the next ending is announced again; one that ended long ago is not.
+        pro(yearly, afterBoth.plus(Duration.ofDays(30)), afterBoth);
+        reminders.sendDue(afterBoth.plus(Duration.ofDays(25)));
+        assertThat(notices(yearly)).hasSize(3).last().asString().startsWith("专业版还有");
+        reminders.sendDue(afterBoth.plus(Duration.ofDays(40)));
+        assertThat(notices(yearly)).hasSize(3);
+    }
+
+    private void pro(String accountId, Instant expiresAt, Instant updatedAt) {
+        if (jdbc.update("UPDATE account_memberships SET plan='PRO',expires_at=?,updated_at=? WHERE account_id=?", expiresAt, updatedAt, accountId) == 0) {
+            jdbc.update("INSERT INTO account_memberships(account_id,plan,expires_at,source,version_no,created_at,updated_at) VALUES(?,'PRO',?,'TEST',0,?,?)",
+                    accountId, expiresAt, updatedAt, updatedAt);
+        }
+    }
+
+    private List<String> notices(String accountId) {
+        return jdbc.queryForList("SELECT title FROM notifications WHERE account_id=? AND type='MEMBERSHIP' ORDER BY created_at, title DESC",
+                String.class, accountId);
+    }
+
+    private String accountId(Cookie cookie) throws Exception {
+        return data(mockMvc.perform(get("/api/v1/me").cookie(cookie)).andExpect(status().isOk()).andReturn()).path("id").asText();
     }
 
     private JsonNode redeem(Cookie cookie, String code) throws Exception {

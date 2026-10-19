@@ -237,7 +237,7 @@ watch(() => props.open, open => {
           <UiField v-slot="{ id }" label="下一步" optional hint="例如：周四二面、等测评结果">
             <UiInput :id="id" v-model="form.nextStep" maxlength="200" />
           </UiField>
-          <UiField v-slot="{ id }" label="下一步时间" optional>
+          <UiField v-slot="{ id }" label="下一步时间" optional hint="前一天会在站内提醒你">
             <AppDatePicker :id="id" v-model="form.nextStepAt" mode="datetime" label="下一步时间" placeholder="选择日期和时间" />
           </UiField>
           <UiField v-slot="{ id }" label="关联岗位匹配" optional class="app-form__wide">

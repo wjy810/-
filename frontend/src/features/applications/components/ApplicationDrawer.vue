@@ -2,7 +2,7 @@
 /** One application in full: its stage, the resume link's receipts, what happened and when. */
 import { computed, ref, shallowRef, watch } from 'vue'
 import {
-  ArrowUpRight, BellRing, Check, Copy, ExternalLink, Eye, FileText, Flag, Link2, Link2Off, Monitor, Pencil,
+  ArrowRight, ArrowUpRight, BellRing, Check, Copy, ExternalLink, Eye, FileText, Flag, Link2, Link2Off, Mic, Monitor, Pencil,
   RefreshCw, Smartphone, Tablet, Target, Trash2, X,
 } from 'lucide-vue-next'
 import UiBadge from '@/shared/ui/UiBadge.vue'
@@ -23,6 +23,7 @@ import {
 import { OUTCOMES, STAGES, channelLabel, clientLabel, deviceLabel, outcomeLabel, readTime, stageLabel } from '../labels'
 import type { ApplicationDetail, ApplicationEvent, ApplicationOutcome, ApplicationStage, JobApplication, ShareableVersion } from '../types'
 import { receiptOf } from '../utils/receipts'
+import { interviewPrep } from '../utils/prep'
 
 const props = defineProps<{ open: boolean; applicationId: string | null }>()
 const emit = defineEmits<{ close: []; changed: [application: JobApplication]; deleted: [id: string]; edit: [application: JobApplication] }>()
@@ -40,6 +41,7 @@ const linkExpiry = ref<string>('none')
 const copied = ref(false)
 
 const application = computed(() => detail.value?.application ?? null)
+const prep = computed(() => (application.value ? interviewPrep(application.value) : null))
 const link = computed(() => detail.value?.links.find(item => item.status === 'ACTIVE') ?? detail.value?.links[0] ?? null)
 const activeLink = computed(() => (link.value?.status === 'ACTIVE' ? link.value : null))
 const receipt = computed(() => receiptOf(link.value))
@@ -233,6 +235,15 @@ watch(() => [props.open, props.applicationId] as const, ([open, id]) => {
         <button v-else type="button" class="stage-close-link" @click="closing = true">结束这条投递…</button>
       </section>
 
+      <section v-if="prep" class="prep" aria-labelledby="prep-title">
+        <span class="prep__icon" aria-hidden="true"><Mic :size="18" /></span>
+        <div class="prep__body">
+          <h3 id="prep-title">{{ prep.title }}</h3>
+          <p>{{ prep.detail }}</p>
+        </div>
+        <UiButton size="sm" :to="{ path: '/mock-interviews/new', query: prep.query }" :icon-right="ArrowRight">模拟面试</UiButton>
+      </section>
+
       <section class="receipt" :class="`is-${receipt.tone}`" aria-labelledby="receipt-title">
         <header class="receipt__head">
           <span class="receipt__icon"><Eye :size="18" /></span>
@@ -329,6 +340,54 @@ watch(() => [props.open, props.applicationId] as const, ([open, id]) => {
 </template>
 
 <style scoped>
+.prep {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-primary-border);
+  border-radius: var(--radius-lg);
+  background: linear-gradient(120deg, var(--color-primary-soft), transparent 75%), var(--surface-1);
+}
+
+.prep__icon {
+  width: 36px;
+  height: 36px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-md);
+  color: var(--color-primary-text);
+  background: var(--surface-1);
+  box-shadow: var(--shadow-sm);
+}
+
+.prep__body {
+  flex: 1;
+  min-width: 0;
+}
+
+.prep__body h3 {
+  font-size: var(--fs-body);
+  font-weight: 650;
+}
+
+.prep__body p {
+  color: var(--text-secondary);
+  font-size: var(--fs-xs);
+  line-height: 1.6;
+}
+
+@media (max-width: 480px) {
+  .prep {
+    flex-wrap: wrap;
+  }
+
+  .prep > :last-child {
+    width: 100%;
+  }
+}
+
 .drawer-loading {
   display: grid;
   gap: var(--space-3);

@@ -25,6 +25,7 @@ import { isAbortError, pollTask } from '@/shared/lib/pollTask'
 import { formatWhen } from '@/shared/lib/datetime'
 import { useLoadState } from '@/shared/lib/useLoadState'
 import type { IconName } from '@/shared/ui/icons'
+import { collectPages } from '@/shared/lib/pages'
 import { ensureAiResume, restoreAiResumeVersion } from '@/features/ai-resume/services/aiResumeApi'
 import { fetchCareerRecords } from '@/features/career-library/services/careerLibraryApi'
 import type { CareerRecord } from '@/features/career-library/types'
@@ -209,7 +210,7 @@ async function loadEvidence(): Promise<void> {
   evidenceError.value = ''
   evidenceLoading.value = true
   try {
-    evidences.value = (await fetchCareerRecords({ status: 'ACTIVE', page: 0, size: 100 })).items
+    evidences.value = (await collectPages((page, size) => fetchCareerRecords({ status: 'ACTIVE', page, size }))).items
   } catch (error) {
     evidences.value = []
     evidenceError.value = errorMessage(error, '求职资料读取失败。')

@@ -10,6 +10,7 @@ import UiButton from '@/shared/ui/UiButton.vue'
 import UiErrorState from '@/shared/ui/UiErrorState.vue'
 import UiSegmented from '@/shared/ui/UiSegmented.vue'
 import UiSkeleton from '@/shared/ui/UiSkeleton.vue'
+import { collectPages } from '@/shared/lib/pages'
 import TemplateThumbnail from '@/resume-render/components/TemplateThumbnail.vue'
 import { sampleFor } from '@/resume-render/samples'
 import type { TemplateCategory, TemplateManifest } from '@/resume-render/templates/manifest'
@@ -46,7 +47,7 @@ async function load(): Promise<void> {
   loading.value = true
   error.value = null
   try {
-    const available = (await listResumeTemplates({ size: 50 })).items
+    const available = (await collectPages((page, size) => listResumeTemplates({ page, size }), 200)).items
     manifests.value = available.map(item => manifestOf(item.id)).filter((item): item is TemplateManifest => Boolean(item))
   } catch (reason) {
     error.value = reason

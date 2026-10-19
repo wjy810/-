@@ -18,6 +18,8 @@ export const NOTIFICATION_TYPE_GLOSS: Record<string, string> = {
   SECURITY: '安全通知',
   DATA_RIGHTS: '数据权利',
   APPLICATION_ACTIVITY: '简历回执',
+  REMINDER: '日程提醒',
+  MEMBERSHIP: '会员',
 }
 
 export function glossNotificationStatus(status?: string | null): string {

@@ -8,6 +8,7 @@ import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -15,9 +16,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jobproof.modules.aigateway.application.AiGatewayService;
+import com.jobproof.modules.jobapply.application.NextStepReminders;
 import com.jobproof.modules.resume.application.ResumeAiCandidateService;
 import jakarta.servlet.http.Cookie;
 import java.time.Duration;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
@@ -48,6 +52,7 @@ class JobApplicationIT {
     @Autowired MockMvc mockMvc;
     @Autowired ObjectMapper mapper;
     @Autowired JdbcTemplate jdbc;
+    @Autowired NextStepReminders reminders;
     @MockBean ResumeAiCandidateService aiCandidates;
     @MockBean AiGatewayService gateway;
 
@@ -226,6 +231,54 @@ class JobApplicationIT {
                 owner.accountId(), java.sql.Timestamp.from(java.time.Instant.now().plus(Duration.ofDays(30))));
         mockMvc.perform(post("/api/v1/resume-links").cookie(owner.cookie()).contentType(MediaType.APPLICATION_JSON).content(fourth))
                 .andExpect(status().isOk());
+    }
+
+    @Test
+    void aNextStepWithinADayIsRemindedOnceAndAgainWhenItMoves() throws Exception {
+        Session owner = seeker();
+        Instant now = Instant.now().truncatedTo(ChronoUnit.SECONDS);
+        Instant interview = now.plus(Duration.ofHours(20));
+        JsonNode created = data(mockMvc.perform(post("/api/v1/job-applications").cookie(owner.cookie())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(Map.of("company", "星图数据", "positionTitle", "数据分析师",
+                                "channel", "CAMPUS", "stage", "INTERVIEW", "nextStep", "一面", "nextStepAt", interview.toString()))))
+                .andExpect(status().isOk()).andReturn());
+        String id = created.path("id").asText();
+        JsonNode ended = data(mockMvc.perform(post("/api/v1/job-applications").cookie(owner.cookie())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(Map.of("company", "已结束科技", "positionTitle", "测试工程师",
+                                "nextStep", "终面", "nextStepAt", now.plus(Duration.ofHours(3)).toString()))))
+                .andExpect(status().isOk()).andReturn());
+        stage(owner, ended.path("id").asText(), Map.of("stage", "CLOSED", "outcome", "WITHDRAWN",
+                "expectedVersion", ended.path("version").asInt()));
+
+        // Just set: not announced back to the user straight away.
+        reminders.sendDue(now);
+        assertThat(reminderTitles(owner)).isEmpty();
+
+        Instant later = now.plus(Duration.ofMinutes(15));
+        reminders.sendDue(later);
+        reminders.sendDue(later.plus(Duration.ofMinutes(5)));
+        assertThat(reminderTitles(owner)).singleElement().asString().contains("星图数据 一面");
+        assertThat(jdbc.queryForObject("SELECT action_path FROM notifications WHERE account_id=? AND type='REMINDER'",
+                String.class, owner.accountId())).isEqualTo("/applications?focus=" + id);
+        // Bookkeeping never bumps the version the user edits against.
+        JsonNode current = data(mockMvc.perform(get("/api/v1/job-applications/{id}", id).cookie(owner.cookie())).andReturn());
+        assertThat(current.path("application").path("version").asInt()).isEqualTo(created.path("version").asInt());
+
+        // Moving the interview re-arms the reminder.
+        mockMvc.perform(put("/api/v1/job-applications/{id}", id).cookie(owner.cookie()).contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(Map.of("company", "星图数据", "positionTitle", "数据分析师",
+                                "channel", "CAMPUS", "nextStep", "二面", "nextStepAt", now.plus(Duration.ofHours(23)).toString(),
+                                "expectedVersion", created.path("version").asInt()))))
+                .andExpect(status().isOk());
+        reminders.sendDue(later);
+        assertThat(reminderTitles(owner)).hasSize(2).anySatisfy(title -> assertThat(title).contains("星图数据 二面"));
+    }
+
+    private List<String> reminderTitles(Session owner) {
+        return jdbc.queryForList("SELECT title FROM notifications WHERE account_id=? AND type='REMINDER' ORDER BY created_at",
+                String.class, owner.accountId());
     }
 
     private String frozenVersion(Session owner) throws Exception {

@@ -27,6 +27,9 @@ jobproof:
   worker:
     in-process: true
     poll-ms: 150
+  # Tests run the reminder sweeps themselves, with a chosen "now".
+  reminders:
+    enabled: false
   dev:
     mailbox-enabled: true
     admin:
