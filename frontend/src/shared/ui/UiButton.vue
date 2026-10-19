@@ -42,8 +42,17 @@ const tagAttrs = computed<Record<string, unknown>>(() => {
       tabindex: inert.value ? -1 : undefined,
     }
   }
-  return { type: props.type, disabled: inert.value }
+  // A pending button stays focusable (aria-disabled, clicks swallowed below) so keyboard and screen-reader
+  // users keep their place while it works; only a disabled one leaves the tab order.
+  return { type: props.type, disabled: props.disabled, 'aria-disabled': props.pending && !props.disabled ? 'true' : undefined }
 })
+
+/** Runs before the caller's own click handler: an inert button or link does nothing, not even submit or navigate. */
+function swallowWhileInert(event: MouseEvent): void {
+  if (!inert.value) return
+  event.preventDefault()
+  event.stopImmediatePropagation()
+}
 </script>
 
 <template>
@@ -53,6 +62,7 @@ const tagAttrs = computed<Record<string, unknown>>(() => {
     :class="[`ui-btn--${variant}`, `ui-btn--${size}`, { 'is-block': block, 'is-pending': pending }]"
     v-bind="tagAttrs"
     :aria-busy="pending || undefined"
+    @click.capture="swallowWhileInert"
   >
     <UiSpinner v-if="pending" :size="iconSize" class="ui-btn__icon" />
     <component :is="icon" v-else-if="icon" :size="iconSize" :stroke-width="2" class="ui-btn__icon" aria-hidden="true" />

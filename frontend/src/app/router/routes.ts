@@ -316,6 +316,12 @@ export const routes: RouteRecordRaw[] = [
         component: () => import('@/features/membership/pages/AdminRedeemCodesPage.vue'),
       },
       {
+        path: 'admin/mail-settings',
+        name: 'admin-mail-settings',
+        meta: { ...authed, adminOnly: true, title: '邮件设置' },
+        component: () => import('@/features/mail-settings/pages/AdminMailSettingsPage.vue'),
+      },
+      {
         path: 'admin/changelog',
         name: 'admin-changelog',
         meta: { ...authed, adminOnly: true, title: '更新发布' },

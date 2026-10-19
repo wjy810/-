@@ -1,17 +1,15 @@
 package com.jobproof.modules.identity.infra;
 
-import com.jobproof.infrastructure.config.JobProofProperties;
 import com.jobproof.modules.identity.application.VerificationHasher;
 import com.jobproof.modules.identity.domain.VerificationChannel;
 import com.jobproof.modules.identity.domain.VerificationDeliveryMessage;
 import com.jobproof.modules.identity.domain.VerificationDeliveryPort;
 import com.jobproof.modules.identity.domain.VerificationDeliveryReceipt;
 import com.jobproof.shared.error.AppException;
+import com.jobproof.shared.mail.MailTransport;
 import jakarta.mail.internet.MimeMessage;
 import java.nio.charset.StandardCharsets;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Component;
 
@@ -19,23 +17,16 @@ import org.springframework.stereotype.Component;
 @ConditionalOnProperty(name = "jobproof.verification.email-provider", havingValue = "qq-smtp")
 public class QqSmtpVerificationDeliveryAdapter implements VerificationDeliveryPort {
 
-    private final JavaMailSender mailSender;
-    private final JobProofProperties properties;
+    private final MailTransport transport;
     private final VerificationHasher hasher;
-    private final String username;
-    private final String password;
 
-    public QqSmtpVerificationDeliveryAdapter(
-            JavaMailSender mailSender,
-            JobProofProperties properties,
-            VerificationHasher hasher,
-            @Value("${spring.mail.username:}") String username,
-            @Value("${spring.mail.password:}") String password) {
-        this.mailSender = mailSender;
-        this.properties = properties;
+    /**
+     * Sends through the shared mail account (后台 › 邮件设置, else the environment); the provider code keeps
+     * its historical name for existing deployments although any SMTP server works.
+     */
+    public QqSmtpVerificationDeliveryAdapter(MailTransport transport, VerificationHasher hasher) {
+        this.transport = transport;
         this.hasher = hasher;
-        this.username = clean(username);
-        this.password = clean(password);
     }
 
     @Override
@@ -50,27 +41,21 @@ public class QqSmtpVerificationDeliveryAdapter implements VerificationDeliveryPo
 
     @Override
     public boolean available() {
-        String from = clean(properties.getVerification().getQqSmtp().getFrom());
-        return !username.isEmpty()
-                && !password.isEmpty()
-                && !from.isEmpty()
-                && username.equalsIgnoreCase(from)
-                && hasher.contactSecretConfigured()
-                && hasher.codeSecretConfigured();
+        return transport.current().isPresent() && hasher.contactSecretConfigured() && hasher.codeSecretConfigured();
     }
 
     @Override
     public VerificationDeliveryReceipt deliver(VerificationDeliveryMessage message) {
         if (!available()) throw unavailable();
+        MailTransport.Account account = transport.current().orElseThrow(QqSmtpVerificationDeliveryAdapter::unavailable);
         try {
-            MimeMessage mail = mailSender.createMimeMessage();
+            MimeMessage mail = account.sender().createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(mail, false, StandardCharsets.UTF_8.name());
-            var qq = properties.getVerification().getQqSmtp();
-            helper.setFrom(qq.getFrom(), qq.getFromName());
+            helper.setFrom(account.from(), account.fromName());
             helper.setTo(message.destination());
             helper.setSubject("【JobProof AI】身份验证码");
             helper.setText(html(message), true);
-            mailSender.send(mail);
+            account.sender().send(mail);
             return VerificationDeliveryReceipt.local();
         } catch (Exception exception) {
             throw unavailable();
@@ -96,10 +81,6 @@ public class QqSmtpVerificationDeliveryAdapter implements VerificationDeliveryPo
 
     private static AppException unavailable() {
         return AppException.dependency("VERIFICATION_PROVIDER_UNAVAILABLE", "邮件验证服务暂时不可用，请稍后重试");
-    }
-
-    private static String clean(String value) {
-        return value == null ? "" : value.trim();
     }
 }
 

@@ -11,6 +11,7 @@ import {
   History,
   LayoutDashboard,
   LayoutTemplate,
+  Mail,
   Mic,
   PenSquare,
   Send,
@@ -74,6 +75,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { key: 'admin-ai', to: '/admin/ai-channels', label: 'AI 通道', icon: Cpu },
       { key: 'admin-redeem', to: '/admin/redeem-codes', label: '兑换码', icon: Ticket },
       { key: 'admin-changelog', to: '/admin/changelog', label: '更新发布', icon: PenSquare },
+      { key: 'admin-mail', to: '/admin/mail-settings', label: '邮件设置', icon: Mail },
     ],
   },
 ]

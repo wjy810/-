@@ -27,8 +27,10 @@ import com.jobproof.modules.identity.domain.VerificationDeliveryMessage;
 import com.jobproof.modules.identity.domain.VerificationMode;
 import com.jobproof.modules.identity.domain.VerificationPurpose;
 import com.jobproof.shared.error.AppException;
+import com.jobproof.shared.mail.MailTransport;
 import jakarta.mail.Session;
 import jakarta.mail.internet.MimeMessage;
+import java.util.Optional;
 import java.util.Properties;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -44,8 +46,8 @@ class VerificationDeliveryAdaptersTest {
         JavaMailSender sender = mock(JavaMailSender.class);
         MimeMessage message = new MimeMessage(Session.getInstance(new Properties()));
         when(sender.createMimeMessage()).thenReturn(message);
-        QqSmtpVerificationDeliveryAdapter adapter = new QqSmtpVerificationDeliveryAdapter(
-                sender, properties, new VerificationHasher(properties), "sender@qq.com", "rotated-test-code");
+        MailTransport transport = () -> Optional.of(new MailTransport.Account(sender, "sender@qq.com", "JobProof AI", "ENVIRONMENT", false));
+        QqSmtpVerificationDeliveryAdapter adapter = new QqSmtpVerificationDeliveryAdapter(transport, new VerificationHasher(properties));
 
         assertTrue(adapter.available());
         assertEquals(VerificationMode.LOCAL_CODE, adapter.deliver(emailMessage()).mode());
