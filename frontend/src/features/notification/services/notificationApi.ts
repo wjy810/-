@@ -1,6 +1,6 @@
 import { api } from '@/shared/api/client'
 import { withQuery } from '@/shared/lib/query'
-import type { AsyncTaskView, NotificationPage } from '../types'
+import type { AsyncTaskView, NotificationPage, NotificationPreferenceItem, NotificationPreferences } from '../types'
 
 export function fetchUnreadCount(): Promise<number> {
   return api<{ count: number }>('/api/v1/notifications/unread-count').then((data) => data.count)
@@ -25,4 +25,12 @@ export function markNotificationsReadBatch(ids: string[]): Promise<void> {
     method: 'POST',
     body: JSON.stringify({ ids }),
   })
+}
+
+export function fetchNotificationPreferences(): Promise<NotificationPreferences> {
+  return api<NotificationPreferences>('/api/v1/notification-preferences')
+}
+
+export function saveNotificationPreferences(items: NotificationPreferenceItem[]): Promise<NotificationPreferences> {
+  return api<NotificationPreferences>('/api/v1/notification-preferences', { method: 'PUT', body: JSON.stringify({ items }) })
 }

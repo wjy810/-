@@ -208,6 +208,15 @@ jobproof:
       monthly-quota: ${JOBPROOF_AI_MONTHLY_QUOTA:50}
       prompt-version: resume-workbench-v1
   # 会员 (docs/phase2/02)：免费版的 AI 次数即上面的 monthly-quota；专业版不会少于免费版。
+  # Where links in emails point, e.g. https://jobproof.example.com (no trailing slash); empty leaves links out.
+  public-base-url: ${JOBPROOF_PUBLIC_BASE_URL:}
+  # Notification emails (docs/phase2/03): smtp uses spring.mail; dev keeps them in memory; none turns email off.
+  notification:
+    email:
+      provider: ${JOBPROOF_NOTIFICATION_EMAIL_PROVIDER:none}
+      from: ${JOBPROOF_NOTIFICATION_EMAIL_FROM:${MAIL_FROM:}}
+      from-name: ${MAIL_FROM_NAME:JobProof AI}
+      poll-ms: ${JOBPROOF_NOTIFICATION_EMAIL_POLL_MS:15000}
   # Next-step and membership-expiry reminders (docs/phase2/01 §2, 02 §2): a sweep every few minutes.
   reminders:
     enabled: ${JOBPROOF_REMINDERS_ENABLED:true}

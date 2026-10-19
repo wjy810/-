@@ -30,6 +30,11 @@ jobproof:
   # Tests run the reminder sweeps themselves, with a chosen "now".
   reminders:
     enabled: false
+  public-base-url: http://localhost:5173
+  notification:
+    email:
+      provider: dev
+      worker-enabled: false
   dev:
     mailbox-enabled: true
     admin:

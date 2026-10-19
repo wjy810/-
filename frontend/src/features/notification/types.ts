@@ -43,3 +43,14 @@ export type NotificationPage = {
   page: number
   size: number
 }
+
+/** 通知偏好 (docs/phase2/03). */
+export type NotificationPreferenceType = 'APPLICATION_ACTIVITY' | 'REMINDER' | 'MEMBERSHIP' | 'PRODUCT_UPDATE'
+export type NotificationPreferenceItem = { type: NotificationPreferenceType; inApp: boolean; email: boolean }
+export type NotificationPreferences = {
+  items: NotificationPreferenceItem[]
+  /** False when the deployment has no email sender. */
+  emailAvailable: boolean
+  /** The verified address, masked; null when the account has none. */
+  emailAddress?: string | null
+}

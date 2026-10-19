@@ -331,6 +331,9 @@ onMounted(() => {
             <AppIcon name="check" :size="15" />
             {{ pending === 'batch' ? '正在标已读…' : '全部标记为已读' }}
           </button>
+          <RouterLink class="icon-btn" to="/account/notifications" title="通知设置" aria-label="通知设置">
+            <AppIcon name="settings" :size="16" />
+          </RouterLink>
           <button class="icon-btn" type="button" title="重新读取" :disabled="loading" @click="load">
             <AppIcon name="refresh" :size="16" />
           </button>

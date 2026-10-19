@@ -284,6 +284,7 @@ export const routes: RouteRecordRaw[] = [
         component: () => import('@/features/identity/pages/AccountSettingsLayoutPage.vue'),
         children: [
           { path: '', name: 'account', meta: { title: '账号与安全' }, component: () => import('@/features/identity/pages/AccountPage.vue') },
+          { path: 'notifications', name: 'account-notifications', meta: { title: '通知设置' }, component: () => import('@/features/notification/pages/NotificationPreferencesPage.vue') },
           { path: 'appearance', name: 'account-appearance', meta: { title: '外观' }, component: () => import('@/features/identity/pages/AppearancePage.vue') },
           { path: 'membership', name: 'account-membership', meta: { title: '会员与兑换' }, component: () => import('@/features/membership/pages/MembershipPage.vue') },
           { path: 'ai', name: 'account-ai', meta: { title: 'AI 用量' }, component: () => import('@/features/ai-resume/pages/AiResumeUsagePage.vue') },

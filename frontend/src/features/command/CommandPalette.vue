@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router'
 import { pinyin } from 'pinyin-pro'
 import { DialogContent, DialogOverlay, DialogPortal, DialogRoot, DialogTitle, VisuallyHidden } from 'reka-ui'
 import {
-  ArrowRight, Compass, CornerDownLeft, Crown, Database, FileText, Keyboard, LogOut, Mic, Moon, Palette, Plus, Search, Send, Sparkles, Target,
+  ArrowRight, Bell, Compass, CornerDownLeft, Crown, Database, FileText, Keyboard, LogOut, Mic, Moon, Palette, Plus, Search, Send, Sparkles, Target,
   Ticket,
 } from 'lucide-vue-next'
 import UiKbd from '@/shared/ui/UiKbd.vue'
@@ -57,6 +57,7 @@ const baseCommands = computed<Command[]>(() => {
     withPinyin({ id: 'nav:appearance', group: '页面', title: '外观设置', icon: Palette, keywords: ['主题', '深色', 'theme'], run: go('/account/appearance') }),
     withPinyin({ id: 'nav:ai-usage', group: '页面', title: 'AI 用量', icon: Sparkles, keywords: ['额度', 'quota'], run: go('/account/ai') }),
     withPinyin({ id: 'nav:data-rights', group: '页面', title: '数据与隐私', icon: Database, keywords: ['导出', '删除', '授权'], run: go('/account/data-rights') }),
+    withPinyin({ id: 'nav:notification-settings', group: '页面', title: '通知设置', icon: Bell, keywords: ['邮件', '提醒', '通知', 'email'], run: go('/account/notifications') }),
     withPinyin({ id: 'nav:pricing', group: '页面', title: '套餐与价格', icon: Crown, keywords: ['专业版', '会员', '价格', 'pro', 'pricing'], run: go('/pricing') }),
   ]
   if (!session.isAdmin) {

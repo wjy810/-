@@ -101,3 +101,11 @@ export function dataRightsPathForNotice(item: NotificationView): string | null {
   }
   return null
 }
+
+/** What each tunable kind of notice is about, for the preferences page. */
+export const PREFERENCE_COPY: Record<string, { title: string; detail: string }> = {
+  APPLICATION_ACTIVITY: { title: '简历回执', detail: '对方首次打开你的简历、简历被转给新的读者时' },
+  REMINDER: { title: '日程提醒', detail: '笔试、面试等下一步开始前一天' },
+  MEMBERSHIP: { title: '会员', detail: '专业版到期前 7 天，以及到期时' },
+  PRODUCT_UPDATE: { title: '产品更新', detail: '新功能和重要改进上线时' },
+}

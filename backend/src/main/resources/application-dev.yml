@@ -92,6 +92,10 @@ jobproof:
     workbench:
       enabled: true
       monthly-quota: 500
+  public-base-url: ${JOBPROOF_PUBLIC_BASE_URL:http://127.0.0.1:5173}
+  notification:
+    email:
+      provider: ${JOBPROOF_NOTIFICATION_EMAIL_PROVIDER:dev}
   membership:
     pro:
       ai-monthly-units: 2000

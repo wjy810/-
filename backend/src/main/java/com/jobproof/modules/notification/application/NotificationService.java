@@ -11,6 +11,7 @@ import com.jobproof.shared.page.PageResult;
 import com.jobproof.shared.time.ClockPort;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -29,15 +30,21 @@ public class NotificationService {
 
     private final NotificationJpaRepository notifications;
     private final ClockPort clock;
+    private final NotificationPreferences preferences;
+    private final NotificationEmailOutbox emails;
     private final TransactionTemplate requiresNew;
     private volatile boolean failNextWrite;
 
     public NotificationService(
             NotificationJpaRepository notifications,
             ClockPort clock,
+            NotificationPreferences preferences,
+            NotificationEmailOutbox emails,
             PlatformTransactionManager transactionManager) {
         this.notifications = notifications;
         this.clock = clock;
+        this.preferences = preferences;
+        this.emails = emails;
         this.requiresNew = new TransactionTemplate(transactionManager);
         this.requiresNew.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
@@ -109,15 +116,26 @@ public class NotificationService {
             failNextWrite = false;
             throw new IllegalStateException("simulated notification channel failure");
         }
-        return notifications.findByAccountIdAndEventIdAndType(accountId, eventId, type.name())
-                .map(existing -> {
-                    if (actionPath != null && !actionPath.equals(existing.getActionPath())) {
-                        existing.setActionPath(actionPath);
-                        notifications.save(existing);
-                    }
-                    return NotificationView.from(existing);
-                })
-                .orElseGet(() -> insertDeduped(accountId, type, eventId, title, body, actionPath));
+        Optional<NotificationEntity> existing = notifications.findByAccountIdAndEventIdAndType(accountId, eventId, type.name());
+        if (existing.isPresent()) {
+            NotificationEntity entity = existing.get();
+            if (actionPath != null && !actionPath.equals(entity.getActionPath())) {
+                entity.setActionPath(actionPath);
+                notifications.save(entity);
+            }
+            return NotificationView.from(entity);
+        }
+        // A new event: the account's preferences decide where it goes (docs/phase2/03).
+        NotificationPreferences.Preference preference = preferences.of(accountId, type);
+        if (preference.email()) emails.enqueue(accountId, type, eventId, title, stripOriginal(body), safeActionPath(actionPath));
+        if (!preference.inApp()) return muted(type, eventId, title, body, actionPath);
+        return insertDeduped(accountId, type, eventId, title, body, actionPath);
+    }
+
+    /** Not shown in the notification center: the user turned this kind off there. */
+    private NotificationView muted(NotificationType type, String eventId, String title, String body, String actionPath) {
+        return new NotificationView(Ids.newId(), type.name(), NotificationStatus.ARCHIVED.name(), eventId, title, stripOriginal(body),
+                clock.now(), null, safeActionPath(actionPath));
     }
 
     private NotificationView persistFailed(String accountId, NotificationType type, String eventId, String title, String body,
