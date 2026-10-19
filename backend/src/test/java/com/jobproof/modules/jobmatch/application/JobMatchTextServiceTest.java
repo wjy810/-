@@ -3,6 +3,7 @@ package com.jobproof.modules.jobmatch.application;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.jobproof.modules.jobmatch.domain.JobMatchModels.RequirementDraft;
 import com.jobproof.shared.error.AppException;
 import java.awt.Color;
 import java.awt.Font;
@@ -12,6 +13,7 @@ import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.function.Function;
 import javax.imageio.ImageIO;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
@@ -68,6 +70,42 @@ class JobMatchTextServiceTest {
         assertThat(tools.hardGate()).isFalse();
         assertThat(parsed.requirements()).anyMatch(item -> item.text().startsWith("有互联网公司") && "BONUS".equals(item.priority()));
         assertThat(parsed.requirements()).anyMatch(item -> item.text().startsWith("有机器学习建模经验") && "BONUS".equals(item.priority()));
+    }
+
+    @Test
+    void onlyScreeningConditionsAreHardGates() {
+        var parsed = service.parse("""
+                岗位名称：数据分析师（2026 届校招）
+                公司名称：拾光电商
+                岗位职责：
+                1. 负责电商业务核心指标的日常监控与分析，搭建并维护数据看板。
+                任职要求：
+                1. 统计学、数学、计算机或相关专业本科及以上学历，2026 届毕业生。
+                2. 熟练使用SQL进行数据查询与分析，熟悉 Python（pandas）或 R 进行数据处理。
+                3. 有至少一段数据分析相关实习经历。
+                4. 具备良好的沟通表达能力和逻辑思维能力。
+                5. 要求逻辑清晰，能独立推进专题分析。
+                6. 3 年以上数据分析工作经验。
+                7. 持有英语六级证书。
+                加分项：
+                1. 熟悉 Tableau、Power BI 等可视化工具者优先。
+                """);
+
+        Function<String, RequirementDraft> byStart = prefix -> parsed.requirements().stream()
+                .filter(item -> item.text().startsWith(prefix)).findFirst().orElseThrow();
+        assertThat(byStart.apply("统计学").hardGate()).isTrue();
+        assertThat(byStart.apply("统计学").category()).isEqualTo("EDUCATION");
+        assertThat(byStart.apply("3 年以上").hardGate()).isTrue();
+        assertThat(byStart.apply("持有英语六级").hardGate()).isTrue();
+        var internship = byStart.apply("有至少一段");
+        assertThat(internship.hardGate()).as("a threshold is a must, not a screening gate").isFalse();
+        assertThat(internship.priority()).isEqualTo("MUST");
+        for (String soft : new String[] {"具备良好的沟通", "要求逻辑清晰", "熟练使用SQL"}) {
+            assertThat(byStart.apply(soft).hardGate()).as(soft).isFalse();
+            assertThat(byStart.apply(soft).priority()).as(soft).isEqualTo("IMPORTANT");
+        }
+        assertThat(byStart.apply("负责电商业务").category()).isEqualTo("RESPONSIBILITY");
+        assertThat(byStart.apply("熟悉 Tableau").priority()).isEqualTo("BONUS");
     }
 
     @Test

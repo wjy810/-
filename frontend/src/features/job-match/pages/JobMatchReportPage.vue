@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { AlertTriangle, ArrowRight, BookOpenCheck, Check, CheckCircle2, ChevronRight, Download, FilePenLine, FileSearch, GitCompareArrows, GraduationCap, History, LoaderCircle, MessageCircle, RefreshCw, Send, ShieldCheck, Target, ThumbsDown, ThumbsUp, TriangleAlert } from 'lucide-vue-next'
 import PageState from '@/shared/ui/PageState.vue'
 import UiBadge from '@/shared/ui/UiBadge.vue'
+import UiBanner from '@/shared/ui/UiBanner.vue'
 import UiDialog from '@/shared/ui/UiDialog.vue'
 import UiDrawer from '@/shared/ui/UiDrawer.vue'
 import UiErrorState from '@/shared/ui/UiErrorState.vue'
@@ -13,7 +14,7 @@ import { toast, useToastFeedback } from '@/shared/ui/toast'
 import { errorMessage } from '@/shared/api/types'
 import { compareMatchReportVersions, createReportExport, createResumeOptimization, downloadReportExport, fetchJobMatch, fetchMatchReport, fetchMatchReportVersions, sendClaimFeedback, updateImprovement } from '../services/jobMatchApi'
 import type { ClaimFeedback, ImprovementTask, JobMatch, JobMatchClaim, JobMatchReport, JobMatchReportComparison, JobMatchReportVersion } from '../types'
-import { displayJobMatchText, evidenceSourceLabel, jobMatchDisplayLabels, jobMatchStatusTone, recommendationLabel } from '../utils/reportPresentation'
+import { confidencePresentation, displayJobMatchText, evidenceSourceLabel, jobMatchDisplayLabels, jobMatchStatusTone, recommendationLabel } from '../utils/reportPresentation'
 import { clampMatchScore, JOB_MATCH_REPORT_TABS, reportTabFromQuery, type JobMatchReportTab } from '../utils/uiPresentation'
 import '../job-match.css'
 
@@ -55,11 +56,24 @@ const { error: loadError, loading, loaded, load } = useLoadState(async () => {
 const doc = computed(() => report.value?.report)
 const hasScore = computed(() => typeof doc.value?.score === 'number')
 const matchScore = computed(() => clampMatchScore(doc.value?.score))
-const confidence = computed(() => (typeof doc.value?.confidence === 'number' ? doc.value.confidence : null))
+const confidence = computed(() => confidencePresentation(doc.value?.confidence))
+/** job-match-report-v3: scored from per-requirement verdicts (docs/phase2/07). */
+const scoring = computed(() => doc.value?.scoring ?? null)
 const dimensionItems = computed(() => {
   const dimensions = doc.value?.dimensions ?? {}
   const hardGate = typeof doc.value?.hardGatePassed === 'boolean' ? (doc.value.hardGatePassed ? 100 : 0) : null
   const value = (key: string) => (typeof dimensions[key] === 'number' ? clampMatchScore(dimensions[key]) : null)
+  if (scoring.value) {
+    const gates = doc.value?.hardGates ?? []
+    const passed = gates.filter(gate => gate.status === 'PASSED').length
+    return [
+      { key: 'hardGate', label: '硬性要求', value: gates.length ? Math.round((passed * 100) / gates.length) : null },
+      { key: 'coreSkills', label: '核心技能', value: value('coreSkills') },
+      { key: 'experience', label: '经验', value: value('experience') },
+      { key: 'qualification', label: '学历与限制', value: value('qualification') },
+      { key: 'evidence', label: '证据强度', value: value('evidence') },
+    ].filter(item => item.value !== null)
+  }
   return [
     { key: 'hardGate', label: '硬性资格', value: hardGate },
     { key: 'coreSkills', label: '核心技能', value: value('coreSkills') },
@@ -69,11 +83,17 @@ const dimensionItems = computed(() => {
     { key: 'growthCost', label: '成长成本', value: value('growthCost') },
   ]
 })
-const strengths = computed(() => doc.value?.ai?.strengths ?? doc.value?.ruleStrengths ?? [])
-const gaps = computed(() => doc.value?.ai?.gaps ?? doc.value?.ruleGaps ?? [])
-const matrix = computed(() => doc.value?.ai?.evidenceMatrix ?? doc.value?.requirements ?? [])
-const hardGates = computed(() => doc.value?.ai?.hardGates ?? doc.value?.requirements?.filter(value => value.hardGate) ?? [])
-const recommendation = computed(() => doc.value?.ai?.recommendation)
+const strengths = computed(() => doc.value?.strengths ?? doc.value?.ai?.strengths ?? doc.value?.ruleStrengths ?? [])
+const gaps = computed(() => doc.value?.gaps ?? doc.value?.ai?.gaps ?? doc.value?.ruleGaps ?? [])
+const matrix = computed(() => (scoring.value ? doc.value?.requirements : doc.value?.ai?.evidenceMatrix ?? doc.value?.requirements) ?? [])
+const hardGates = computed(() => doc.value?.hardGates ?? doc.value?.ai?.hardGates ?? doc.value?.requirements?.filter(value => value.hardGate) ?? [])
+const recommendation = computed(() => doc.value?.recommendation ?? doc.value?.ai?.recommendation)
+const scoringNote = computed(() => {
+  const value = scoring.value
+  if (!value) return ''
+  if (value.method === 'RULE_PREVIEW') return '规则预估：按岗位要求的关键词在简历和资料中的出现情况估算，AI 未参与。'
+  return `逐条判断 ${value.requirementCount} 条岗位要求（其中 ${value.citedCount} 条有简历、资料或你的确认作依据），按必须 ×3、重要 ×2、加分 ×1 加权。`
+})
 const recommendationText = computed(() => recommendationLabel(recommendation.value?.code))
 const requirementsById = computed(() => new Map((doc.value?.requirements ?? []).map(item => [String(item.requirementId ?? ''), item])))
 const matchRequirementsById = computed(() => new Map((match.value?.requirements ?? []).map(item => [item.id, item])))
@@ -126,12 +146,20 @@ function matrixList(item: Item, key: string) {
   return requirement ? list(requirement, key) : []
 }
 function matrixRawStatus(item: Item) {
-  const direct = item.status ?? item.factStatus
+  const direct = item.verdict ?? item.status ?? item.factStatus
   if (typeof direct === 'string') return direct
   const requirement = requirementsById.value.get(String(item.requirementId ?? ''))
   return requirement?.status ?? requirement?.factStatus
 }
 function matrixStatus(item: Item) { return displayText(matrixRawStatus(item)) || '待核实' }
+/** What a v3 verdict rests on; older reports showed a model-given percentage instead. */
+function basisLabel(item: Item) {
+  if (!scoring.value) return numberOrNull(item, 'confidence') !== null ? `${numberOrNull(item, 'confidence')}%` : '—'
+  if (item.userConfirmed === true) return '你的确认'
+  if (list(item, 'resumeRefs').length || list(item, 'evidenceIds').length) return '已引用'
+  return item.verdict === 'NOT_FOUND' ? '未找到' : '—'
+}
+const VERDICT_BY_VALUE: Record<number, string> = { 100: '符合', 60: '部分符合', 35: '无法判断', 0: '暂未发现证据' }
 function sourceLabel(id: unknown) { return evidenceSourceLabel(id, report.value?.evidenceSources) }
 function claimFor(item: Item, strength: boolean) {
   const requirementId = String(item.requirementId ?? '')
@@ -295,7 +323,8 @@ onMounted(() => {
           <p>
             <strong>{{ match?.title }}<template v-if="match?.company"> · {{ match.company }}</template></strong>
             <UiBadge :tone="match?.status === 'COMPLETED' ? 'success' : 'accent'">{{ match?.status === 'COMPLETED' ? '分析完成' : '历史报告可用' }}</UiBadge>
-            <UiBadge v-if="confidence !== null" tone="success">可信度 {{ confidence }}%</UiBadge>
+            <UiBadge v-if="confidence" :tone="confidence.tone" :title="confidence.hint">{{ confidence.label }}</UiBadge>
+            <UiBadge v-if="doc?.preview" tone="warning">规则预估</UiBadge>
             <UiBadge v-if="report?.updatedAt" tone="neutral">{{ new Date(report.updatedAt).toLocaleDateString('zh-CN') }}</UiBadge>
           </p>
         </div>
@@ -307,6 +336,12 @@ onMounted(() => {
           <button class="jm-primary" type="button" :disabled="pending" @click="optimize"><FilePenLine :size="16" />优化简历</button>
         </div>
       </div>
+      <UiBanner v-if="doc?.preview" tone="warning" class="jm-report-banner">
+        AI 分析还没有完成，下面是按关键词得到的规则预估，结论仅供参考。AI 可用后点“重新分析”即可得到逐条判断的报告。
+      </UiBanner>
+      <UiBanner v-else-if="doc?.resumeChanged" tone="info" class="jm-report-banner">
+        这份简历在分析之后有更新，点“重新分析”可以用最新内容重新判断。
+      </UiBanner>
       <nav class="jm-tabs" role="tablist" aria-label="报告视图">
         <button
           v-for="tab in tabs"
@@ -341,6 +376,7 @@ onMounted(() => {
               <strong v-if="recommendationText"><ThumbsUp :size="16" />{{ recommendationText }}</strong>
               <p v-if="recommendation?.rationale">{{ displayText(recommendation.rationale) }}</p>
               <p v-if="!recommendationText && !recommendation?.rationale">这份报告没有给出投递结论。</p>
+              <p v-if="scoringNote" class="jm-scoring-note">{{ scoringNote }}</p>
             </div>
             <article v-for="item in dimensionItems" :key="item.key" class="jm-dimension">
               <small>{{ item.label }}</small>
@@ -432,7 +468,8 @@ onMounted(() => {
                 </div>
               </div>
               <aside>
-                <UiBadge v-if="numberOrNull(item, 'score') !== null" tone="success">{{ numberOrNull(item, 'score') }} 分</UiBadge>
+                <UiBadge v-if="optionalStr(item, 'verdict')" :tone="jobMatchStatusTone(matrixRawStatus(item))">{{ matrixStatus(item) }}</UiBadge>
+                <UiBadge v-else-if="numberOrNull(item, 'score') !== null" tone="success">{{ numberOrNull(item, 'score') }} 分</UiBadge>
                 <span v-if="claimMark(claimFor(item, true))" class="jm-claim-mark" :class="claimMark(claimFor(item, true))?.tone">{{ claimMark(claimFor(item, true))?.label }}</span>
                 <button v-if="claimFor(item, true)" class="jm-text-btn" type="button" @click="openClaim(claimFor(item, true))">查看依据</button>
               </aside>
@@ -466,14 +503,14 @@ onMounted(() => {
 
           <div v-else-if="activeTab === 'evidence'" class="jm-history-table-wrap">
             <table class="jm-matrix">
-              <thead><tr><th>岗位要求</th><th>简历证据</th><th>资料库证据</th><th>事实状态</th><th>可信度</th><th></th></tr></thead>
+              <thead><tr><th>岗位要求</th><th>简历证据</th><th>资料库证据</th><th>判定</th><th>依据</th><th></th></tr></thead>
               <tbody>
                 <tr v-for="(item, index) in matrix" :key="index">
                   <td>{{ reportItemTitle(item) }}</td>
                   <td>{{ matrixList(item, 'resumeRefs').length ? `${matrixList(item, 'resumeRefs').length} 处简历引用` : '暂未发现证据' }}</td>
                   <td>{{ matrixList(item, 'evidenceIds').length ? `${matrixList(item, 'evidenceIds').length} 项授权资料` : '未授权或未发现' }}</td>
                   <td><UiBadge :tone="jobMatchStatusTone(matrixRawStatus(item))">{{ matrixStatus(item) }}</UiBadge></td>
-                  <td>{{ numberOrNull(item, 'confidence') !== null ? `${numberOrNull(item, 'confidence')}%` : '—' }}</td>
+                  <td>{{ basisLabel(item) }}</td>
                   <td><button v-if="claimFor(item, true)" class="jm-text-btn" type="button" @click="openClaim(claimFor(item, true))">查看依据</button></td>
                 </tr>
               </tbody>
@@ -513,7 +550,7 @@ onMounted(() => {
         <UiBadge tone="primary">岗位要求</UiBadge>
         <h3>{{ selectedRequirementTitle }}</h3>
         <small v-if="selectedClaim">
-          结论类型：{{ displayText(selectedClaim.conclusionType) || '—' }}<template v-if="typeof selectedClaim.confidence === 'number'"> · 可信度 {{ selectedClaim.confidence }}%</template>
+          结论类型：{{ displayText(selectedClaim.conclusionType) || '—' }}<template v-if="scoring && VERDICT_BY_VALUE[selectedClaim.confidence]"> · 判定 {{ VERDICT_BY_VALUE[selectedClaim.confidence] }}</template><template v-else-if="!scoring && typeof selectedClaim.confidence === 'number'"> · 可信度 {{ selectedClaim.confidence }}%</template>
         </small>
         <small v-if="selectedRequirement">原文位置：第 {{ selectedRequirement.sequence }} 条岗位要求</small>
         <p v-if="selectedRequirement?.sourceQuote" class="jm-source-quote">{{ selectedRequirement.sourceQuote }}</p>

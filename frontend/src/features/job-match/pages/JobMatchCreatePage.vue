@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Check, Eye, FileText, Globe2, LoaderCircle, ShieldCheck, TriangleAlert, Undo2, Upload, UserRoundCheck } from 'lucide-vue-next'
 import PageState from '@/shared/ui/PageState.vue'
+import AiUnavailableNotice from '@/shared/ui/AiUnavailableNotice.vue'
 import UiSelect from '@/shared/ui/UiSelect.vue'
 import { useLoadState } from '@/shared/lib/useLoadState'
 import { confirm } from '@/shared/ui/confirm'
@@ -73,8 +74,8 @@ useToastFeedback(transientPageError, 'error', 'job-match-create-error')
 const currentStep = computed(() => stepNumber(stage.value))
 const wizardStageKey = computed(() => `${stage.value}:${stage.value === 'jd' && match.value ? 'review' : 'entry'}`)
 const jdCount = computed(() => jdText.value.replace(/\s/g, '').length)
-const minJdChars = computed(() => capabilities.value?.minJdChars ?? 300)
-const maxJdChars = computed(() => capabilities.value?.maxJdChars ?? 10_000)
+const minJdChars = computed(() => capabilities.value?.minJdChars ?? 80)
+const maxJdChars = computed(() => capabilities.value?.maxJdChars ?? 20_000)
 /** Why "解析岗位要求" is disabled, shown next to the button instead of failing silently. */
 const jdBlockedReason = computed(() => {
   if (source.value === 'TEXT' && jdCount.value < minJdChars.value) {
@@ -321,6 +322,7 @@ onMounted(load)
 
 <template>
   <main class="jm-page"><div class="jm-shell">
+    <AiUnavailableNotice kind="jobMatch" feature="岗位匹配的逐条判断" fallback="现在开始分析会先给出按关键词的规则预估，AI 恢复后可以重新分析。" class="jm-ai-notice" />
     <header class="jm-head"><div><h1>创建岗位匹配</h1><p>四步确认分析输入，任何 AI 结论都能回到事实来源。</p></div><button class="jm-text-btn" type="button" @click="router.push({ name: 'job-match-home' })">保存并退出</button></header>
     <JobMatchStepper :current="currentStep" />
     <section v-if="pageError && stage === 'jd' && !match" class="jm-card jm-recovery" role="alert">
@@ -381,7 +383,7 @@ onMounted(load)
           <div class="jm-wizard__body"><header><h2>补充求职资料证据</h2><p>资料库默认不授权。你可以自动选择相关项、手动选择，或完全不使用。</p></header>
             <div class="jm-choice-row"><button class="jm-choice" :class="{ 'is-selected':evidenceMode==='AUTO' }" type="button" :aria-pressed="evidenceMode==='AUTO'" @click="evidenceMode='AUTO'"><strong>自动选择相关证据</strong><small>按 JD 相关度推荐，但仍由你确认范围。</small></button><button class="jm-choice" :class="{ 'is-selected':evidenceMode==='MANUAL' }" type="button" :aria-pressed="evidenceMode==='MANUAL'" @click="evidenceMode='MANUAL'"><strong>手动选择</strong><small>逐项选择项目、成果和文件资料。</small></button><button class="jm-choice" :class="{ 'is-selected':evidenceMode==='NONE' }" type="button" :aria-pressed="evidenceMode==='NONE'" @click="evidenceMode='NONE'"><strong>不使用资料库</strong><small>只基于 JD 与本次投递简历分析。</small></button></div>
             <Transition name="jm-switch" mode="out-in"><div :key="evidenceMode" class="jm-evidence-panel"><div v-if="evidenceMode!=='NONE'" class="jm-evidence-list"><label v-for="item in evidence" :key="`${item.sourceType}:${item.sourceId}`" class="jm-evidence-option" :class="{ 'is-selected':selectedEvidence.has(`${item.sourceType}:${item.sourceId}`) }"><input type="checkbox" :checked="selectedEvidence.has(`${item.sourceType}:${item.sourceId}`)" @change="toggleEvidence(item)"><p><strong>{{ item.title }}</strong><small>{{ evidenceNote(item) }}</small></p><em v-if="item.recommended">与岗位要求有关键词重合</em></label><p v-if="!evidence.length" class="jm-privacy"><ShieldCheck :size="17" /><span>资料库暂无可用证据，可以选择“不使用资料库”继续。</span></p></div><div v-else class="jm-evidence-none"><ShieldCheck :size="20" /><p><strong>本次不使用资料库</strong><small>分析只读取已确认的 JD 和投递简历，之后仍可重新创建匹配并授权证据。</small></p></div></div></Transition>
-            <div class="jm-privacy"><ShieldCheck :size="18" /><p><strong>敏感信息已排除</strong><span>手机号、邮箱、详细地址、身份证及敏感属性不会进入模型输入；授权只作用于当前任务。</span></p></div>
+            <div class="jm-privacy"><ShieldCheck :size="18" /><p><strong>敏感信息已排除</strong><span>姓名、手机号、邮箱、微信、QQ、个人链接、详细地址、身份证和照片不会发送给模型；授权只作用于当前任务。</span></p></div>
           </div><footer class="jm-wizard__footer"><button class="jm-secondary" type="button" @click="goBack">返回</button><button class="jm-primary" type="button" :disabled="pending" @click="confirmEvidence">确认资料范围</button></footer>
         </template>
         <template v-else>

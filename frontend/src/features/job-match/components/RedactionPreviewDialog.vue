@@ -23,8 +23,19 @@ const props = defineProps<{
 const emit = defineEmits<{ close: [] }>()
 
 const FIELD_LABELS: Record<string, string> = {
+  name: '姓名',
   phone: '手机号',
   email: '邮箱',
+  wechat: '微信',
+  qq: 'QQ',
+  links: '个人链接',
+  personalLinks: '个人链接',
+  website: '个人主页',
+  url: '个人主页',
+  github: 'GitHub',
+  linkedin: '领英',
+  birthDate: '出生日期',
+  photoFileId: '照片',
   fullAddress: '详细地址',
   identityNumber: '身份证号',
   age: '年龄',

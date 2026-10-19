@@ -215,6 +215,12 @@ public class JobMatchController {
         return ApiResponse.ok(matches.resumeAnalysis(current(), id, command));
     }
 
+    @DeleteMapping("/{id}")
+    public ApiResponse<Map<String, Object>> archive(@PathVariable String id) {
+        matches.archive(current(), id);
+        return ApiResponse.ok(Map.of("id", id, "archived", true));
+    }
+
     @PostMapping("/{id}/cancel")
     public ApiResponse<MatchView> cancel(@PathVariable String id,
             @RequestBody(required = false) MutationCommand command) {
@@ -242,9 +248,9 @@ public class JobMatchController {
         ReportView report = matches.report(current(), id);
         Object value = switch (section) {
             case "learning-plan" -> report.learningPlan();
-            case "strengths" -> nested(report.report(), "ai", "strengths");
-            case "gaps" -> nested(report.report(), "ai", "gaps");
-            default -> nested(report.report(), "ai", "evidenceMatrix");
+            case "strengths" -> report.report().containsKey("strengths") ? report.report().get("strengths") : nested(report.report(), "ai", "strengths");
+            case "gaps" -> report.report().containsKey("gaps") ? report.report().get("gaps") : nested(report.report(), "ai", "gaps");
+            default -> report.report().containsKey("scoring") ? report.report().get("requirements") : nested(report.report(), "ai", "evidenceMatrix");
         };
         return ApiResponse.ok(value);
     }

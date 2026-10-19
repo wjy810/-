@@ -688,10 +688,7 @@ public class ResumeService implements DeletionModuleHandler, AccountExportContri
     private JsonNode withoutContact(JsonNode content) {
         JsonNode copy = content == null ? objectMapper.createObjectNode() : content.deepCopy();
         if (copy.path("basics") instanceof com.fasterxml.jackson.databind.node.ObjectNode basics) {
-            for (String key : List.of("phone", "email", "wechat", "qq", "links", "personalLinks", "website",
-                    "url", "github", "linkedin")) {
-                basics.remove(key);
-            }
+            for (String key : com.jobproof.shared.privacy.ResumeContactFields.BASICS_CONTACT) basics.remove(key);
         }
         if (copy instanceof com.fasterxml.jackson.databind.node.ObjectNode root) root.putNull("photoFileId");
         return copy;

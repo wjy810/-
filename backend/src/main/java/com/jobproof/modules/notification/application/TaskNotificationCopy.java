@@ -40,9 +40,13 @@ final class TaskNotificationCopy {
                     : new Copy("简历导入失败", "这份简历没有解析成功，可以换一个文件或直接粘贴文字重新导入。", "/ai-resume/new");
             case TaskTypes.JD_PARSE -> succeeded ? null
                     : new Copy("岗位描述解析失败", "没有读懂这份岗位描述，可以补充内容后重新分析。", matchPath(refs, "analyzing"));
-            case TaskTypes.JOB_MATCH -> succeeded
-                    ? new Copy("岗位匹配报告已生成", "查看匹配度、证据和补强建议。", matchPath(refs, "report"))
-                    : new Copy("岗位匹配分析失败", "这次分析没有完成，打开后可以重新分析。", matchPath(refs, "analyzing"));
+            case TaskTypes.JOB_MATCH -> !succeeded
+                    ? new Copy("岗位匹配分析失败", "这次分析没有完成，打开后可以重新分析。", matchPath(refs, "analyzing"))
+                    : refs.getOrDefault("resultVersion", "").startsWith("job-match-clarification")
+                    ? new Copy("岗位匹配需要你确认几个问题", "回答后会继续分析，并据此生成报告。", matchPath(refs, "clarifications"))
+                    // A task that found the match no longer analysing (cancelled, already handled) says nothing.
+                    : refs.getOrDefault("resultVersion", "").equals("job-match-skipped") ? null
+                    : new Copy("岗位匹配报告已生成", "查看匹配度、证据和补强建议。", matchPath(refs, "report"));
             case TaskTypes.MATCH_AI_ADVICE -> succeeded
                     ? new Copy("岗位匹配建议已生成", "补强建议已经整理好。", matchPath(refs, "report"))
                     : new Copy("岗位匹配建议生成失败", "这次没有生成建议，可以稍后在报告页重试。", matchPath(refs, "report"));

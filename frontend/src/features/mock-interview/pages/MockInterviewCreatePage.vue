@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ArrowLeft, ArrowRight, BriefcaseBusiness, Check, CheckCircle2, Circle, FileText, Gauge, Headphones, Info, Languages, LoaderCircle, Mic, MonitorCheck, Save, ShieldCheck, Upload, Volume2 } from 'lucide-vue-next'
 import UiSelect from '@/shared/ui/UiSelect.vue'
+import AiUnavailableNotice from '@/shared/ui/AiUnavailableNotice.vue'
 import JobTaxonomyPicker from '@/features/ai-resume/components/JobTaxonomyPicker.vue'
 import { listResumes } from '@/features/resume/services/resumeApi'
 import { fetchCareerFiles, fetchCareerRecords, uploadCareerFile } from '@/features/career-library/services/careerLibraryApi'
@@ -254,6 +255,7 @@ onBeforeUnmount(() => { testStream?.getTracks().forEach((track) => track.stop())
 
 <template>
       <main class="mi-create-page">
+      <AiUnavailableNotice kind="resume" feature="个性化出题和逐题评分" fallback="现在开始会使用基础题库，回答会完整保存，AI 恢复后可以在报告页补充评估。" class="mi-ai-notice" />
       <header class="mi-create-top"><strong>创建模拟面试</strong><span v-if="saving"><LoaderCircle class="mi-spin" :size="14" />正在保存</span><span v-else-if="savedNotice"><Check :size="14" />{{ savedNotice }}</span></header>
       <div class="mi-create-shell">
         <ol class="mi-stepper" aria-label="创建步骤">

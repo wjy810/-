@@ -3,6 +3,7 @@ import { computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ArrowRight, FileCheck2, LoaderCircle, Plus, ShieldCheck, Sparkles } from 'lucide-vue-next'
 import UiBadge from '@/shared/ui/UiBadge.vue'
+import AiUnavailableNotice from '@/shared/ui/AiUnavailableNotice.vue'
 import UiButton from '@/shared/ui/UiButton.vue'
 import UiEmptyState from '@/shared/ui/UiEmptyState.vue'
 import JobProofIcon from '@/shared/ui/JobProofIcon.vue'
@@ -27,6 +28,7 @@ onMounted(load)
 
 <template>
       <main class="jm-page"><div class="jm-shell">
+      <AiUnavailableNotice kind="jobMatch" feature="岗位匹配的逐条判断" fallback="现在开始分析会先给出按关键词的规则预估，AI 恢复后可以重新分析。" class="jm-ai-notice" />
       <header class="jm-head"><div><h1>岗位匹配</h1><p>比较目标岗位 JD 与你的简历，获得有证据的匹配分析和提升建议。</p></div><button class="jm-primary" type="button" @click="router.push({ name: 'job-match-new' })"><Plus :size="17" /><span>创建新的匹配</span></button></header>
       <PageState :loading="loading" :error="error" :loaded="loaded" :empty="(dashboard?.total ?? 0) === 0" error-title="匹配记录读取失败" @retry="load">
         <template #skeleton>
@@ -37,23 +39,23 @@ onMounted(load)
         </template>
         <section class="jm-stats" aria-label="岗位匹配统计">
           <article class="jm-card jm-stat"><span class="jm-stat__icon is-blue"><JobProofIcon name="matching-analysis-count" :size="25" /></span><p><small>累计分析</small><strong>{{ dashboard?.total ?? 0 }}</strong><em>全部岗位匹配任务</em></p></article>
-          <article class="jm-card jm-stat"><span class="jm-stat__icon is-cyan"><JobProofIcon name="matching-match-rate" :size="25" /></span><p><small>平均匹配度</small><strong>{{ averageScore ?? '—' }}<small v-if="averageScore !== null">%</small></strong><em>{{ averageScore === null ? '还没有带分数的报告' : '基于已有报告' }}</em></p></article>
+          <article class="jm-card jm-stat"><span class="jm-stat__icon is-cyan"><JobProofIcon name="matching-match-rate" :size="25" /></span><p><small>平均匹配度</small><strong>{{ averageScore ?? '—' }}<small v-if="averageScore !== null">%</small></strong><em>{{ averageScore === null ? '还没有完成的报告' : '只统计已完成的报告' }}</em></p></article>
           <article class="jm-card jm-stat"><span class="jm-stat__icon is-orange"><JobProofIcon name="matching-pending-task" :size="25" /></span><p><small>待处理任务</small><strong>{{ pendingCount }}</strong><em>继续补充或恢复分析</em></p></article>
-          <article class="jm-card jm-stat"><span class="jm-stat__icon is-green"><JobProofIcon name="matching-optimized-resume" :size="25" /></span><p><small>已优化简历</small><strong>{{ dashboard?.optimized ?? 0 }}</strong><em>已采纳匹配建议</em></p></article>
+          <article class="jm-card jm-stat"><span class="jm-stat__icon is-green"><JobProofIcon name="matching-optimized-resume" :size="25" /></span><p><small>已优化简历</small><strong>{{ dashboard?.optimized ?? 0 }}</strong><em>在工作台采纳过匹配建议</em></p></article>
         </section>
         <div class="jm-home-grid">
           <div>
             <section class="jm-card jm-flow"><h2>从岗位要求到行动方案</h2><div class="jm-flow__steps">
               <article class="jm-flow__step"><span><JobProofIcon name="matching-jd-import" :size="27" /></span><strong>导入岗位 JD</strong><p>粘贴或上传岗位信息，提取关键要求</p></article>
               <article class="jm-flow__step"><span><JobProofIcon name="matching-resume-selection" :size="27" /></span><strong>选择简历与证据</strong><p>选择投递版本，明确资料授权范围</p></article>
-              <article class="jm-flow__step"><span><JobProofIcon name="matching-analysis-report" :size="27" /></span><strong>AI 证据分析</strong><p>规则评分结合真实 AI 语义判断</p></article>
+              <article class="jm-flow__step"><span><JobProofIcon name="matching-analysis-report" :size="27" /></span><strong>AI 证据分析</strong><p>逐条判断每项要求有没有简历或资料作证</p></article>
               <article class="jm-flow__step"><span><JobProofIcon name="matching-next-steps" :size="27" /></span><strong>优化与准备</strong><p>按优先级改简历、补证据和学习</p></article>
             </div><button class="jm-primary" type="button" @click="router.push({ name: 'job-match-new' })">开始岗位匹配</button></section>
             <section class="jm-card jm-recent"><header class="jm-section-head"><h2>最近的匹配任务</h2><button class="jm-text-btn" type="button" @click="router.push({ name: 'job-match-history' })">查看全部 <ArrowRight :size="15" /></button></header>
-              <div class="jm-task-list"><article v-for="item in dashboard?.recent" :key="item.id" class="jm-task"><span class="jm-score-ring" :class="{ 'is-pending': item.score == null }">{{ item.score ?? '—' }}</span><p><strong>{{ item.title || '岗位描述待解析' }}<template v-if="item.company"> · {{ item.company }}</template></strong><small><UiBadge :tone="statusTone(item.status)">{{ statusLabel(item.status) }}</UiBadge></small></p><p><small>简历版本</small><strong>{{ item.resumeTitle || '尚未选择' }}</strong></p><time>{{ new Date(item.updatedAt).toLocaleDateString('zh-CN') }}</time><button class="jm-secondary" type="button" @click="open(item)">{{ item.status === 'COMPLETED' ? '查看报告' : '继续分析' }}</button></article></div>
+              <div class="jm-task-list"><article v-for="item in dashboard?.recent" :key="item.id" class="jm-task" role="link" tabindex="0" :aria-label="`${item.title || '岗位匹配'}：${statusLabel(item.status)}`" @click="open(item)" @keydown.enter.self="open(item)"><span class="jm-score-ring" :class="{ 'is-pending': item.status !== 'COMPLETED' || item.score == null }">{{ item.status === 'COMPLETED' ? item.score ?? '—' : '—' }}</span><p><strong>{{ item.title || '岗位描述待解析' }}<template v-if="item.company"> · {{ item.company }}</template></strong><small><UiBadge :tone="statusTone(item.status)">{{ statusLabel(item.status) }}</UiBadge></small></p><p><small>简历版本</small><strong>{{ item.resumeTitle || '尚未选择' }}</strong></p><time>{{ new Date(item.updatedAt).toLocaleDateString('zh-CN') }}</time><button class="jm-secondary" type="button" @click.stop="open(item)">{{ item.status === 'COMPLETED' ? '查看报告' : '继续分析' }}</button></article></div>
             </section>
           </div>
-          <aside class="jm-card jm-suggestions"><h2>匹配原则</h2><article class="jm-suggestion"><span><ShieldCheck :size="18" /></span><p><strong>结论必须可溯源</strong><small>每项优势、缺口和建议都关联 JD、简历或授权证据。</small></p></article><article class="jm-suggestion"><span><Sparkles :size="18" /></span><p><strong>AI 不制造分数</strong><small>规则引擎负责稳定评分，AI 负责解释、澄清与行动计划。</small></p></article><article class="jm-suggestion"><span><FileCheck2 :size="18" /></span><p><strong>未写不等于不会</strong><small>证据不足时优先追问，不把简历没有写误判为能力缺口。</small></p></article></aside>
+          <aside class="jm-card jm-suggestions"><h2>匹配原则</h2><article class="jm-suggestion"><span><ShieldCheck :size="18" /></span><p><strong>结论必须可溯源</strong><small>每项优势、缺口和建议都关联 JD、简历或授权证据。</small></p></article><article class="jm-suggestion"><span><Sparkles :size="18" /></span><p><strong>分数有据可查</strong><small>AI 逐条判断要求是否符合并给出引用，分数按要求优先级加权算出，没有引用的判断不计分。</small></p></article><article class="jm-suggestion"><span><FileCheck2 :size="18" /></span><p><strong>未写不等于不会</strong><small>证据不足时优先追问，不把简历没有写误判为能力缺口。</small></p></article></aside>
         </div>
       </PageState>
     </div></main>

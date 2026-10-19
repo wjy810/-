@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  confidenceLevel,
+  confidencePresentation,
   displayJobMatchText,
   evidenceSourceLabel,
   jobMatchStatusTone,
@@ -52,4 +54,15 @@ test('names evidence by source kind and title, never by an id fragment', () => {
   const missing = evidenceSourceLabel('deadbeef-0000-0000-0000-000000000000', sources)
   assert.equal(missing, '已授权资料（详情不可用）')
   assert.doesNotMatch(missing, /deadbeef/)
+})
+
+test('confidence is a level, also for reports that stored a number', () => {
+  assert.equal(confidenceLevel('MEDIUM'), 'MEDIUM')
+  assert.equal(confidenceLevel(86), 'HIGH')
+  assert.equal(confidenceLevel(61), 'MEDIUM')
+  assert.equal(confidenceLevel(40), 'LOW')
+  assert.equal(confidenceLevel(undefined), null)
+  assert.equal(confidencePresentation('LOW')?.tone, 'danger')
+  assert.equal(recommendationLabel('PREPARE_FIRST'), '先补强再投递')
+  assert.equal(displayJobMatchText('UNCLEAR'), '无法判断')
 })

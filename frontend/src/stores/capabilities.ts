@@ -5,7 +5,7 @@
  */
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
-import { fetchSiteCapabilities, type FeatureKey, type SiteCapabilities } from '@/shared/api/capabilities'
+import { fetchSiteCapabilities, type AiReadinessKey, type FeatureKey, type SiteCapabilities } from '@/shared/api/capabilities'
 
 export const FEATURE_LABELS: Record<FeatureKey, string> = {
   aiWorkbench: 'AI 简历助手',
@@ -32,9 +32,14 @@ export const useCapabilitiesStore = defineStore('capabilities', () => {
     return value.value.features[feature] !== false
   }
 
+  /** False only when the server said no model is reachable for this feature; unknown counts as ready. */
+  function aiReady(kind: AiReadinessKey): boolean {
+    return value.value?.ai?.[kind] !== false
+  }
+
   const operator = computed(() => value.value?.operator ?? null)
   const registrationOpen = computed(() => value.value?.registrationOpen ?? null)
   const policiesPublished = computed(() => value.value?.policies.published ?? null)
 
-  return { value, load, enabled, operator, registrationOpen, policiesPublished }
+  return { value, load, enabled, aiReady, operator, registrationOpen, policiesPublished }
 })

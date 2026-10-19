@@ -201,14 +201,19 @@ public class MockInterviewService {
             Map<String, Object> report = map(reportJson);
             Object ai = report.get("ai");
             if (ai instanceof Map<?, ?> aiMap) {
-                snapshot.put("strengths", aiMap.get("strengths") == null ? List.of() : aiMap.get("strengths"));
-                snapshot.put("gaps", aiMap.get("gaps") == null ? List.of() : aiMap.get("gaps"));
+                // Reports since job-match-report-v3 carry the checked strengths, gaps and recommendation at the top.
+                snapshot.put("strengths", firstNonNull(report.get("strengths"), aiMap.get("strengths"), List.of()));
+                snapshot.put("gaps", firstNonNull(report.get("gaps"), aiMap.get("gaps"), List.of()));
                 snapshot.put("interviewTopics", aiMap.get("interviewTopics") == null ? List.of() : aiMap.get("interviewTopics"));
-                snapshot.put("recommendation", aiMap.get("recommendation") == null ? Map.of() : aiMap.get("recommendation"));
+                snapshot.put("recommendation", firstNonNull(report.get("recommendation"), aiMap.get("recommendation"), Map.of()));
             }
             snapshot.put("reportId", reportId);
         }
         return snapshot;
+    }
+
+    private static Object firstNonNull(Object first, Object second, Object fallback) {
+        return first != null ? first : second != null ? second : fallback;
     }
 
     @Transactional(readOnly = true)

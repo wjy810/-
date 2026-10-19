@@ -9,15 +9,18 @@ import com.jobproof.modules.airesume.application.AiResumeChangeSetService.Genera
 import com.jobproof.modules.airesume.application.AiResumeChangeSetService.GeneratedItem;
 import com.jobproof.modules.audit.application.AuditService;
 import com.jobproof.modules.career.application.CareerFileService;
+import com.jobproof.modules.jobmatch.domain.ClarificationVerdicts;
 import com.jobproof.modules.jobmatch.domain.JobMatchModels.EvidenceCandidate;
 import com.jobproof.modules.jobmatch.domain.JobMatchModels.ParsedJd;
 import com.jobproof.modules.jobmatch.domain.JobMatchModels.RequirementDraft;
+import com.jobproof.modules.jobmatch.domain.JobMatchScoring.Verdict;
 import com.jobproof.modules.task.application.TaskService;
 import com.jobproof.modules.task.application.TaskView;
 import com.jobproof.modules.task.domain.TaskTypes;
 import com.jobproof.shared.auth.CurrentAccount;
 import com.jobproof.shared.concurrency.Versions;
 import com.jobproof.shared.error.AppException;
+import com.jobproof.shared.privacy.ResumeContactFields;
 import com.jobproof.shared.id.Ids;
 import com.jobproof.shared.time.ClockPort;
 import java.nio.charset.StandardCharsets;
@@ -44,8 +47,10 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class JobMatchService {
     public static final String AUTH_POLICY = "job-match-authorization-v1";
-    public static final List<String> SENSITIVE_FIELDS = List.of("phone", "email", "fullAddress", "identityNumber",
-            "age", "gender", "maritalStatus", "ethnicity", "photoRef", "photo", "avatar");
+    /** What never reaches the model (JobMatchAnalysisService.redactSensitive): the name, every contact field, personal traits. */
+    public static final List<String> SENSITIVE_FIELDS = java.util.stream.Stream.concat(
+            java.util.stream.Stream.concat(java.util.stream.Stream.of("name"), ResumeContactFields.BASICS_CONTACT.stream()),
+            ResumeContactFields.PERSONAL.stream()).toList();
     private static final Pattern LATIN_TOKEN = Pattern.compile("[a-z0-9+#.]+");
 
     private final JdbcTemplate jdbc;
@@ -80,7 +85,7 @@ public class JobMatchService {
         assertUser(current);
         return new CapabilitiesView(true, text.ocrAvailable(), List.of("TEXT", "FILE", "IMAGE", "URL"),
                 List.of("SITE_RESUME", "LOCAL_PDF", "LOCAL_DOCX"), 10 * 1024 * 1024,
-                300, 10_000, quota.current(current.accountId()));
+                JobMatchTextService.MIN_JD, JobMatchTextService.MAX_JD, quota.current(current.accountId()));
     }
 
     @Transactional
@@ -334,7 +339,7 @@ public class JobMatchService {
                 : jdbc.queryForList("SELECT source_type,source_id,title,strength,relevance FROM job_match_evidence_items WHERE match_id=? AND authorization_id=? ORDER BY relevance DESC",
                         matchId, row.authorizationId());
         return new RedactionPreview(matchId, row.resumeRevisionId(), included, SENSITIVE_FIELDS,
-                "联系方式、详细地址、身份证及敏感属性不会发送给模型");
+                "姓名、电话、邮箱、微信、QQ、个人链接、详细地址、身份证和照片等敏感信息不会发送给模型");
     }
 
     @Transactional
@@ -370,9 +375,10 @@ public class JobMatchService {
             return new AnalysisStart(get(current, matchId), tasks.getOwned(current.accountId(), row.analysisTaskId()),
                     quota.current(current.accountId()));
         }
-        if (!Set.of("EVIDENCE_AUTHORIZED", "ANALYSIS_PAUSED", "NEEDS_CLARIFICATION", "COMPLETED").contains(row.status())) {
+        if (!Set.of("EVIDENCE_AUTHORIZED", "ANALYSIS_PAUSED", "NEEDS_CLARIFICATION", "COMPLETED", "CANCELLED").contains(row.status())) {
             throw AppException.conflict("JOB_MATCH_NOT_READY", "请先完成岗位、简历和证据范围确认");
         }
+        refreshResumeRevision(row);
         AiQuotaService.Reservation reservation = quota.reserve(current.accountId(), "JOB_MATCH:" + requestId,
                 "JOB_MATCH_ANALYSIS", 1);
         TaskView task = tasks.create(current.accountId(), TaskTypes.JOB_MATCH,
@@ -386,6 +392,21 @@ public class JobMatchService {
         return new AnalysisStart(get(current, matchId), task, quota.current(current.accountId()));
     }
 
+    /** A re-analysis reads the resume as it is now: the latest revision of the branch the user chose. */
+    private void refreshResumeRevision(MatchRow row) {
+        if (row.resumeBranchId() == null || row.resumeRevisionId() == null) return;
+        String latest = latestRevision(row);
+        if (latest != null && !latest.equals(row.resumeRevisionId())) {
+            jdbc.update("UPDATE job_match_tasks SET resume_revision_id=?,updated_at=? WHERE id=?", latest, clock.now(), row.id());
+        }
+    }
+
+    private String latestRevision(MatchRow row) {
+        if (row.resumeBranchId() == null) return null;
+        return jdbc.query("SELECT id FROM resume_revisions WHERE branch_id=? AND account_id=? ORDER BY revision_no DESC LIMIT 1",
+                (rs, n) -> rs.getString("id"), row.resumeBranchId(), row.accountId()).stream().findFirst().orElse(null);
+    }
+
     @Transactional
     public MatchView answerClarifications(CurrentAccount current, String matchId, ClarificationCommand command) {
         MatchRow row = owned(current, matchId, true);
@@ -396,9 +417,18 @@ public class JobMatchService {
         Instant now = clock.now();
         for (ClarificationAnswer answer : command.answers() == null ? List.<ClarificationAnswer>of() : command.answers()) {
             String answerCode = required(answer.answerCode(), "CLARIFICATION_ANSWER_REQUIRED", "请选择答案");
-            String status = "暂不确认".equals(answerCode) ? "DEFERRED" : "ANSWERED";
-            int updated = jdbc.update("UPDATE job_match_clarifications SET answer_code=?,answer_note=?,status=?,version_no=version_no+1,answered_at=? WHERE id=? AND match_id=? AND account_id=? AND status='PENDING'",
-                    answerCode, blank(answer.note()), status, now, answer.id(), matchId, current.accountId());
+            Map<String, Object> question = jdbc.queryForList("SELECT options_json,option_verdicts_json FROM job_match_clarifications WHERE id=? AND match_id=?",
+                    answer.id(), matchId).stream().findFirst().orElse(Map.of());
+            List<Object> options = readList((String) question.get("options_json"));
+            boolean defer = ClarificationVerdicts.DEFER.equals(answerCode);
+            if (!defer && !options.isEmpty() && options.stream().map(String::valueOf).noneMatch(answerCode::equals)) {
+                throw AppException.user("CLARIFICATION_ANSWER_INVALID", "请从给出的选项中选择");
+            }
+            Map<String, String> optionVerdicts = new LinkedHashMap<>();
+            readMap((String) question.get("option_verdicts_json")).forEach((key, value) -> optionVerdicts.put(key, String.valueOf(value)));
+            String verdict = defer ? Verdict.UNCLEAR.name() : ClarificationVerdicts.of(answerCode, optionVerdicts).name();
+            int updated = jdbc.update("UPDATE job_match_clarifications SET answer_code=?,answer_note=?,answer_verdict=?,status=?,version_no=version_no+1,answered_at=? WHERE id=? AND match_id=? AND account_id=? AND status='PENDING'",
+                    answerCode, blank(answer.note()), verdict, defer ? "DEFERRED" : "ANSWERED", now, answer.id(), matchId, current.accountId());
             if (updated == 0) throw AppException.user("CLARIFICATION_NOT_FOUND", "待确认问题不存在");
         }
         Integer pending = jdbc.queryForObject("SELECT COUNT(*) FROM job_match_clarifications WHERE match_id=? AND status='PENDING'",
@@ -407,7 +437,7 @@ public class JobMatchService {
             throw AppException.user("CLARIFICATION_PENDING", "仍有待确认问题，可选择稍后确认或明确继续");
         }
         if (pending != null && pending > 0) {
-            jdbc.update("UPDATE job_match_clarifications SET answer_code='暂不确认',status='DEFERRED',version_no=version_no+1,answered_at=? WHERE match_id=? AND account_id=? AND status='PENDING'",
+            jdbc.update("UPDATE job_match_clarifications SET answer_code='暂不确认',answer_verdict='UNCLEAR',status='DEFERRED',version_no=version_no+1,answered_at=? WHERE match_id=? AND account_id=? AND status='PENDING'",
                     now, matchId, current.accountId());
         }
         String request = row.analysisRequestId() + ":clarification:" + (row.version() + 1);
@@ -437,6 +467,9 @@ public class JobMatchService {
     public MatchView cancel(CurrentAccount current, String matchId, MutationCommand command) {
         MatchRow row = owned(current, matchId, true);
         assertMutationVersion(command, row);
+        if (!Set.of("ANALYZING", "NEEDS_CLARIFICATION", "ANALYSIS_PAUSED").contains(row.status())) {
+            throw AppException.conflict("JOB_MATCH_NOT_CANCELLABLE", "只有分析中或等待确认的匹配可以取消");
+        }
         if (row.analysisTaskId() != null) {
             try { tasks.cancel(current.accountId(), row.analysisTaskId()); } catch (RuntimeException ignored) {}
         }
@@ -444,6 +477,19 @@ public class JobMatchService {
         jdbc.update("UPDATE job_match_tasks SET status='CANCELLED',checkpoint_code='CANCELLED',version_no=version_no+1,updated_at=? WHERE id=?",
                 clock.now(), matchId);
         return get(current, matchId);
+    }
+
+    /** Removes a match from the lists (archived_at); its reports stay for export and data rights. */
+    @Transactional
+    public void archive(CurrentAccount current, String matchId) {
+        MatchRow row = owned(current, matchId, true);
+        if ("ANALYZING".equals(row.status())) {
+            throw AppException.conflict("JOB_MATCH_BUSY", "分析进行中，请先取消再删除");
+        }
+        Instant now = clock.now();
+        jdbc.update("UPDATE job_match_tasks SET archived_at=?,version_no=version_no+1,updated_at=? WHERE id=? AND account_id=? AND archived_at IS NULL",
+                now, now, matchId, current.accountId());
+        audit.append(current.accountId(), "JOB_MATCH_ARCHIVED", "JOB_MATCH", matchId, "status=" + row.status());
     }
 
     @Transactional
@@ -645,14 +691,15 @@ public class JobMatchService {
                 """, this::summary, current.accountId());
         int completed = (int) items.stream().filter(item -> "COMPLETED".equals(item.status())).count();
         int pending = (int) items.stream().filter(item -> !Set.of("COMPLETED", "CANCELLED").contains(item.status())).count();
-        java.util.OptionalDouble scored = items.stream().filter(item -> item.score() != null)
+        java.util.OptionalDouble scored = items.stream().filter(item -> "COMPLETED".equals(item.status()) && item.score() != null)
                 .mapToInt(item -> item.score()).average();
         Integer average = scored.isPresent() ? (int) Math.round(scored.getAsDouble()) : null;
         int optimized = jdbc.queryForObject("""
                 SELECT COUNT(DISTINCT r.match_id)
-                  FROM match_advice_items a
-                  JOIN match_reports r ON r.id=a.report_id
-                 WHERE a.account_id=? AND a.status='APPLIED' AND r.match_id IS NOT NULL
+                  FROM ai_resume_change_sets c
+                  JOIN match_reports r ON r.id=c.source_id
+                 WHERE c.account_id=? AND c.source_type='JOB_MATCH_REPORT' AND c.applied_revision_id IS NOT NULL
+                   AND r.match_id IS NOT NULL
                 """, Integer.class, current.accountId());
         return new DashboardView(items.size(), completed, pending, average, optimized, items.stream().limit(6).toList());
     }
@@ -731,9 +778,15 @@ public class JobMatchService {
     public ReportView report(CurrentAccount current, String matchId) {
         MatchRow row = owned(current, matchId, false);
         if (row.currentReportId() == null) throw AppException.conflict("JOB_MATCH_REPORT_NOT_READY", "岗位匹配报告尚未生成");
-        String reportJson = jdbc.queryForObject("SELECT report_json FROM job_match_report_versions WHERE report_id=? ORDER BY version_no DESC LIMIT 1",
-                String.class, row.currentReportId());
+        String reportJson = jdbc.query("SELECT report_json FROM job_match_report_versions WHERE report_id=? ORDER BY version_no DESC LIMIT 1",
+                (rs, n) -> rs.getString("report_json"), row.currentReportId()).stream().findFirst()
+                // No model run finished (AI unavailable, paused or cancelled): the rule preview, marked as such.
+                .orElseGet(() -> jdbc.query("SELECT explanation_json FROM match_reports WHERE id=? AND report_protocol_version='match-report-v3'",
+                        (rs, n) -> rs.getString("explanation_json"), row.currentReportId()).stream().findFirst()
+                        .orElseThrow(() -> AppException.conflict("JOB_MATCH_REPORT_NOT_READY", "岗位匹配报告尚未生成")));
         Map<String, Object> report = readMap(reportJson);
+        String latest = latestRevision(row);
+        report.put("resumeChanged", latest != null && !latest.equals(row.resumeRevisionId()));
         List<ClaimView> claims = jdbc.query("SELECT * FROM job_match_claims WHERE report_id=? ORDER BY created_at,id",
                 this::claim, row.currentReportId());
         List<ImprovementView> plan = jdbc.query("SELECT * FROM job_match_improvement_tasks WHERE report_id=? ORDER BY phase_code,priority_code,created_at",
@@ -753,9 +806,11 @@ public class JobMatchService {
                     Map<String, Object> document = readMap(rs.getString("report_json"));
                     Map<String, Object> ai = mapValue(document.get("ai"));
                     Map<String, Object> recommendation = mapValue(ai.get("recommendation"));
+                    Map<String, Object> topRecommendation = mapValue(document.get("recommendation"));
                     return new ReportVersionView(rs.getString("id"), rs.getString("report_id"),
                             rs.getInt("version_no"), intValue(document.get("score")),
-                            intValue(document.get("confidence")), blank(String.valueOf(recommendation.get("code"))),
+                            confidenceLevel(document.get("confidence")),
+                            blank(String.valueOf(topRecommendation.isEmpty() ? recommendation.get("code") : topRecommendation.get("code"))),
                             rs.getString("report_id").equals(row.currentReportId()),
                             rs.getTimestamp("created_at").toInstant());
                 }, matchId, current.accountId());
@@ -771,9 +826,11 @@ public class JobMatchService {
         Map<String, Object> toAi = mapValue(to.get("ai"));
         List<ReportDelta> changes = List.of(
                 delta("综合匹配度", intValue(from.get("score")), intValue(to.get("score"))),
-                delta("可信度", intValue(from.get("confidence")), intValue(to.get("confidence"))),
-                delta("匹配优势", listValue(fromAi.get("strengths")).size(), listValue(toAi.get("strengths")).size()),
-                delta("待处理缺口", listValue(fromAi.get("gaps")).size(), listValue(toAi.get("gaps")).size()),
+                delta("有依据的判定", citedCount(from), citedCount(to)),
+                delta("匹配优势", listValue(from.getOrDefault("strengths", fromAi.get("strengths"))).size(),
+                        listValue(to.getOrDefault("strengths", toAi.get("strengths"))).size()),
+                delta("待处理缺口", listValue(from.getOrDefault("gaps", fromAi.get("gaps"))).size(),
+                        listValue(to.getOrDefault("gaps", toAi.get("gaps"))).size()),
                 delta("简历修改建议", listValue(fromAi.get("resumeSuggestions")).size(), listValue(toAi.get("resumeSuggestions")).size()));
         return new ReportComparisonView(fromVersion, toVersion, changes,
                 listValue(fromAi.get("resumeSuggestions")), listValue(toAi.get("resumeSuggestions")));
@@ -784,6 +841,18 @@ public class JobMatchService {
                 (rs, n) -> rs.getString("report_json"), matchId, accountId, version).stream().findFirst()
                 .orElseThrow(() -> AppException.user("JOB_MATCH_REPORT_VERSION_NOT_FOUND", "报告版本不存在"));
         return readMap(value);
+    }
+
+    /** Requirements whose verdict has a source (v3 reports); 0 for older reports, which had no such count. */
+    private static int citedCount(Map<String, Object> document) {
+        return intValue(mapValue(document.get("scoring")).get("citedCount"));
+    }
+
+    /** HIGH / MEDIUM / LOW; older reports stored a 0-100 number. */
+    static String confidenceLevel(Object value) {
+        if (value instanceof Number number) return number.intValue() >= 80 ? "HIGH" : number.intValue() >= 60 ? "MEDIUM" : "LOW";
+        String text = value == null ? "" : String.valueOf(value).trim().toUpperCase(Locale.ROOT);
+        return Set.of("HIGH", "MEDIUM", "LOW").contains(text) ? text : "LOW";
     }
 
     private static ReportDelta delta(String label, int before, int after) {
@@ -819,7 +888,7 @@ public class JobMatchService {
         input.put("requirements", jdbc.queryForList("SELECT id,category,requirement_text,priority_code,hard_gate,source_locator,source_quote FROM job_requirements WHERE match_id=? ORDER BY sequence_no", row.id()));
         input.put("resume", jdbc.queryForMap("SELECT id,content_json,content_hash FROM resume_revisions WHERE id=? AND account_id=?", row.resumeRevisionId(), row.accountId()));
         input.put("evidence", jdbc.queryForList("SELECT id,source_type,source_id,title,excerpt,locator,strength,relevance FROM job_match_evidence_items WHERE match_id=? AND authorization_id=? ORDER BY relevance DESC", row.id(), row.authorizationId()));
-        input.put("clarifications", jdbc.queryForList("SELECT requirement_id,question_text,answer_code,answer_note,status FROM job_match_clarifications WHERE match_id=? AND status IN ('ANSWERED','DEFERRED') ORDER BY sequence_no", row.id()));
+        input.put("clarifications", jdbc.queryForList("SELECT requirement_id,question_text,answer_code,answer_note,answer_verdict,status FROM job_match_clarifications WHERE match_id=? AND status IN ('ANSWERED','DEFERRED') ORDER BY sequence_no", row.id()));
         input.put("excludedFields", SENSITIVE_FIELDS);
         return input;
     }
@@ -900,7 +969,7 @@ public class JobMatchService {
     /** averageScore is null until a report has a score; pending counts matches still in progress. */
     public record DashboardView(int total, int completed, int pending, Integer averageScore, int optimized, List<MatchSummary> recent) {}
     public record HistoryPage(List<MatchSummary> items, int page, int size, long total, int totalPages) {}
-    public record ReportVersionView(String id, String reportId, int version, int score, int confidence,
+    public record ReportVersionView(String id, String reportId, int version, int score, String confidence,
             String recommendation, boolean current, Instant createdAt) {}
     public record ReportDelta(String label, int before, int after, int delta) {}
     public record ReportComparisonView(int fromVersion, int toVersion, List<ReportDelta> changes,

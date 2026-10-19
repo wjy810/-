@@ -134,12 +134,17 @@ public class JobMatchExportService {
         line(out, "目标岗位", match.title() + (match.company() == null ? "" : " · " + match.company()));
         line(out, "投递简历", match.resume() == null ? "未命名简历" : match.resume().title());
         line(out, "综合匹配度", number(document.get("score")) + "%");
-        line(out, "可信度", number(document.get("confidence")) + "%");
+        line(out, "可信度", confidenceText(document.get("confidence")));
         line(out, "硬性资格", Boolean.TRUE.equals(document.get("hardGatePassed")) ? "通过" : "存在待核实或未满足项");
+        line(out, "评分方式", map(document.get("scoring")).containsKey("method")
+                ? ("RULE_PREVIEW".equals(map(document.get("scoring")).get("method")) ? "规则预估（AI 未参与）" : "逐条判断岗位要求，按优先级加权")
+                : "旧版评分");
         Map<String, String> requirementTitles = requirementTitles(list(document.get("requirements")));
         out.append("\n分析摘要\n").append(summaryText(ai.get("summary"))).append("\n");
-        section(out, "匹配优势", list(ai.get("strengths")), "title", "explanation", requirementTitles);
-        section(out, "能力与材料缺口", list(ai.get("gaps")), "title", "impact", requirementTitles);
+        section(out, "匹配优势", list(document.containsKey("strengths") ? document.get("strengths") : ai.get("strengths")),
+                "title", "explanation", requirementTitles);
+        section(out, "能力与材料缺口", list(document.containsKey("gaps") ? document.get("gaps") : ai.get("gaps")),
+                "title", "impact", requirementTitles);
         if (!report.learningPlan().isEmpty()) {
             out.append("\n提升计划\n");
             int index = 0;
@@ -163,6 +168,12 @@ public class JobMatchExportService {
             out.append(++index).append(". ").append(sectionTitle(item, titleKey, requirementTitles)).append("\n")
                     .append("   ").append(string(item.get(detailKey))).append("\n");
         }
+    }
+
+    /** v3 reports store HIGH / MEDIUM / LOW; older ones a number. */
+    static String confidenceText(Object value) {
+        String level = JobMatchService.confidenceLevel(value);
+        return switch (level) { case "HIGH" -> "高"; case "MEDIUM" -> "中"; default -> "低"; };
     }
 
     static String summaryText(Object value) {

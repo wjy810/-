@@ -15,11 +15,12 @@ export const jobMatchDisplayLabels: Record<string, string> = {
   USER_CONFIRMED: '用户已确认',
   INSUFFICIENT: '证据不足',
   NOT_FOUND: '暂未发现证据',
-  MET: '满足',
+  MET: '符合',
   PASSED: '通过',
   NOT_MET: '未满足',
   FAILED: '未通过',
-  PARTIAL: '部分满足',
+  PARTIAL: '部分符合',
+  UNCLEAR: '无法判断',
   UNKNOWN: '待核实',
   CRITICAL: '最高优先',
   HIGH: '高优先',
@@ -77,9 +78,29 @@ export function jobMatchStatusTone(value: unknown): Extract<BadgeTone, 'success'
   return 'neutral'
 }
 
+export type ConfidenceLevel = 'HIGH' | 'MEDIUM' | 'LOW'
+
+/** HIGH / MEDIUM / LOW; reports before v3 stored a 0-100 number. */
+export function confidenceLevel(value: unknown): ConfidenceLevel | null {
+  if (typeof value === 'number') return value >= 80 ? 'HIGH' : value >= 60 ? 'MEDIUM' : 'LOW'
+  return value === 'HIGH' || value === 'MEDIUM' || value === 'LOW' ? value : null
+}
+
+const CONFIDENCE: Record<ConfidenceLevel, { label: string; tone: BadgeTone; hint: string }> = {
+  HIGH: { label: '可信度高', tone: 'success', hint: '大多数要求的判断都有简历、资料或你的确认作依据' },
+  MEDIUM: { label: '可信度中', tone: 'warning', hint: '约一半要求的判断有依据，其余信息不足' },
+  LOW: { label: '可信度低', tone: 'danger', hint: '多数要求信息不足、无法判断，结论仅供参考' },
+}
+
+export function confidencePresentation(value: unknown) {
+  const level = confidenceLevel(value)
+  return level ? { level, ...CONFIDENCE[level] } : null
+}
+
 const RECOMMENDATIONS: Record<string, string> = {
   RECOMMENDED: '推荐投递',
   CONDITIONAL: '准备后投递',
+  PREPARE_FIRST: '先补强再投递',
   CAUTION: '谨慎评估',
   NOT_RECOMMENDED: '暂不建议投递',
 }

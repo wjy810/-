@@ -18,6 +18,13 @@ class TaskNotificationCopyTest {
 
         var failed = TaskNotificationCopy.of(TaskTypes.JOB_MATCH, false, Map.of("matchId", "m-1")).orElseThrow();
         assertThat(failed.actionPath()).isEqualTo("/job-match/m-1/analyzing");
+
+        var asking = TaskNotificationCopy.of(TaskTypes.JOB_MATCH, true,
+                Map.of("matchId", "m-1", "resultVersion", "job-match-clarification-v2")).orElseThrow();
+        assertThat(asking.title()).isEqualTo("岗位匹配需要你确认几个问题");
+        assertThat(asking.actionPath()).isEqualTo("/job-match/m-1/clarifications");
+        assertThat(TaskNotificationCopy.of(TaskTypes.JOB_MATCH, true,
+                Map.of("matchId", "m-1", "resultVersion", "job-match-skipped"))).isEmpty();
     }
 
     @Test

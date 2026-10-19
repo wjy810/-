@@ -1,7 +1,10 @@
 import { afterEach, vi } from 'vitest'
-import { enableAutoUnmount } from '@vue/test-utils'
+import { config, enableAutoUnmount } from '@vue/test-utils'
 
 enableAutoUnmount(afterEach)
+
+// Reads the capabilities store (Pinia); pages under test don't install one. Its own test mounts it for real.
+config.global.stubs = { ...config.global.stubs, AiUnavailableNotice: true }
 
 Object.defineProperty(window, 'matchMedia', {
   configurable: true,

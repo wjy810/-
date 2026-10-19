@@ -46,14 +46,22 @@ import org.springframework.stereotype.Service;
 
 @Service
 public class JobMatchTextService {
-    private static final int MIN_JD = 300;
-    private static final int MAX_JD = 10_000;
+    /** 需求文档 JM-01：短到一条校招岗位、长到一份完整招聘简章。 */
+    static final int MIN_JD = 80;
+    static final int MAX_JD = 20_000;
     private static final int MAX_FETCH_BYTES = 1_500_000;
     private static final Pattern LABEL = Pattern.compile("(?im)^(?:岗位名称|职位名称|岗位|职位)\\s*[:：]\\s*(.{2,80})$");
     private static final Pattern COMPANY = Pattern.compile("(?im)^(?:公司名称|公司)\\s*[:：]\\s*(.{2,100})$");
     private static final Pattern LOCATION = Pattern.compile("(?im)^(?:工作地点|地点|城市)\\s*[:：]\\s*(.{1,80})$");
     private static final Pattern REQUIREMENT_LINE = Pattern.compile("^(?:[-*•]|\\d+[.、)]|[（(]?[一二三四五六七八九十]+[）)、.]?)\\s*(.+)$");
-    private static final Set<String> HARD_WORDS = Set.of("必须", "要求", "本科", "硕士", "年经验", "持有", "具备");
+    /**
+     * 硬性门槛：简历筛选时会直接卡掉人的条件，即学历学位、毕业届别、年限、证书和"必须"。"具备良好的沟通能力"、
+     * "要求逻辑清晰"只是一般要求，不算。
+     */
+    private static final Pattern HARD_GATE = Pattern.compile(
+            "必须|大专|本科|硕士|博士|研究生|学历|学位|\\d{4}\\s*届|应届|[0-9一二两三四五六七八九十]+\\s*年以上"
+                    + "|[0-9一二两三四五六七八九十]+\\s*年(?:及以上)?(?:相关|工作|开发|行业)*经验|持有|持证|证书|资格证"
+                    + "|英语[四六]级|CET-?[46]|雅思|托福|IELTS|TOEFL", Pattern.CASE_INSENSITIVE);
     /** "至少 3 年" / "至少两个项目" is a threshold; "至少一种可视化工具" is not. */
     private static final Pattern AT_LEAST = Pattern.compile("至少.{0,4}?[0-9一二两三四五六七八九十]+\\s*(?:年|个|项|段|次)");
     private static final Set<String> PLUS_WORDS = Set.of("加分", "优先", "更佳", "preferred", "plus");
@@ -99,10 +107,10 @@ public class JobMatchTextService {
         String text = normalize(raw);
         int meaningful = text.replaceAll("\\s+", "").length();
         if (meaningful < MIN_JD) {
-            throw AppException.user("JD_TEXT_TOO_SHORT", "岗位描述至少需要 300 个有效字符");
+            throw AppException.user("JD_TEXT_TOO_SHORT", "岗位描述至少需要 " + MIN_JD + " 个有效字符");
         }
         if (text.length() > MAX_JD) {
-            throw AppException.user("JD_TEXT_TOO_LARGE", "岗位描述不能超过 10000 字符");
+            throw AppException.user("JD_TEXT_TOO_LARGE", "岗位描述不能超过 " + MAX_JD + " 字符");
         }
         String[] headline = headline(text);
         String title = capture(LABEL, text, headline[0] == null ? "待确认岗位" : headline[0]);
@@ -153,10 +161,12 @@ public class JobMatchTextService {
             } else {
                 String core = coreClause(value);
                 boolean plus = inPlus || core == null && containsAny(value.toLowerCase(Locale.ROOT), PLUS_WORDS.toArray(String[]::new));
-                boolean hard = !plus && isHard(core == null ? value : core);
-                String category = inferCategory(core == null ? value : core, plus);
-                requirements.add(new RequirementDraft(category, value, plus ? "BONUS" : hard ? "MUST" : "IMPORTANT",
-                        hard, "line:" + lineNo, value, hard ? 90 : 84));
+                String basis = core == null ? value : core;
+                boolean hard = !plus && isHardGate(basis);
+                boolean must = hard || !plus && AT_LEAST.matcher(basis).find();
+                String category = inferCategory(basis, plus);
+                requirements.add(new RequirementDraft(category, value, plus ? "BONUS" : must ? "MUST" : "IMPORTANT",
+                        hard, "line:" + lineNo, value, must ? 90 : 84));
             }
         }
         if (requirements.size() < 3) {
@@ -164,9 +174,10 @@ public class JobMatchTextService {
                 String value = sentence.trim();
                 if (value.length() < 10 || value.length() > 220) continue;
                 boolean plus = containsAny(value.toLowerCase(Locale.ROOT), PLUS_WORDS.toArray(String[]::new));
-                boolean hard = !plus && isHard(value);
+                boolean hard = !plus && isHardGate(value);
+                boolean must = hard || !plus && AT_LEAST.matcher(value).find();
                 requirements.add(new RequirementDraft(inferCategory(value, plus), value,
-                        plus ? "BONUS" : hard ? "MUST" : "IMPORTANT", hard,
+                        plus ? "BONUS" : must ? "MUST" : "IMPORTANT", hard,
                         "sentence:" + (requirements.size() + 1), value, 70));
                 if (requirements.size() >= 8) break;
             }
@@ -457,9 +468,8 @@ public class JobMatchTextService {
         return first;
     }
 
-    private static boolean isHard(String value) {
-        String lower = value.toLowerCase(Locale.ROOT);
-        return containsAny(lower, HARD_WORDS.toArray(String[]::new)) || AT_LEAST.matcher(value).find();
+    private static boolean isHardGate(String value) {
+        return HARD_GATE.matcher(value).find() || AT_LEAST.matcher(value).find() && value.matches(".*至少.{0,4}?年.*");
     }
 
     private static String capture(Pattern pattern, String text, String fallback) { Matcher m = pattern.matcher(text); return m.find() ? m.group(1).trim() : fallback; }

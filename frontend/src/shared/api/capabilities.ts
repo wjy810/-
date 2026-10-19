@@ -12,8 +12,13 @@ export type SiteOperator = {
   feedbackUrl: string
 }
 
+/** Which AI features have a model to talk to right now; `resume` covers the workbench and mock interview. */
+export type AiReadiness = { resume: boolean; jobMatch: boolean; careerPlanning: boolean }
+export type AiReadinessKey = keyof AiReadiness
+
 export type SiteCapabilities = {
   features: Record<FeatureKey, boolean>
+  ai?: AiReadiness
   registrationOpen: boolean
   policies: { published: boolean; termsVersion: string; privacyVersion: string }
   operator: SiteOperator

@@ -165,12 +165,35 @@ export type ImprovementTask = {
   version: number
 }
 
+/** A requirement's verdict (job-match-report-v3). */
+export type RequirementVerdict = 'MET' | 'PARTIAL' | 'UNCLEAR' | 'NOT_FOUND'
+
+/** job-match-report-v3: how the score was reached (docs/phase2/07). */
+export type MatchScoring = {
+  method: 'AI_VERDICT' | 'RULE_PREVIEW'
+  verdictValues: Record<RequirementVerdict, number>
+  priorityWeights: Record<string, number>
+  citedCount: number
+  requirementCount: number
+}
+
 export type MatchReportDocument = {
   score?: number
-  confidence?: number
+  /** 'HIGH' | 'MEDIUM' | 'LOW' since v3; a 0-100 number in older reports. */
+  confidence?: number | string
   hardGatePassed?: boolean
-  dimensions?: Record<string, number>
+  /** Null for a dimension with no requirement of that kind. */
+  dimensions?: Record<string, number | null>
   requirements?: Array<Record<string, unknown>>
+  hardGates?: Array<Record<string, unknown>>
+  strengths?: Array<Record<string, unknown>>
+  gaps?: Array<Record<string, unknown>>
+  recommendation?: { code?: string; rationale?: string; scoredCode?: string; capped?: boolean }
+  scoring?: MatchScoring
+  /** No model run finished: the rule preview. */
+  preview?: boolean
+  /** The chosen resume changed after this analysis. */
+  resumeChanged?: boolean
   ruleStrengths?: Array<Record<string, unknown>>
   ruleGaps?: Array<Record<string, unknown>>
   notice?: string
@@ -208,7 +231,7 @@ export type JobMatchReportVersion = {
   reportId: string
   version: number
   score: number
-  confidence: number
+  confidence: 'HIGH' | 'MEDIUM' | 'LOW'
   recommendation?: string | null
   current: boolean
   createdAt: string

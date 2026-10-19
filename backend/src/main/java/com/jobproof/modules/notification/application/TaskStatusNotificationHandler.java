@@ -36,7 +36,10 @@ public class TaskStatusNotificationHandler implements OutboxEventHandler {
         }
         boolean failed = EventTypes.TASK_FAILED.equals(eventType);
         NotificationType type = failed ? NotificationType.TASK_FAILED : NotificationType.TASK_COMPLETED;
-        TaskNotificationCopy.of(payload.path("taskType").asText(), !failed, refs(payload.path("refs")))
+        Map<String, String> refs = refs(payload.path("refs"));
+        // How the task ended when that changes what to say (e.g. a match that stopped to ask questions).
+        refs.put("resultVersion", payload.path("resultVersion").asText(""));
+        TaskNotificationCopy.of(payload.path("taskType").asText(), !failed, refs)
                 .ifPresent(copy -> notifications.request(accountId, type, taskId + ":" + status,
                         copy.title(), copy.body(), copy.actionPath()));
     }

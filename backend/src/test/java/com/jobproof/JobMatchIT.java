@@ -65,7 +65,7 @@ class JobMatchIT {
             JsonNode input = mapper.readTree(request.messages().get(request.messages().size() - 1).content());
             String requirementId = input.path("requirements").path(0).path("id").asText("");
             return new Response("job-match-ai", "system-channel", "qwen-plus",
-                    validAiReport(requirementId), new Usage(420, 380, 800), null);
+                    validAiReport(input), new Usage(420, 380, 800), null);
         });
     }
 
@@ -157,6 +157,13 @@ class JobMatchIT {
         JsonNode report = data(mockMvc.perform(get("/api/v1/job-matches/{id}/report", matchId).cookie(owner))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.report.score").isNumber())
+                .andExpect(jsonPath("$.data.report.scoring.method").value("AI_VERDICT"))
+                .andExpect(jsonPath("$.data.report.confidence").value("HIGH"))
+                .andExpect(jsonPath("$.data.report.requirements[0].verdict").value("MET"))
+                // Every requirement met: the score allows 推荐投递, the model's more careful CONDITIONAL stands.
+                .andExpect(jsonPath("$.data.report.recommendation.code").value("CONDITIONAL"))
+                .andExpect(jsonPath("$.data.report.recommendation.capped").value(false))
+                .andExpect(jsonPath("$.data.report.preview").value(false))
                 .andExpect(jsonPath("$.data.report.ai.summary").exists())
                 .andExpect(jsonPath("$.data.evidenceSources").isArray())
                 .andExpect(jsonPath("$.data.status").value("COMPLETED"))
@@ -252,6 +259,15 @@ class JobMatchIT {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.items[0].id").value(matchId))
                 .andExpect(jsonPath("$.data.total").value(1));
+
+        mockMvc.perform(delete("/api/v1/job-matches/{id}", matchId).cookie(other))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(delete("/api/v1/job-matches/{id}", matchId).cookie(owner))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/api/v1/job-matches/history").cookie(owner)
+                        .param("page", "0").param("size", "10"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.total").value(0));
     }
 
     @Test
@@ -370,6 +386,13 @@ class JobMatchIT {
                         .andExpect(jsonPath("$.data.status").value("ANALYSIS_PAUSED"))
                         .andExpect(jsonPath("$.data.errorCode").value("JOB_MATCH_AI_FAILED")));
 
+        mockMvc.perform(get("/api/v1/job-matches/{id}/report", created.path("id").asText()).cookie(owner))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.report.preview").value(true))
+                .andExpect(jsonPath("$.data.report.scoring.method").value("RULE_PREVIEW"))
+                .andExpect(jsonPath("$.data.report.requirements.length()").value(9))
+                .andExpect(jsonPath("$.data.report.ai").doesNotExist());
+
         JsonNode quota = data(mockMvc.perform(get("/api/v1/job-matches/capabilities").cookie(owner))
                 .andExpect(status().isOk()).andReturn()).path("quota");
         assertThat(quota.path("usedUnits").asInt()).isZero();
@@ -417,7 +440,7 @@ class JobMatchIT {
             repairInstruction.set(input.path("repairInstruction").asText());
             repairPayload.set(input);
             return new Response("job-match-ai-repaired", "system-channel", "qwen-plus",
-                    validAiReport(requirementId), new Usage(420, 380, 800), null);
+                    validAiReport(input), new Usage(420, 380, 800), null);
         }).when(gateway).execute(anyString(), any());
 
         MockCookie owner = registerAndLogin("match-repair+" + System.nanoTime() + "@example.com");
@@ -430,7 +453,9 @@ class JobMatchIT {
         String revisionId = options.get(0).path("revisionId").asText();
         jdbc.update("UPDATE resume_revisions SET content_json=? WHERE id=?", """
                 {"schemaVersion":"resume-content-v3","basics":{"name":"测试用户","phone":"13800138000",
-                "email":"private@example.com","fullAddress":"上海市测试路 1 号","photoRef":"private/photo.png"},
+                "email":"private@example.com","fullAddress":"上海市测试路 1 号","photoRef":"private/photo.png",
+                "wechat":"wx_private_id","qq":"80008000","github":"https://github.com/private-user",
+                "links":[{"label":"主页","url":"https://private.example.com"}]},
                 "summary":"","education":[],"experiences":[],"projects":[],"organizations":[],
                 "skills":[],"certificates":[],"honors":[],"languages":[]}
                 """, revisionId);
@@ -466,12 +491,13 @@ class JobMatchIT {
         String providerPayload = repairPayload.get().toString();
         assertThat(providerPayload)
                 .doesNotContain("13800138000", "private@example.com", "上海市测试路 1 号", "private/photo.png")
+                .doesNotContain("wx_private_id", "80008000", "github.com/private-user", "private.example.com", "测试用户")
                 .doesNotContain("resume:/basics/phone", "resume:/basics/email", "resume:/basics/fullAddress",
                         "resume:/basics/photoRef");
     }
 
     @Test
-    void unknownAiSourceReferenceIsRejectedAndRepaired() throws Exception {
+    void aSuggestionCitingAnUnknownSourceIsDroppedWithoutFailingTheReport() throws Exception {
         AtomicInteger attempts = new AtomicInteger();
         AtomicReference<String> repairInstruction = new AtomicReference<>();
         doAnswer(invocation -> {
@@ -480,12 +506,12 @@ class JobMatchIT {
             String requirementId = input.path("requirements").get(0).path("id").asText();
             if (attempts.getAndIncrement() == 0) {
                 return new Response("job-match-ai-invalid-source", "system-channel", "qwen-plus",
-                        validAiReport(requirementId).replace("jd:" + requirementId, "resume:/basics/email"),
+                        validAiReport(input).replace("jd:" + requirementId, "resume:/basics/email"),
                         new Usage(420, 380, 800), null);
             }
             repairInstruction.set(input.path("repairInstruction").asText());
             return new Response("job-match-ai-repaired", "system-channel", "qwen-plus",
-                    validAiReport(requirementId), new Usage(420, 380, 800), null);
+                    validAiReport(input), new Usage(420, 380, 800), null);
         }).when(gateway).execute(anyString(), any());
 
         MockCookie owner = registerAndLogin("match-source-ref+" + System.nanoTime() + "@example.com");
@@ -515,10 +541,13 @@ class JobMatchIT {
                         .andExpect(status().isOk())
                         .andExpect(jsonPath("$.data.status").value("COMPLETED")));
 
-        assertThat(attempts.get()).isEqualTo(2);
-        assertThat(repairInstruction.get())
-                .contains("SOURCE_REF_UNKNOWN:resumeSuggestions")
-                .contains("sourceRefs 每项只能逐字复制 allowedSourceRefs");
+        // One weak suggestion no longer costs the user the whole report or a second model run.
+        assertThat(attempts.get()).isEqualTo(1);
+        assertThat(repairInstruction.get()).isNull();
+        JsonNode report = data(mockMvc.perform(get("/api/v1/job-matches/{id}/report", matchId).cookie(owner))
+                .andExpect(status().isOk()).andReturn()).path("report");
+        assertThat(report.path("ai").path("resumeSuggestions").size()).isZero();
+        assertThat(report.toString()).doesNotContain("resume:/basics/email");
     }
 
     @Test
@@ -533,16 +562,16 @@ class JobMatchIT {
                 return new Response("job-match-ai", "system-channel", "qwen-plus",
                         """
                         {"summary":{"headline":"需要确认一项已有事实。"},
-                         "hardGates":[],"strengths":[],"gaps":[],"evidenceMatrix":[],
+                         "hardGates":[],"strengths":[],"gaps":[],"evidenceMatrix":MATRIX,
                          "clarifications":[{"requirementId":"%s","question":"能否确认该项事实？",
                          "options":["可以确认"],"evidenceContext":{}}],"learningPlan":[],
                          "resumeSuggestions":[],"interviewTopics":[],
                          "recommendation":{"code":"CONDITIONAL","rationale":"待确认"}}
-                        """.formatted(requirementId), new Usage(420, 380, 800), null);
+                        """.formatted(requirementId).replace("MATRIX", matrix(input)), new Usage(420, 380, 800), null);
             }
             resumedPayload.set(input);
             return new Response("job-match-ai", "system-channel", "qwen-plus",
-                    validAiReport(requirementId), new Usage(420, 380, 800), null);
+                    validAiReport(input), new Usage(420, 380, 800), null);
         }).when(gateway).execute(anyString(), any());
 
         MockCookie owner = registerAndLogin("match-deferred+" + System.nanoTime() + "@example.com");
@@ -603,7 +632,7 @@ class JobMatchIT {
             JsonNode input = mapper.readTree(request.messages().get(request.messages().size() - 1).content());
             String requirementId = input.path("requirements").get(0).path("id").asText();
             return new Response("job-match-ai", "system-channel", "qwen-plus",
-                    aiReportWithClarification(requirementId), new Usage(420, 380, 800), null);
+                    aiReportWithClarification(input), new Usage(420, 380, 800), null);
         }).when(gateway).execute(anyString(), any());
         MockCookie owner = registerAndLogin("match-clarification+" + System.nanoTime() + "@example.com");
         createStructuredResume(owner);
@@ -655,6 +684,13 @@ class JobMatchIT {
                         .andExpect(jsonPath("$.data.status").value("COMPLETED"))
                         .andExpect(jsonPath("$.data.clarifications.length()").value(1))
                         .andExpect(jsonPath("$.data.clarifications[0].status").value("ANSWERED")));
+        assertThat(clarification.path("options").get(0).asText()).isEqualTo("只在课程项目里做过");
+        // The model calls it MET from the resume, but the user's own answer says only partly.
+        String firstRequirement = needsClarification.path("clarifications").get(0).path("requirementId").asText();
+        JsonNode answered = data(mockMvc.perform(get("/api/v1/job-matches/{id}/report", matchId).cookie(owner))
+                .andExpect(status().isOk()).andReturn()).path("report");
+        assertThat(answered.path("requirements")).filteredOn(item -> firstRequirement.equals(item.path("requirementId").asText()))
+                .singleElement().satisfies(item -> assertThat(item.path("verdict").asText()).isEqualTo("PARTIAL"));
 
         mockMvc.perform(get("/api/v1/job-matches/{id}/report/versions", matchId).cookie(owner))
                 .andExpect(status().isOk())
@@ -667,6 +703,59 @@ class JobMatchIT {
                 .andExpect(jsonPath("$.data.toVersion").value(2))
                 .andExpect(jsonPath("$.data.changes.length()").value(5));
     }
+
+    @Test
+    void aModelThatKeepsAskingGetsOneFollowUpRoundAndThenAFinalReport() throws Exception {
+        // Each run asks about the next requirement nobody was asked about yet: without a cap this never ends.
+        doAnswer(invocation -> {
+            Request request = invocation.getArgument(1);
+            JsonNode input = mapper.readTree(request.messages().get(request.messages().size() - 1).content());
+            int asked = input.path("clarifications").size();
+            String requirementId = input.path("requirements").path(asked).path("id").asText("");
+            String report = """
+                    {"summary":{"headline":"还需确认一项事实。"},"hardGates":[],"strengths":[],"gaps":[],
+                     "evidenceMatrix":MATRIX,
+                     "clarifications":[{"requirementId":"%s","question":"第 %d 轮：能否确认该项？",
+                       "options":[{"label":"可以确认","verdict":"MET"},{"label":"暂不确认职责范围","verdict":"UNCLEAR"}],"evidenceContext":{}}],
+                     "learningPlan":[],"resumeSuggestions":[],"interviewTopics":[],
+                     "recommendation":{"code":"CONDITIONAL","rationale":"确认后再下结论。"}}
+                    """.formatted(requirementId, asked + 1).replace("MATRIX", matrix(input));
+            return new Response("job-match-ai", "system-channel", "qwen-plus", report, new Usage(420, 380, 800), null);
+        }).when(gateway).execute(anyString(), any());
+        MockCookie owner = registerAndLogin("match-rounds+" + System.nanoTime() + "@example.com");
+        createStructuredResume(owner);
+        JsonNode authorized = authorizedMatch(owner);
+        String matchId = authorized.path("id").asText();
+        analyze(owner, matchId, "analysis-rounds-" + UUID.randomUUID(), authorized.path("version").asInt());
+
+        for (int round = 1; round <= MAX_ROUNDS_IN_TEST; round++) {
+            int expectedQuestions = round;
+            await().atMost(Duration.ofSeconds(12)).untilAsserted(() ->
+                    mockMvc.perform(get("/api/v1/job-matches/{id}", matchId).cookie(owner))
+                            .andExpect(jsonPath("$.data.status").value("NEEDS_CLARIFICATION"))
+                            .andExpect(jsonPath("$.data.clarifications.length()").value(expectedQuestions)));
+            JsonNode waiting = data(mockMvc.perform(get("/api/v1/job-matches/{id}", matchId).cookie(owner)).andReturn());
+            JsonNode pending = waiting.path("clarifications").get(round - 1);
+            assertThat(pending.path("options")).extracting(JsonNode::asText)
+                    .as("the model's own 暂不确认… is folded into the standard one").containsExactly("可以确认", "暂不确认");
+            mockMvc.perform(post("/api/v1/job-matches/{id}/clarifications", matchId)
+                            .cookie(owner).contentType(MediaType.APPLICATION_JSON)
+                            .content(mapper.writeValueAsString(Map.of(
+                                    "answers", List.of(Map.of("id", pending.path("id").asText(), "answerCode", "可以确认", "note", "")),
+                                    "continueWithPending", false,
+                                    "expectedVersion", waiting.path("version").asInt()))))
+                    .andExpect(status().isOk());
+            // Two submissions within one millisecond would share answered_at and read as one round.
+            Thread.sleep(5);
+        }
+
+        await().atMost(Duration.ofSeconds(12)).untilAsserted(() ->
+                mockMvc.perform(get("/api/v1/job-matches/{id}", matchId).cookie(owner))
+                        .andExpect(jsonPath("$.data.status").value("COMPLETED"))
+                        .andExpect(jsonPath("$.data.clarifications.length()").value(MAX_ROUNDS_IN_TEST)));
+    }
+
+    private static final int MAX_ROUNDS_IN_TEST = 2;
 
     private JsonNode createMatch(Cookie owner, String requestId) throws Exception {
         return data(mockMvc.perform(post("/api/v1/job-matches").cookie(owner)
@@ -715,6 +804,110 @@ class JobMatchIT {
                 .andExpect(status().isAccepted()).andReturn());
     }
 
+    @Test
+    void analysisCancelledWhileTheModelAnswersKeepsNoReport() throws Exception {
+        AtomicReference<String> cancelledMatch = new AtomicReference<>();
+        doAnswer(invocation -> {
+            Request request = invocation.getArgument(1);
+            JsonNode input = mapper.readTree(request.messages().get(request.messages().size() - 1).content());
+            // The user presses 取消 while the model is still writing.
+            jdbc.update("UPDATE job_match_tasks SET status='CANCELLED',checkpoint_code='CANCELLED' WHERE id=?",
+                    input.path("matchId").asText());
+            cancelledMatch.set(input.path("matchId").asText());
+            return new Response("job-match-ai", "system-channel", "qwen-plus",
+                    validAiReport(input), new Usage(420, 380, 800), null);
+        }).when(gateway).execute(anyString(), any());
+        MockCookie owner = registerAndLogin("match-cancel+" + System.nanoTime() + "@example.com");
+        createStructuredResume(owner);
+        JsonNode authorized = authorizedMatch(owner);
+        String matchId = authorized.path("id").asText();
+
+        analyze(owner, matchId, "analysis-cancel-" + UUID.randomUUID(), authorized.path("version").asInt());
+        await().atMost(Duration.ofSeconds(12)).until(() -> cancelledMatch.get() != null);
+        await().atMost(Duration.ofSeconds(12)).untilAsserted(() -> assertThat(jdbc.queryForObject(
+                "SELECT COUNT(*) FROM match_ai_advice_runs r JOIN match_reports m ON m.id=r.report_id WHERE m.match_id=? AND r.status='CANCELLED'",
+                Integer.class, matchId)).isEqualTo(1));
+        assertThat(jdbc.queryForObject("SELECT status FROM job_match_tasks WHERE id=?", String.class, matchId))
+                .isEqualTo("CANCELLED");
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM job_match_report_versions WHERE match_id=?",
+                Integer.class, matchId)).isZero();
+        // A cancelled match can be analysed again.
+        int version = jdbc.queryForObject("SELECT version_no FROM job_match_tasks WHERE id=?", Integer.class, matchId);
+        doAnswer(invocation -> {
+            Request request = invocation.getArgument(1);
+            JsonNode input = mapper.readTree(request.messages().get(request.messages().size() - 1).content());
+            return new Response("job-match-ai", "system-channel", "qwen-plus",
+                    validAiReport(input), new Usage(420, 380, 800), null);
+        }).when(gateway).execute(anyString(), any());
+        analyze(owner, matchId, "analysis-again-" + UUID.randomUUID(), version);
+        await().atMost(Duration.ofSeconds(12)).untilAsserted(() ->
+                mockMvc.perform(get("/api/v1/job-matches/{id}", matchId).cookie(owner))
+                        .andExpect(status().isOk())
+                        .andExpect(jsonPath("$.data.status").value("COMPLETED")));
+    }
+
+    @Test
+    void unbackedVerdictsBecomeUnclearAndAMissingHardRequirementCapsTheAdvice() throws Exception {
+        doAnswer(invocation -> {
+            Request request = invocation.getArgument(1);
+            JsonNode input = mapper.readTree(request.messages().get(request.messages().size() - 1).content());
+            java.util.List<String> items = new java.util.ArrayList<>();
+            boolean missingMarked = false;
+            for (JsonNode requirement : input.path("requirements")) {
+                String id = requirement.path("id").asText();
+                // Claims every requirement is met but cites nothing, and calls one hard requirement missing.
+                boolean missing = !missingMarked && requirement.path("hard_gate").asBoolean();
+                missingMarked |= missing;
+                String status = missing ? "NOT_FOUND" : "MET";
+                items.add("{\"requirementId\":\"" + id + "\",\"status\":\"" + status + "\",\"resumeRefs\":[],\"evidenceIds\":[]}");
+            }
+            String body = validAiReport(input).replaceFirst("\"evidenceMatrix\":\\[.*?\\],\"clarifications\"",
+                    java.util.regex.Matcher.quoteReplacement("\"evidenceMatrix\":[" + String.join(",", items) + "],\"clarifications\""))
+                    .replace("\"code\":\"CONDITIONAL\"", "\"code\":\"RECOMMENDED\"");
+            return new Response("job-match-ai", "system-channel", "qwen-plus", body, new Usage(420, 380, 800), null);
+        }).when(gateway).execute(anyString(), any());
+        MockCookie owner = registerAndLogin("match-verdicts+" + System.nanoTime() + "@example.com");
+        createStructuredResume(owner);
+        JsonNode authorized = authorizedMatch(owner);
+        String matchId = authorized.path("id").asText();
+        analyze(owner, matchId, "analysis-verdicts-" + UUID.randomUUID(), authorized.path("version").asInt());
+        await().atMost(Duration.ofSeconds(12)).untilAsserted(() ->
+                mockMvc.perform(get("/api/v1/job-matches/{id}", matchId).cookie(owner))
+                        .andExpect(status().isOk())
+                        .andExpect(jsonPath("$.data.status").value("COMPLETED")));
+        JsonNode report = data(mockMvc.perform(get("/api/v1/job-matches/{id}/report", matchId).cookie(owner))
+                .andExpect(status().isOk()).andReturn()).path("report");
+        assertThat(report.path("requirements").findValuesAsText("verdict")).doesNotContain("MET");
+        assertThat(report.path("hardGatePassed").asBoolean()).isFalse();
+        assertThat(report.path("recommendation").path("code").asText()).isEqualTo("CAUTION");
+        assertThat(report.path("recommendation").path("capped").asBoolean()).isTrue();
+        assertThat(report.path("recommendation").path("rationale").asText()).contains("硬性要求");
+        assertThat(report.path("confidence").asText()).isEqualTo("LOW");
+        assertThat(report.path("strengths").size()).isZero();
+    }
+
+    /** A match with JD confirmed, the first resume chosen and no extra evidence authorized. */
+    private JsonNode authorizedMatch(Cookie owner) throws Exception {
+        JsonNode created = createMatch(owner, "create-" + UUID.randomUUID());
+        String matchId = created.path("id").asText();
+        JsonNode corrected = confirmJd(owner, created);
+        JsonNode options = data(mockMvc.perform(get("/api/v1/job-matches/{id}/resume-options", matchId)
+                        .cookie(owner)).andExpect(status().isOk()).andReturn());
+        JsonNode resumeConfirmed = data(mockMvc.perform(put("/api/v1/job-matches/{id}/resume-selection", matchId)
+                        .cookie(owner).contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(Map.of(
+                                "resumeRevisionId", options.get(0).path("revisionId").asText(),
+                                "expectedVersion", corrected.path("version").asInt()))))
+                .andExpect(status().isOk()).andReturn());
+        return data(mockMvc.perform(post("/api/v1/job-matches/{id}/authorization", matchId)
+                        .cookie(owner).contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(Map.of(
+                                "mode", "NONE", "recordIds", List.of(), "fileIds", List.of(),
+                                "scope", "CURRENT_MATCH", "rememberPreference", false,
+                                "expectedVersion", resumeConfirmed.path("version").asInt()))))
+                .andExpect(status().isOk()).andReturn());
+    }
+
     private void assertExport(Cookie owner, String matchId, String format, byte[] prefix) throws Exception {
         JsonNode created = data(mockMvc.perform(post("/api/v1/job-matches/{id}/exports", matchId).cookie(owner)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -752,23 +945,42 @@ class JobMatchIT {
         return mapper.readTree(result.getResponse().getContentAsString()).path("data");
     }
 
-    private static String validAiReport(String requirementId) {
-        return """
-                {"summary":{"headline":"简历具备基础后端能力，仍需补强可验证的性能与微服务实践。"},
-                 "hardGates":[],"strengths":[],"gaps":[],"evidenceMatrix":[],"clarifications":[],
-                 "learningPlan":[],"resumeSuggestions":[{"requirementId":"%s","targetPath":"/summary","beforeValue":"","proposedValue":"具备扎实的 Java 与 Spring Boot 后端开发基础，能够围绕真实业务需求完成接口设计、数据建模、自动化测试和交付验证；在项目实践中重视问题定位、代码可维护性与跨团队协作，通过需求拆解、方案评审和复盘沉淀持续完善工程方法，并能够根据监控指标与测试结果验证实现质量，为后续参与微服务治理、数据库优化和稳定性建设奠定可靠基础。","reason":"突出与岗位职责直接相关的工程能力，并保持所有表述来自当前简历事实。","sourceRefs":["jd:%s"]}],"interviewTopics":[],
-                 "recommendation":{"code":"CONDITIONAL","rationale":"先补充关键项目证据后再决定投递优先级。"}}
-                """.formatted(requirementId, requirementId);
+    /** The model's verdict table: every requirement met, each citing the first resume field it may cite. */
+    private static String matrix(JsonNode input) {
+        String ref = null;
+        for (JsonNode allowed : input.path("allowedSourceRefs")) {
+            if (allowed.asText().startsWith("resume:")) { ref = allowed.asText(); break; }
+        }
+        java.util.List<String> items = new java.util.ArrayList<>();
+        for (JsonNode requirement : input.path("requirements")) {
+            items.add(ref == null
+                    ? "{\"requirementId\":\"%s\",\"status\":\"UNCLEAR\",\"resumeRefs\":[],\"evidenceIds\":[],\"reason\":\"信息不足\"}"
+                            .formatted(requirement.path("id").asText())
+                    : "{\"requirementId\":\"%s\",\"status\":\"MET\",\"resumeRefs\":[\"%s\"],\"evidenceIds\":[],\"reason\":\"简历中有对应经历\"}"
+                            .formatted(requirement.path("id").asText(), ref));
+        }
+        return "[" + String.join(",", items) + "]";
     }
 
-    private static String aiReportWithClarification(String requirementId) {
+    private static String validAiReport(JsonNode input) {
+        String requirementId = input.path("requirements").path(0).path("id").asText("");
+        return """
+                {"summary":{"headline":"简历具备基础后端能力，仍需补强可验证的性能与微服务实践。"},
+                 "hardGates":[],"strengths":[],"gaps":[],"evidenceMatrix":MATRIX,"clarifications":[],
+                 "learningPlan":[],"resumeSuggestions":[{"requirementId":"%s","targetPath":"/summary","beforeValue":"","proposedValue":"具备扎实的 Java 与 Spring Boot 后端开发基础，能够围绕真实业务需求完成接口设计、数据建模、自动化测试和交付验证；在项目实践中重视问题定位、代码可维护性与跨团队协作，通过需求拆解、方案评审和复盘沉淀持续完善工程方法，并能够根据监控指标与测试结果验证实现质量，为后续参与微服务治理、数据库优化和稳定性建设奠定可靠基础。","reason":"突出与岗位职责直接相关的工程能力，并保持所有表述来自当前简历事实。","sourceRefs":["jd:%s"]}],"interviewTopics":[],
+                 "recommendation":{"code":"CONDITIONAL","rationale":"先补充关键项目证据后再决定投递优先级。"}}
+                """.formatted(requirementId, requirementId).replace("MATRIX", matrix(input));
+    }
+
+    private static String aiReportWithClarification(JsonNode input) {
+        String requirementId = input.path("requirements").path(0).path("id").asText("");
         return """
                 {"summary":{"headline":"需要确认一项已有事实。"},
-                 "hardGates":[],"strengths":[],"gaps":[],"evidenceMatrix":[],
-                 "clarifications":[{"requirementId":"%s","question":"能否确认该项事实？","options":["可以确认","暂不确认"],"evidenceContext":{}}],
+                 "hardGates":[],"strengths":[],"gaps":[],"evidenceMatrix":MATRIX,
+                 "clarifications":[{"requirementId":"%s","question":"能否确认该项事实？","options":[{"label":"只在课程项目里做过","verdict":"PARTIAL"},{"label":"暂不确认","verdict":"UNCLEAR"}],"evidenceContext":{}}],
                  "learningPlan":[],"resumeSuggestions":[],"interviewTopics":[],
                  "recommendation":{"code":"CONDITIONAL","rationale":"完成事实确认后再生成最终结论。"}}
-                """.formatted(requirementId);
+                """.formatted(requirementId).replace("MATRIX", matrix(input));
     }
 
     private static String jd() {

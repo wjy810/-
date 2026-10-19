@@ -186,6 +186,7 @@ public class TaskService {
                 "accountId", entity.getAccountId(),
                 "taskType", entity.getTaskType(),
                 "status", entity.getStatus(),
+                "resultVersion", resultVersion == null ? "" : resultVersion,
                 "refs", refs));
         return true;
     }
