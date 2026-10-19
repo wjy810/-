@@ -9,7 +9,11 @@ import com.jobproof.modules.aigateway.port.AiTransportPort;
 import com.jobproof.modules.aigateway.security.ApiKeyCipher;
 import com.jobproof.modules.aigateway.security.MasterKeyProperties;
 import com.jobproof.modules.aigateway.security.SsrfGuard;
+import java.net.InetAddress;
+import java.util.List;
 import java.util.Random;
+import java.util.Set;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -18,8 +22,8 @@ import org.springframework.context.annotation.Configuration;
 public class AiGatewayConfiguration {
 
     @Bean
-    public SsrfGuard aiSsrfGuard() {
-        return new SsrfGuard();
+    public SsrfGuard aiSsrfGuard(@Value("${jobproof.ai.gateway.proxy-resolved-hosts:}") List<String> proxyResolvedHosts) {
+        return new SsrfGuard(InetAddress::getAllByName, Set.copyOf(proxyResolvedHosts), SsrfGuard::jvmHttpsProxyConfigured);
     }
 
     @Bean

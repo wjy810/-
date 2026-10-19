@@ -75,6 +75,15 @@ jobproof:
     seeker:
       enabled: true
       password: seeker123
+    # 本地调试用的平台 AI 通道（DevAiChannelInitializer）：启动时自动建好并启用，各 AI 功能默认走这个模型。
+    # 这是用户明确要求写入配置的调试密钥；需要换掉时在网关侧轮换，或用 JOBPROOF_DEV_AI_* 环境变量覆盖。
+    ai-channel:
+      enabled: ${JOBPROOF_DEV_AI_ENABLED:true}
+      name: 开发调试通道
+      base-url: ${JOBPROOF_DEV_AI_BASE_URL:https://sub2api.picado.cloud/v1}
+      api-key: ${JOBPROOF_DEV_AI_KEY:sk-8828643dcb93412910641cfd3c3c9924f44cf4e3f1ba3b342121d62d463f7895}
+      model: ${JOBPROOF_DEV_AI_MODEL:gpt-6.1-sol}
+      protocol: OPENAI_CHAT
   renderer:
     url: ${JOBPROOF_RENDERER_URL:http://127.0.0.1:3100}
     token: ${JOBPROOF_RENDERER_TOKEN:dev-renderer-token-0123456789}
@@ -85,10 +94,14 @@ jobproof:
     malware-scan:
       enabled: true
   ai:
+    # 开发环境各功能统一用调试通道的模型（简历工作台与模拟面试共用 resume-model）。
+    resume-model: ${JOBPROOF_DEV_AI_MODEL:gpt-6.1-sol}
     gateway:
       # 本地固定测试密钥；生产配置不继承 dev profile，仍必须从 JOBPROOF_AI_MASTER_KEY 注入。
       enabled: true
       master-key: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
+      # 沙箱等只能经 HTTPS 代理出网、本机无法解析域名的环境：这些主机交给代理解析（见 SsrfGuard）。
+      proxy-resolved-hosts: sub2api.picado.cloud
     workbench:
       enabled: true
       monthly-quota: 500
@@ -101,7 +114,9 @@ jobproof:
       ai-monthly-units: 2000
   job-match:
     enabled: true
+    model: ${JOBPROOF_DEV_AI_MODEL:gpt-6.1-sol}
   career-planning:
     enabled: true
+    model: ${JOBPROOF_DEV_AI_MODEL:gpt-6.1-sol}
   cookie:
     secure: false

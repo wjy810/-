@@ -7,6 +7,9 @@ import java.net.URI;
 import java.net.UnknownHostException;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
+import java.util.function.Supplier;
+import java.util.stream.Collectors;
 
 public final class SsrfGuard {
     public interface Resolver {
@@ -16,13 +19,34 @@ public final class SsrfGuard {
     private static final List<String> METADATA_HOSTS = List.of(
         "metadata.google.internal", "metadata.azure.internal", "instance-data.ec2.internal");
     private final Resolver resolver;
+    private final Set<String> proxyResolvedHosts;
+    private final Supplier<Boolean> proxyConfigured;
 
     public SsrfGuard() {
         this(InetAddress::getAllByName);
     }
 
     public SsrfGuard(Resolver resolver) {
+        this(resolver, Set.of(), () -> false);
+    }
+
+    /**
+     * {@code proxyResolvedHosts}: exact host names whose DNS the outbound HTTPS proxy resolves, for hosts that
+     * cannot see DNS themselves (e.g. a sandbox that only reaches the internet through a proxy). They skip the
+     * local lookup only while a proxy is configured; every other check still applies, and other hosts are
+     * resolved and screened as usual. Empty in production.
+     */
+    public SsrfGuard(Resolver resolver, Set<String> proxyResolvedHosts, Supplier<Boolean> proxyConfigured) {
         this.resolver = resolver;
+        this.proxyResolvedHosts = proxyResolvedHosts.stream().map(host -> host.trim().toLowerCase(Locale.ROOT))
+            .filter(host -> !host.isEmpty()).collect(Collectors.toUnmodifiableSet());
+        this.proxyConfigured = proxyConfigured;
+    }
+
+    /** True when the JVM sends HTTPS through a proxy (https.proxyHost), as JAVA_TOOL_OPTIONS does in a sandbox. */
+    public static boolean jvmHttpsProxyConfigured() {
+        String host = System.getProperty("https.proxyHost");
+        return host != null && !host.isBlank();
     }
 
     public URI validate(URI uri) {
@@ -35,6 +59,9 @@ public final class SsrfGuard {
         String host = uri.getHost().toLowerCase(Locale.ROOT);
         if (host.equals("localhost") || host.endsWith(".localhost") || METADATA_HOSTS.contains(host)) {
             throw new IllegalArgumentException("Local and metadata endpoints are forbidden");
+        }
+        if (proxyResolvedHosts.contains(host) && !isIpLiteral(host) && Boolean.TRUE.equals(proxyConfigured.get())) {
+            return uri;
         }
         try {
             InetAddress[] addresses = resolver.resolve(host);
@@ -59,6 +86,10 @@ public final class SsrfGuard {
             throw new IllegalArgumentException("Cross-host redirects are forbidden");
         }
         return resolved;
+    }
+
+    private static boolean isIpLiteral(String host) {
+        return host.matches("[0-9.]+") || host.contains(":");
     }
 
     private boolean isPublic(InetAddress address) {
