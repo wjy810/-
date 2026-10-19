@@ -51,8 +51,8 @@ class NotificationPreferencesIT {
         assertThat(view.path("emailAvailable").asBoolean()).isTrue();
         assertThat(view.path("emailAddress").asText()).startsWith("pr***@");
         assertThat(view.path("items").findValuesAsText("type"))
-                .containsExactly("APPLICATION_ACTIVITY", "REMINDER", "MEMBERSHIP", "PRODUCT_UPDATE");
-        assertThat(view.path("items").get(3).path("email").asBoolean()).isFalse();
+                .containsExactly("APPLICATION_ACTIVITY", "REMINDER", "MEMBERSHIP", "WEEKLY_DIGEST", "PRODUCT_UPDATE");
+        assertThat(view.path("items").get(4).path("email").asBoolean()).isFalse();
 
         mockMvc.perform(put("/api/v1/notification-preferences").cookie(account.cookie()).contentType(MediaType.APPLICATION_JSON)
                         .content(mapper.writeValueAsString(Map.of("items", List.of(Map.of("type", "SECURITY", "inApp", false, "email", false))))))

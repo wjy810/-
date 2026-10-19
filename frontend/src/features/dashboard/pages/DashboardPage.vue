@@ -2,7 +2,7 @@
 import { computed, type Component } from 'vue'
 import { useQuery } from '@tanstack/vue-query'
 import {
-  ArrowRight, Bell, CalendarClock, CheckCircle2, ChevronRight, Circle, CircleAlert, Compass, Crown, Download, Eye, FileText, Megaphone, Mic, Plus,
+  ArrowRight, Bell, CalendarClock, CalendarRange, CheckCircle2, ChevronRight, Circle, CircleAlert, Compass, Crown, Download, Eye, FileText, Megaphone, Mic, Plus,
   ShieldCheck, Sparkles, Target, Trash2,
 } from 'lucide-vue-next'
 import UiButton from '@/shared/ui/UiButton.vue'
@@ -81,6 +81,7 @@ const NOTICE_VISUAL: Record<string, { icon: Component; tone: string }> = {
   APPLICATION_ACTIVITY: { icon: Eye, tone: 'success' },
   REMINDER: { icon: CalendarClock, tone: 'accent' },
   MEMBERSHIP: { icon: Crown, tone: 'primary' },
+  WEEKLY_DIGEST: { icon: CalendarRange, tone: 'primary' },
 }
 
 function noticeVisual(type: string) {

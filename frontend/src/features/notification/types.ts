@@ -11,6 +11,7 @@ export type NotificationType =
   | 'APPLICATION_ACTIVITY'
   | 'REMINDER'
   | 'MEMBERSHIP'
+  | 'WEEKLY_DIGEST'
 
 export type NotificationView = {
   id: string
@@ -45,7 +46,7 @@ export type NotificationPage = {
 }
 
 /** 通知偏好 (docs/phase2/03). */
-export type NotificationPreferenceType = 'APPLICATION_ACTIVITY' | 'REMINDER' | 'MEMBERSHIP' | 'PRODUCT_UPDATE'
+export type NotificationPreferenceType = 'APPLICATION_ACTIVITY' | 'REMINDER' | 'MEMBERSHIP' | 'WEEKLY_DIGEST' | 'PRODUCT_UPDATE'
 export type NotificationPreferenceItem = { type: NotificationPreferenceType; inApp: boolean; email: boolean }
 export type NotificationPreferences = {
   items: NotificationPreferenceItem[]

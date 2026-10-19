@@ -112,9 +112,11 @@ class ResumePermanentDeletionIT {
         String versionId = seedVersion(owner.accountId(), masterId);
         String taskId = id();
         Instant now = Instant.now();
-        jdbc.update("INSERT INTO async_tasks(id,account_id,task_type,status,idempotency_key,input_version,result_version,failure_reason,payload_json,attempt_count,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+        // Running on another instance under a live lease: without one the row would look abandoned and
+        // this process's worker could claim and finish it between the two requests below.
+        jdbc.update("INSERT INTO async_tasks(id,account_id,task_type,status,idempotency_key,input_version,result_version,failure_reason,payload_json,attempt_count,created_at,updated_at,lease_owner,lease_expires_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 taskId, owner.accountId(), "RESUME_PDF_EXPORT", "RUNNING", id(), "v1", null, null,
-                "{\"resumeVersionId\":\"" + versionId + "\"}", 1, now, now);
+                "{\"resumeVersionId\":\"" + versionId + "\"}", 1, now, now, "another-instance", now.plus(Duration.ofMinutes(10)));
 
         mockMvc.perform(get("/api/v1/data-rights/deletions/preview").cookie(owner.cookie())
                         .param("scope", "OBJECT").param("targetType", "RESUME_VERSION").param("targetId", versionId))

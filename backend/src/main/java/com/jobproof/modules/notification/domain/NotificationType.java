@@ -12,5 +12,7 @@ public enum NotificationType {
     /** A due next step of an application (an interview tomorrow, a test tonight). */
     REMINDER,
     /** The PRO plan is about to end, or has ended. */
-    MEMBERSHIP
+    MEMBERSHIP,
+    /** Monday's summary of last week's applications and this week's next steps. */
+    WEEKLY_DIGEST
 }

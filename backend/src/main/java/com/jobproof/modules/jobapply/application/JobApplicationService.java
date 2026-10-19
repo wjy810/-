@@ -186,6 +186,7 @@ public class JobApplicationService implements DeletionModuleHandler, AccountExpo
             links.deleteForAccount(accountId);
             jdbc.update("DELETE FROM job_application_events WHERE account_id=?", accountId);
             jdbc.update("DELETE FROM job_applications WHERE account_id=?", accountId);
+            jdbc.update("DELETE FROM weekly_digests WHERE account_id=?", accountId);
             return Result.succeeded("投递记录与简历链接已删除，链接已失效");
         } catch (RuntimeException e) {
             return Result.failed("投递记录暂未清除，删除申请会保持可重试");

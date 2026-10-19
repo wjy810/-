@@ -37,6 +37,7 @@ public class NotificationPreferences implements DeletionModuleHandler, AccountEx
         defaults.put(NotificationType.APPLICATION_ACTIVITY, new Preference(true, true));
         defaults.put(NotificationType.REMINDER, new Preference(true, true));
         defaults.put(NotificationType.MEMBERSHIP, new Preference(true, true));
+        defaults.put(NotificationType.WEEKLY_DIGEST, new Preference(true, true));
         defaults.put(NotificationType.PRODUCT_UPDATE, new Preference(true, false));
         DEFAULTS = Collections.unmodifiableMap(defaults);
     }

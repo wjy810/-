@@ -20,6 +20,7 @@ export const NOTIFICATION_TYPE_GLOSS: Record<string, string> = {
   APPLICATION_ACTIVITY: '简历回执',
   REMINDER: '日程提醒',
   MEMBERSHIP: '会员',
+  WEEKLY_DIGEST: '求职周报',
 }
 
 export function glossNotificationStatus(status?: string | null): string {
@@ -107,5 +108,6 @@ export const PREFERENCE_COPY: Record<string, { title: string; detail: string }> 
   APPLICATION_ACTIVITY: { title: '简历回执', detail: '对方首次打开你的简历、简历被转给新的读者时' },
   REMINDER: { title: '日程提醒', detail: '笔试、面试等下一步开始前一天' },
   MEMBERSHIP: { title: '会员', detail: '专业版到期前 7 天，以及到期时' },
+  WEEKLY_DIGEST: { title: '求职周报', detail: '每周一上午：上周投递与简历被打开的情况、本周的面试和笔试' },
   PRODUCT_UPDATE: { title: '产品更新', detail: '新功能和重要改进上线时' },
 }

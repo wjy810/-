@@ -17,11 +17,15 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jobproof.modules.aigateway.application.AiGatewayService;
 import com.jobproof.modules.jobapply.application.NextStepReminders;
+import com.jobproof.modules.jobapply.application.WeeklyDigest;
 import com.jobproof.modules.resume.application.ResumeAiCandidateService;
 import jakarta.servlet.http.Cookie;
 import java.time.Duration;
+import java.time.DayOfWeek;
 import java.time.Instant;
+import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
+import java.time.temporal.TemporalAdjusters;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
@@ -53,6 +57,7 @@ class JobApplicationIT {
     @Autowired ObjectMapper mapper;
     @Autowired JdbcTemplate jdbc;
     @Autowired NextStepReminders reminders;
+    @Autowired WeeklyDigest digest;
     @MockBean ResumeAiCandidateService aiCandidates;
     @MockBean AiGatewayService gateway;
 
@@ -274,6 +279,32 @@ class JobApplicationIT {
                 .andExpect(status().isOk());
         reminders.sendDue(later);
         assertThat(reminderTitles(owner)).hasSize(2).anySatisfy(title -> assertThat(title).contains("星图数据 二面"));
+    }
+
+    @Test
+    void mondayBringsOneDigestOfLastWeekAndTheWeekAhead() throws Exception {
+        Session owner = seeker();
+        String versionId = frozenVersion(owner);
+        ZoneId china = ZoneId.of("Asia/Shanghai");
+        Instant monday = Instant.now().atZone(china).toLocalDate().with(TemporalAdjusters.next(DayOfWeek.MONDAY))
+                .atTime(10, 0).atZone(china).toInstant();
+        JsonNode created = data(mockMvc.perform(post("/api/v1/job-applications").cookie(owner.cookie())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(Map.of("company", "周报科技", "positionTitle", "运营专员", "channel", "CAMPUS",
+                                "resumeVersionId", versionId, "createLink", true, "stage", "INTERVIEW", "nextStep", "终面",
+                                "nextStepAt", monday.plus(Duration.ofDays(2)).toString()))))
+                .andExpect(status().isOk()).andReturn());
+        assertThat(view(created.path("link").path("token").asText(), null, "203.0.113.77", WECHAT_PHONE).path("recorded").asBoolean()).isTrue();
+
+        assertThat(digest.sendDue(monday.minus(Duration.ofHours(2)))).isZero();
+        while (digest.sendDue(monday) > 0) {
+            // other tests' accounts share the database; drain the week
+        }
+        digest.sendDue(monday.plus(Duration.ofHours(1)));
+        List<String> titles = jdbc.queryForList("SELECT title FROM notifications WHERE account_id=? AND type='WEEKLY_DIGEST'", String.class, owner.accountId());
+        assertThat(titles).singleElement().asString().contains("上周投递 1 家").contains("简历被打开 1 次");
+        String body = jdbc.queryForObject("SELECT body FROM notifications WHERE account_id=? AND type='WEEKLY_DIGEST'", String.class, owner.accountId());
+        assertThat(body).contains("周报科技打开了你的简历").contains("本周安排").contains("周报科技 终面");
     }
 
     private List<String> reminderTitles(Session owner) {

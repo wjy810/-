@@ -119,6 +119,8 @@ function typeMeta(type?: string): RowMeta {
       return { icon: 'notification-interview-reminder', cls: 'purple' }
     case 'MEMBERSHIP':
       return { icon: 'notification-announcement', cls: 'ink' }
+    case 'WEEKLY_DIGEST':
+      return { icon: 'notification-planning-reminder', cls: 'blue' }
     default:
       return { icon: 'notification-system-update', cls: 'blue' }
   }
