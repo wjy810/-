@@ -4,7 +4,7 @@ import {
   BookOpen, Bot, BriefcaseBusiness, ChevronDown,
   ChevronRight, ChevronsDown, ChevronsUp, Code2, FileCheck2, GitBranch,
   GitMerge, Layers3, ListChecks, ListTree, LoaderCircle, LockKeyhole, LockOpen,
-  Hand, Maximize2, MoreHorizontal, Network, Plus, Redo2, ShieldCheck, Sparkles,
+  Hand, LayoutGrid, Maximize2, MoreHorizontal, Network, Plus, Redo2, ShieldCheck, Sparkles,
   SquareDashedMousePointer,
   Target, Trash2, Undo2, X,
 } from 'lucide-vue-next'
@@ -32,7 +32,7 @@ import type {
   CareerCanvasProposal, CareerInferenceDepth, CareerInferenceDirection,
 } from '../types'
 import {
-  buildCanvasTree, canvasStatusCounts, layoutCanvas, parentMap, virtualCanvasRange,
+  buildCanvasTree, canvasStatusCounts, isLayoutPinned, layoutCanvas, parentMap, subtreeIds, virtualCanvasRange,
   visibleCanvasNodeIds,
 } from '../utils/canvas'
 import { branchGrowth, confirmedMastery } from '../utils/canvasMotion'
@@ -158,7 +158,7 @@ async function animateCanvasChange(previous: ReadonlySet<string>, completed = ne
 const form = reactive({
   type: 'SKILL' as Exclude<CanvasNodeType, 'CAREER'>,
   title: '',
-  status: 'NOT_STARTED' as Exclude<CanvasNodeStatus, 'MASTERED'>,
+  status: 'NOT_STARTED' as CanvasNodeStatus,
   parentNodeId: '',
   summary: '',
   importance: 'MEDIUM',
@@ -180,6 +180,20 @@ const statusOptions: Array<{ value: CanvasNodeStatus | 'ALL'; label: string }> =
 ]
 
 const editableStatusOptions = statusOptions.filter(option => option.value !== 'ALL' && option.value !== 'MASTERED')
+/** Status the node had when the editor opened: 已掌握 comes only from validation, so it stays unless the user picks another. */
+const editingStatus = ref<CanvasNodeStatus | null>(null)
+const formStatusOptions = computed(() => editorMode.value === 'EDIT' && editingStatus.value === 'MASTERED'
+  ? [{ value: 'MASTERED' as const, label: '已掌握（验证通过）' }, ...editableStatusOptions]
+  : editableStatusOptions)
+const pinnedNodeIds = computed(() => currentCanvas.value.nodes.filter(isLayoutPinned).map(node => node.logicalNodeId))
+const careerRoot = computed(() => currentCanvas.value.nodes.find(node => node.type === 'CAREER') ?? null)
+/** The server refuses to delete a subtree holding a locked node; say so before the click instead of after. */
+const deleteBlockedByLock = computed(() => {
+  const node = selectedNode.value
+  if (!node) return false
+  const locked = new Set(currentCanvas.value.nodes.filter(item => item.locked).map(item => item.logicalNodeId))
+  return [...subtreeIds(currentCanvas.value, node.logicalNodeId)].some(id => locked.has(id))
+})
 const nodeTypeOptions = [
   { value: 'DOMAIN', label: '能力域' }, { value: 'SKILL', label: '技能' },
   { value: 'KNOWLEDGE', label: '知识点' }, { value: 'TASK', label: '行动任务' },
@@ -698,8 +712,17 @@ async function onNodeDragStop(event: NodeDragEvent): Promise<void> {
   const node = currentCanvas.value.nodes.find(item => item.logicalNodeId === event.node.id)
   if (!node || node.locked) return
   await mutate(`position:${node.logicalNodeId}`, () => updateCareerCanvasNode(props.sessionId, node.logicalNodeId, {
-    x: Math.round(event.node.position.x), y: Math.round(event.node.position.y), expectedVersion: currentCanvas.value.version,
-  }), '节点位置已保存。')
+    x: Math.round(event.node.position.x), y: Math.round(event.node.position.y),
+    detail: { layoutPinned: true }, expectedVersion: currentCanvas.value.version,
+  }), '节点位置已保存，之后的自动布局不会再移动它。')
+}
+
+async function autoArrange(): Promise<void> {
+  const nodeIds = pinnedNodeIds.value
+  if (!nodeIds.length) return
+  await mutate('auto-layout', () => updateCareerCanvasNodes(props.sessionId, {
+    nodeIds, resetLayout: true, expectedVersion: currentCanvas.value.version,
+  }), `已自动整理 ${nodeIds.length} 个手动摆放的节点。`)
 }
 
 function startEdit(node: CanvasNode): void {
@@ -707,7 +730,8 @@ function startEdit(node: CanvasNode): void {
   editorMode.value = 'EDIT'
   form.type = node.type === 'CAREER' ? 'DOMAIN' : node.type
   form.title = node.title
-  form.status = node.status === 'MASTERED' ? 'PENDING_VALIDATION' : node.status
+  form.status = node.status
+  editingStatus.value = node.status
   form.parentNodeId = parents.value.get(node.logicalNodeId) ?? ''
   form.summary = detailString(node, 'summary')
   form.importance = detailString(node, 'importance') || 'MEDIUM'
@@ -724,6 +748,7 @@ function startAdd(parent: CanvasNode): void {
   form.type = parent.type === 'CAREER' ? 'DOMAIN' : parent.type === 'DOMAIN' ? 'SKILL' : 'KNOWLEDGE'
   form.title = ''
   form.status = 'NOT_STARTED'
+  editingStatus.value = null
   form.parentNodeId = parent.logicalNodeId
   form.summary = ''
   form.importance = 'MEDIUM'
@@ -800,7 +825,7 @@ async function saveNode(): Promise<void> {
   }
   if (editorMode.value === 'ADD') {
     const saved = await mutate('save-node', () => createCareerCanvasNode(props.sessionId, {
-      type: form.type, title: form.title.trim(), status: form.status,
+      type: form.type, title: form.title.trim(), status: form.status === 'MASTERED' ? 'NOT_STARTED' : form.status,
       parentNodeId: form.parentNodeId, detail: detailPayload(), sourceRefs: [],
       locked: form.locked, expectedVersion: currentCanvas.value.version,
     }), '新能力节点已加入，并生成新版本。')
@@ -808,8 +833,8 @@ async function saveNode(): Promise<void> {
   } else if (selectedNode.value) {
     const nodeId = selectedNode.value.logicalNodeId
     const saved = await mutate('save-node', () => updateCareerCanvasNode(props.sessionId, nodeId, {
-      title: form.title.trim(), status: form.status, parentNodeId: form.parentNodeId,
-      detail: detailPayload(), sourceRefs: selectedNode.value?.sourceRefs ?? [],
+      title: form.title.trim(), status: form.status === editingStatus.value ? undefined : form.status,
+      parentNodeId: form.parentNodeId, detail: detailPayload(), sourceRefs: selectedNode.value?.sourceRefs ?? [],
       locked: form.locked, expectedVersion: currentCanvas.value.version,
     }), '节点修改已保存为新版本。')
     if (saved) editorMode.value = 'VIEW'
@@ -1009,7 +1034,7 @@ async function revealInferenceProposal(task: TaskView): Promise<void> {
 
 async function removeNode(): Promise<void> {
   const node = selectedNode.value
-  if (!node || node.type === 'CAREER') return
+  if (!node || node.type === 'CAREER' || deleteBlockedByLock.value) return
   if (!deleteArmed.value) {
     deleteArmed.value = true
     return
@@ -1203,7 +1228,8 @@ function fitCurrent(): void {
         <button class="icon-command" type="button" aria-label="重做画布变更" title="重做画布变更 (Ctrl+Shift+Z)" :disabled="!redoVersions.length || Boolean(pending)" @click="redoCanvas"><Redo2 :size="17" /></button>
         <button class="icon-command" type="button" aria-label="折叠到能力域" title="折叠到能力域" @click="collapseToDomains"><ChevronsDown :size="17" /></button>
         <button class="icon-command" type="button" aria-label="展开全部节点" title="展开全部节点" @click="expandAllNodes"><ChevronsUp :size="17" /></button>
-        <button v-if="currentCanvas.nodes.length > 1" class="icon-command" type="button" title="在目标下新增能力域" @click="startAdd(currentCanvas.nodes.find(item => item.type === 'CAREER')!)"><Plus :size="18" /></button>
+        <button v-if="pinnedNodeIds.length" class="icon-command" type="button" aria-label="自动整理布局" :title="`自动整理：让 ${pinnedNodeIds.length} 个手动摆放的节点回到自动布局`" :disabled="Boolean(pending)" @click="autoArrange"><LayoutGrid :size="17" /></button>
+        <button v-if="careerRoot" class="icon-command" type="button" aria-label="在目标下新增能力域" title="在目标下新增能力域" @click="startAdd(careerRoot)"><Plus :size="18" /></button>
       </div>
 
       <section v-if="selectedNodeIds.size > 1 || mobileSelectionMode" class="canvas-batch-bar" aria-label="画布批量操作">
@@ -1351,7 +1377,7 @@ function fitCurrent(): void {
             <button v-if="selectedNode.type !== 'CAREER' && selectedNode.type !== 'EVIDENCE'" type="button" :disabled="selectedNode.locked" @click="startSplit(selectedNode)"><ListTree :size="16" />拆分</button>
             <button v-if="selectedNode.type !== 'CAREER'" type="button" :disabled="selectedNode.locked || !mergeCandidates.length" @click="startMerge(selectedNode)"><GitMerge :size="16" />合并</button>
             <button v-if="selectedNode.type !== 'CAREER'" type="button" @click="startEdit(selectedNode)"><MoreHorizontal :size="16" />编辑</button>
-            <button v-if="selectedNode.type !== 'CAREER'" class="danger" type="button" @click="removeNode"><Trash2 :size="16" />{{ deleteArmed ? '确认级联删除' : '删除' }}</button>
+            <button v-if="selectedNode.type !== 'CAREER'" class="danger" type="button" :disabled="deleteBlockedByLock" :title="deleteBlockedByLock ? '该节点或其下级已锁定，解锁后才能删除' : undefined" @click="removeNode"><Trash2 :size="16" />{{ deleteArmed ? '确认级联删除' : '删除' }}</button>
           </footer>
         </template>
 
@@ -1400,7 +1426,7 @@ function fitCurrent(): void {
         <form v-else class="node-editor" @submit.prevent="saveNode">
           <label v-if="editorMode === 'ADD'">节点类型<UiSelect v-model="form.type" aria-label="节点类型"><option v-for="option in nodeTypeOptions" :key="option.value" :value="option.value">{{ option.label }}</option></UiSelect></label>
           <label>节点名称<input v-model="form.title" maxlength="120" placeholder="例如 Spring Boot"></label>
-          <label>当前状态<UiSelect v-model="form.status" aria-label="节点状态"><option v-for="option in editableStatusOptions" :key="option.value" :value="option.value">{{ option.label }}</option></UiSelect></label>
+          <label>当前状态<UiSelect v-model="form.status" aria-label="节点状态"><option v-for="option in formStatusOptions" :key="option.value" :value="option.value">{{ option.label }}</option></UiSelect></label>
           <label>上级节点<UiSelect v-model="form.parentNodeId" aria-label="上级节点" placeholder="上级节点"><option value="">请选择上级节点</option><option v-for="item in parentOptions" :key="item.logicalNodeId" :value="item.logicalNodeId">{{ item.title }}</option></UiSelect></label>
           <label>能力说明<textarea v-model="form.summary" rows="3" maxlength="800" placeholder="说明这项能力的用途和边界" /></label>
           <div class="node-editor-grid"><label>重要程度<UiSelect v-model="form.importance" aria-label="重要程度"><option value="HIGH">高</option><option value="MEDIUM">中</option><option value="LOW">低</option></UiSelect></label><label>预计小时<input v-model="form.estimatedHours" type="number" min="0" max="1000"></label></div>

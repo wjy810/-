@@ -2,8 +2,8 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
-  Bell, CheckCircle2, Eye, LoaderCircle, LockKeyhole, Network,
-  Play, Search, Sparkles, Star, Target,
+  ArrowRight, Bell, CheckCircle2, Eye, History, LoaderCircle, LockKeyhole, Network,
+  Play, Search, Sparkles, Star, Target, Trash2,
 } from 'lucide-vue-next'
 import JobProofIcon from '@/shared/ui/JobProofIcon.vue'
 import PageState from '@/shared/ui/PageState.vue'
@@ -14,13 +14,14 @@ import UiSelect from '@/shared/ui/UiSelect.vue'
 import { jobProofIconIds } from '@/shared/ui/jobProofIcons'
 import { useLoadState } from '@/shared/lib/useLoadState'
 import { useToastFeedback } from '@/shared/ui/toast'
+import { confirm } from '@/shared/ui/confirm'
 import JobTaxonomyPicker from '@/features/ai-resume/components/JobTaxonomyPicker.vue'
 import type { JobTaxonomySelection } from '@/features/ai-resume/types'
 import { errorMessage } from '@/shared/api/types'
 import {
-  createCareerCanvas, fetchCareerCanvasDashboard, makeCareerCanvasPrimary,
+  archiveCareerPlanningSession, createCareerCanvas, fetchCareerCanvasDashboard, makeCareerCanvasPrimary,
 } from '../services/careerPlanningApi'
-import type { CareerCanvasDashboard, CareerCanvasSummary } from '../types'
+import type { CareerCanvasDashboard, CareerCanvasSummary, CareerExplorationDraft } from '../types'
 
 const route = useRoute()
 const router = useRouter()
@@ -28,7 +29,8 @@ const pending = ref('')
 const error = ref('')
 useToastFeedback(error, 'error', 'career-canvas-overview-error')
 const query = ref(typeof route.query.q === 'string' ? route.query.q : '')
-const status = ref(typeof route.query.status === 'string' ? route.query.status : 'ALL')
+// Canvases have no paused state of their own (a paused plan is shown on its card), so there is no status filter.
+const status = ref('ALL')
 const sort = ref(typeof route.query.sort === 'string' ? route.query.sort : 'RECENT')
 // A failed read shows an error with retry, never an empty overview with zero canvases.
 const dashboardLoad = useLoadState<CareerCanvasDashboard>(() => fetchCareerCanvasDashboard(query.value, status.value, sort.value))
@@ -39,17 +41,17 @@ const selectedTargetName = ref('')
 const newConsent = ref(false)
 let reloadTimer = 0
 
-const statusOptions = [
-  { value: 'ALL', label: '全部状态' },
-  { value: 'ACTIVE', label: '进行中' },
-  { value: 'PAUSED', label: '已暂停' },
-]
 const sortOptions = [
   { value: 'RECENT', label: '最近更新' },
   { value: 'PROGRESS', label: '进度最高' },
   { value: 'TITLE', label: '职业名称' },
 ]
 const items = computed(() => dashboard.value?.items ?? [])
+const drafts = computed(() => dashboard.value?.drafts ?? [])
+const PHASE_LABELS: Record<string, string> = {
+  PROFILE: '填写画像', EVIDENCE: '选择资料', INTERVIEW: 'AI 访谈', PROFILE_CONFIRMATION: '确认画像',
+  RECOMMENDATIONS: '选择方向', RECOMMENDATION_INSUFFICIENT: '补充信息',
+}
 const stats = computed(() => dashboard.value?.stats ?? {
   canvasCount: 0, primaryCount: 0, abilityNodeCount: 0, pendingValidationCount: 0, versionCount: 0,
 })
@@ -77,7 +79,6 @@ function scheduleLoad(): void {
     await router.replace({
       query: {
         ...(query.value.trim() ? { q: query.value.trim() } : {}),
-        ...(status.value !== 'ALL' ? { status: status.value } : {}),
         ...(sort.value !== 'RECENT' ? { sort: sort.value } : {}),
       },
     })
@@ -123,6 +124,50 @@ async function makePrimary(item: CareerCanvasSummary): Promise<void> {
   }
 }
 
+async function removeCanvas(item: CareerCanvasSummary): Promise<void> {
+  if (pending.value) return
+  const ok = await confirm({
+    title: `删除“${item.title}”能力画布？`,
+    message: '画布、学习计划和验证记录会从列表中移除，不能在页面上恢复。资料库里的经历和证据不受影响。',
+    confirmText: '删除画布',
+    tone: 'danger',
+  })
+  if (!ok) return
+  await archive(item.sessionId, '能力画布删除失败')
+}
+
+async function removeDraft(draft: CareerExplorationDraft): Promise<void> {
+  if (pending.value) return
+  const ok = await confirm({
+    title: '删除这次未完成的探索？',
+    message: '已填写的画像和访谈回答会一起移除。资料库里的内容不受影响。',
+    confirmText: '删除',
+    tone: 'danger',
+  })
+  if (!ok) return
+  await archive(draft.sessionId, '删除失败')
+}
+
+async function archive(sessionId: string, failure: string): Promise<void> {
+  pending.value = `archive:${sessionId}`
+  error.value = ''
+  try {
+    dashboard.value = await archiveCareerPlanningSession(sessionId)
+  } catch (reason) {
+    error.value = errorMessage(reason, failure)
+  } finally {
+    pending.value = ''
+  }
+}
+
+function resumeDraft(draft: CareerExplorationDraft): void {
+  void router.push({ name: 'career-planning-session', params: { sessionId: draft.sessionId } })
+}
+
+function phaseLabel(draft: CareerExplorationDraft): string {
+  return PHASE_LABELS[draft.phase] ?? '进行中'
+}
+
 function openCanvas(item: CareerCanvasSummary, continuePlan = false): void {
   const view = continuePlan && item.planStatus !== 'NOT_CREATED' ? 'plan' : 'canvas'
   void router.push({ name: 'career-planning-session', params: { sessionId: item.sessionId }, query: { view } })
@@ -148,7 +193,12 @@ function relativeTime(value: string): string {
 
 function statusLabel(item: CareerCanvasSummary): string {
   if (item.primary) return '主目标'
-  return item.status === 'PAUSED' ? '已暂停' : item.overallProgress < 50 ? '探索中' : '进行中'
+  return item.masteredCount === 0 ? '探索中' : '进行中'
+}
+
+function progressDetail(item: CareerCanvasSummary): string {
+  if (!item.learnableCount) return '能力树生成后开始计算'
+  return `已掌握 ${item.masteredCount} / ${item.learnableCount} 项${item.learningCount ? ` · 学习中 ${item.learningCount}` : ''}`
 }
 
 function planText(item: CareerCanvasSummary): string {
@@ -185,12 +235,22 @@ onBeforeUnmount(() => window.clearTimeout(reloadTimer))
         <article><span class="is-purple"><JobProofIcon :name="jobProofIconIds.versionHistory" :size="20" /></span><div><strong>{{ stats.versionCount }}</strong><p>累计画布版本</p></div></article>
       </section>
 
+      <section v-if="drafts.length" class="draft-section" aria-labelledby="draft-heading">
+        <header><History :size="18" /><h2 id="draft-heading">未完成的探索</h2><em>{{ drafts.length }}</em></header>
+        <ul>
+          <li v-for="draft in drafts" :key="draft.sessionId">
+            <div><strong>{{ draft.entryMode === 'KNOWN_TARGET' ? '目标职业规划' : 'AI 帮我选方向' }}</strong><small>停在「{{ phaseLabel(draft) }}」 · {{ relativeTime(draft.updatedAt) }}</small></div>
+            <button class="draft-remove" type="button" :aria-label="`删除 ${relativeTime(draft.createdAt)} 开始的探索`" :disabled="Boolean(pending)" @click="removeDraft(draft)"><Trash2 :size="15" /></button>
+            <button class="draft-resume" type="button" @click="resumeDraft(draft)">继续<ArrowRight :size="15" /></button>
+          </li>
+        </ul>
+      </section>
+
       <section class="canvas-list-section">
         <header>
           <div><h2>我的能力画布</h2><em>{{ stats.canvasCount }}</em></div>
           <div class="canvas-filters">
             <label><Search :size="16" /><input v-model="query" type="search" placeholder="搜索职业或能力节点" aria-label="搜索职业或能力节点"></label>
-            <UiSelect v-model="status" :options="statusOptions" aria-label="筛选能力画布状态" placeholder="筛选能力画布状态" />
             <UiSelect v-model="sort" :options="sortOptions" aria-label="能力画布排序" placeholder="能力画布排序" />
           </div>
         </header>
@@ -200,15 +260,16 @@ onBeforeUnmount(() => window.clearTimeout(reloadTimer))
             <header>
               <span class="canvas-monogram">{{ item.title.trim().slice(0, 2) }}</span>
               <div class="card-status-actions">
-                <span class="canvas-status" :class="{ paused: item.status === 'PAUSED' }">{{ statusLabel(item) }}</span>
-                <button v-if="!item.primary" type="button" title="设为主目标" :disabled="Boolean(pending)" @click="makePrimary(item)"><Star :size="15" /></button>
+                <span class="canvas-status">{{ statusLabel(item) }}</span>
+                <button v-if="!item.primary" type="button" title="设为主目标" aria-label="设为主目标" :disabled="Boolean(pending)" @click="makePrimary(item)"><Star :size="15" /></button>
+                <button type="button" title="删除画布" :aria-label="`删除 ${item.title}`" :disabled="Boolean(pending)" @click="removeCanvas(item)"><Trash2 :size="15" /></button>
               </div>
             </header>
             <h3>{{ item.title }}</h3>
             <p class="canvas-meta">独立规划 · {{ relativeTime(item.updatedAt) }}</p>
 
-            <section class="progress-block" :aria-label="`总体进度 ${item.overallProgress}%`">
-              <div><strong>{{ item.overallProgress }}%</strong><span>总体进度</span></div>
+            <section class="progress-block" :aria-label="`已掌握 ${item.overallProgress}%：${progressDetail(item)}`">
+              <div><strong>{{ item.overallProgress }}%</strong><span>{{ progressDetail(item) }}</span></div>
               <i><b :style="{ width: `${item.overallProgress}%` }" /></i>
             </section>
 
@@ -235,7 +296,7 @@ onBeforeUnmount(() => window.clearTimeout(reloadTimer))
             </footer>
           </article>
 
-          <section v-if="!items.length && !query && status === 'ALL'" class="canvas-first">
+          <section v-if="!items.length && !query" class="canvas-first">
             <UiEmptyState size="lg" illustration="dash-planning" title="创建你的第一张能力画布" description="选一个目标职业，AI 会结合你已确认的经历生成能力树、学习计划和验证标准，每一步都可以修改。">
               <UiButton @click="openNew">新建能力画布</UiButton>
             </UiEmptyState>
@@ -247,8 +308,8 @@ onBeforeUnmount(() => window.clearTimeout(reloadTimer))
             <em>开始新建</em>
           </button>
 
-          <section v-if="!items.length && (query || status !== 'ALL')" class="canvas-empty-result">
-            <Search :size="26" /><strong>没有匹配的能力画布</strong><p>调整关键词或状态筛选后再试。</p>
+          <section v-if="!items.length && query" class="canvas-empty-result">
+            <Search :size="26" /><strong>没有匹配的能力画布</strong><p>换个职业或能力节点关键词再试。</p>
           </section>
         </div>
       </section>
@@ -311,7 +372,21 @@ onBeforeUnmount(() => window.clearTimeout(reloadTimer))
 .canvas-list-section > header > div:first-child { display: flex; align-items: center; gap: 8px; }
 .canvas-list-section h2 { margin: 0; font-size: 20px; }
 .canvas-list-section h2 + em { min-width: 26px; padding: 2px 8px; border-radius: 6px; color: var(--text-secondary); background: var(--surface-3); font-size: 12px; font-style: normal; text-align: center; }
-.canvas-filters { display: grid; grid-template-columns: minmax(190px, 260px) 120px 120px; gap: 8px; }
+.canvas-filters { display: grid; grid-template-columns: minmax(190px, 260px) 120px; gap: 8px; }
+.draft-section { margin-top: 24px; padding: 16px 20px; border: 1px solid var(--border-default); border-radius: 12px; background: var(--surface-1); }
+.draft-section > header { display: flex; align-items: center; gap: 8px; color: var(--text-secondary); }
+.draft-section h2 { margin: 0; color: var(--text-primary); font-size: 16px; }
+.draft-section h2 + em { padding: 1px 7px; border-radius: 6px; background: var(--surface-3); font-size: 12px; font-style: normal; }
+.draft-section ul { margin: 12px 0 0; padding: 0; list-style: none; display: grid; gap: 8px; }
+.draft-section li { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 8px; background: var(--surface-2); }
+.draft-section li > div { min-width: 0; flex: 1; display: grid; gap: 2px; }
+.draft-section li strong { font-size: 14px; }
+.draft-section li small { color: var(--text-tertiary); font-size: 12px; }
+.draft-section button { min-height: 36px; display: inline-flex; align-items: center; justify-content: center; gap: 4px; border-radius: 8px; font-size: 13px; cursor: pointer; }
+.draft-remove { width: 36px; border: 1px solid transparent; color: var(--text-tertiary); background: transparent; }
+.draft-remove:hover { color: var(--color-danger-text); border-color: var(--border-default); }
+.draft-resume { padding: 0 14px; border: 1px solid var(--color-primary-border); color: var(--color-primary); background: var(--surface-1); }
+.draft-resume:hover { background: var(--color-primary-soft); }
 .canvas-filters > label { height: 42px; padding: 0 12px; display: flex; align-items: center; gap: 8px; border: 1px solid var(--border-strong); border-radius: 8px; color: var(--text-tertiary); background: var(--surface-1); }
 .canvas-filters input { min-width: 0; width: 100%; height: 40px; padding: 0; border: 0; outline: 0; color: var(--text-primary); background: transparent; font-size: 13px; }
 .canvas-filters > label:focus-within { border-color: var(--color-primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 8%, transparent); }
@@ -412,7 +487,7 @@ onBeforeUnmount(() => window.clearTimeout(reloadTimer))
   .overview-stats article > span { width: 32px; height: 32px; }
   .overview-stats strong { font-size: 23px; }
   .canvas-list-section > header { display: grid; gap: 16px; }
-  .canvas-filters { grid-template-columns: 1fr 1fr; }
+  .canvas-filters { grid-template-columns: 1fr; }
   .canvas-filters > label { grid-column: 1 / -1; height: 44px; }
   .canvas-filters:deep(.ui-select-trigger) { min-height: 44px; }
   .canvas-card-grid { grid-template-columns: 1fr; }

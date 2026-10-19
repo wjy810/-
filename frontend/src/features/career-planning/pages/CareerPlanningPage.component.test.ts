@@ -129,6 +129,22 @@ describe('CareerPlanningPage welcome', () => {
 
   })
 
+  it('offers to continue an exploration left unfinished instead of silently starting a second one', async () => {
+    api.fetchCareerPlanningOverview.mockReset().mockResolvedValue({
+      enabled: true,
+      session: { ...makeSession(), id: 'session-left', phase: 'INTERVIEW' },
+      quota: { periodKey: '2026-08', grantedUnits: 500, usedUnits: 0, heldUnits: 0, remainingUnits: 500 },
+    })
+    router.push.mockReset()
+    const wrapper = mountWelcome()
+    await flushPromises()
+
+    const banner = wrapper.get('.cp-unfinished')
+    expect(banner.text()).toContain('停在「AI 访谈」')
+    await banner.get('button').trigger('click')
+    expect(router.push).toHaveBeenCalledWith({ name: 'career-planning-session', params: { sessionId: 'session-left' } })
+  })
+
   it('leaves AI consent unchecked and keeps the AI entry disabled until the user consents', async () => {
     const wrapper = mountWelcome()
     await flushPromises()

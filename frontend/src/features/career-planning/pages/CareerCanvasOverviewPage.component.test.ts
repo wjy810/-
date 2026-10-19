@@ -3,12 +3,15 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { makeSession } from '../../../../tests/careerPlanningFixtures'
 
 const api = vi.hoisted(() => ({
+  archiveCareerPlanningSession: vi.fn(),
   createCareerCanvas: vi.fn(),
   fetchCareerCanvasDashboard: vi.fn(),
   makeCareerCanvasPrimary: vi.fn(),
 }))
 const router = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn() }))
 const route = vi.hoisted(() => ({ query: {} as Record<string, string> }))
+const confirmMock = vi.hoisted(() => vi.fn())
+vi.mock('@/shared/ui/confirm', () => ({ confirm: confirmMock }))
 
 vi.mock('../services/careerPlanningApi', () => api)
 vi.mock('vue-router', () => ({
@@ -23,18 +26,21 @@ const dashboard = {
   items: [
     {
       sessionId: 'session-1', goalId: 'goal-1', title: 'Java 后端工程师', status: 'ACTIVE', primary: true,
-      overallProgress: 72, nodeCount: 31, domainCount: 5, pendingValidationCount: 2, canvasVersion: 4,
+      overallProgress: 72, masteredCount: 18, learningCount: 3, learnableCount: 25, nodeCount: 31, domainCount: 5, pendingValidationCount: 2, canvasVersion: 4,
       planStatus: 'ACTIVE', currentWeek: 3, durationWeeks: 12, planRevision: 2,
       currentFocus: '完成订单 API 与接口测试', recentChanges: ['计划状态与节点进度已更新'],
       createdAt: '2026-08-20T00:00:00Z', updatedAt: '2026-08-28T00:00:00Z',
     },
     {
       sessionId: 'session-2', goalId: 'goal-2', title: 'AI 应用工程师', status: 'ACTIVE', primary: false,
-      overallProgress: 34, nodeCount: 24, domainCount: 4, pendingValidationCount: 1, canvasVersion: 4,
+      overallProgress: 0, masteredCount: 0, learningCount: 0, learnableCount: 0, nodeCount: 24, domainCount: 4, pendingValidationCount: 1, canvasVersion: 4,
       planStatus: 'NOT_CREATED', currentWeek: null, durationWeeks: null, planRevision: 0,
       currentFocus: '等待 AI 生成完整能力树', recentChanges: [],
       createdAt: '2026-08-25T00:00:00Z', updatedAt: '2026-08-27T00:00:00Z',
     },
+  ],
+  drafts: [
+    { sessionId: 'draft-1', phase: 'INTERVIEW', entryMode: 'AI_DISCOVERY', createdAt: '2026-08-26T00:00:00Z', updatedAt: '2026-08-26T01:00:00Z' },
   ],
 }
 
@@ -118,5 +124,31 @@ describe('CareerCanvasOverviewPage', () => {
     await wrapper.get('[role="alert"] button').trigger('click')
     await flushPromises()
     expect(wrapper.text()).toContain('Java 后端工程师')
+  })
+
+  it('reports progress as what was mastered and lets unfinished explorations be resumed or removed', async () => {
+    api.archiveCareerPlanningSession.mockResolvedValue({ ...dashboard, drafts: [] })
+    const wrapper = mount(CareerCanvasOverviewPage, { global: { stubs } })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('已掌握 18 / 25 项 · 学习中 3')
+    expect(wrapper.text()).toContain('能力树生成后开始计算')
+    expect(wrapper.find('select[aria-label="筛选能力画布状态"]').exists()).toBe(false)
+
+    const draft = wrapper.get('.draft-section li')
+    expect(draft.text()).toContain('AI 帮我选方向')
+    expect(draft.text()).toContain('停在「AI 访谈」')
+    await draft.get('.draft-resume').trigger('click')
+    expect(router.push).toHaveBeenCalledWith({ name: 'career-planning-session', params: { sessionId: 'draft-1' } })
+
+    confirmMock.mockResolvedValueOnce(false)
+    await draft.get('.draft-remove').trigger('click')
+    await flushPromises()
+    expect(api.archiveCareerPlanningSession).not.toHaveBeenCalled()
+    confirmMock.mockResolvedValueOnce(true)
+    await draft.get('.draft-remove').trigger('click')
+    await flushPromises()
+    expect(api.archiveCareerPlanningSession).toHaveBeenCalledWith('draft-1')
+    expect(wrapper.find('.draft-section').exists()).toBe(false)
   })
 })

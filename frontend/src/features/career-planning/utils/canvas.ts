@@ -61,8 +61,28 @@ export function layoutCanvas(canvas: CareerCanvas): CanvasLayoutNode[] {
   tree.forEach(assignY)
   return canvas.nodes.map(node => {
     const depth = depthById.get(node.logicalNodeId) ?? 0
+    // A node the user dragged keeps where they put it; "自动整理" clears the pin.
+    if (isLayoutPinned(node)) return { node, depth, x: node.x, y: node.y }
     return { node, depth, x: 80 + (maxDepth - depth) * 300, y: yById.get(node.logicalNodeId) ?? 72 }
   })
+}
+
+export function isLayoutPinned(node: CanvasNode): boolean {
+  return node.detail?.layoutPinned === true
+}
+
+/** The node and everything under it, for "can this be deleted" (the server refuses when any is locked). */
+export function subtreeIds(canvas: CareerCanvas, rootId: string): Set<string> {
+  const children = new Map<string, string[]>()
+  for (const [child, parent] of parentMap(canvas)) children.set(parent, [...(children.get(parent) ?? []), child])
+  const result = new Set<string>()
+  const visit = (id: string): void => {
+    if (result.has(id)) return
+    result.add(id)
+    for (const child of children.get(id) ?? []) visit(child)
+  }
+  visit(rootId)
+  return result
 }
 
 export function visibleCanvasNodeIds(

@@ -941,6 +941,147 @@ class CareerPlanningIT {
     }
 
     @Test
+    void lockedNodesSurviveDeletesAndRestoresAndDraggedPositionsStayUntilAutoArranged() throws Exception {
+        MockCookie owner = registerAndLogin("career-locks+" + System.nanoTime() + "@example.com");
+        String suffix = Long.toString(System.nanoTime());
+        String categoryId = UUID.randomUUID().toString();
+        String groupId = UUID.randomUUID().toString();
+        String jobId = UUID.randomUUID().toString();
+        jdbc.update("INSERT INTO job_taxonomy_nodes(id,parent_id,node_level,code,display_name,normalized_name,catalog_occupation_code,status,sort_order,created_at,updated_at) VALUES(?,NULL,'CATEGORY',?,?,?,'TEST-CATEGORY','PUBLISHED',0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)",
+                categoryId, "test-lock-category-" + suffix, "锁定测试大类", "锁定测试大类");
+        jdbc.update("INSERT INTO job_taxonomy_nodes(id,parent_id,node_level,code,display_name,normalized_name,catalog_occupation_code,status,sort_order,created_at,updated_at) VALUES(?,?,'GROUP',?,?,?,'TEST-GROUP','PUBLISHED',0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)",
+                groupId, categoryId, "test-lock-group-" + suffix, "锁定测试子类", "锁定测试子类");
+        jdbc.update("INSERT INTO job_taxonomy_nodes(id,parent_id,node_level,code,display_name,normalized_name,catalog_occupation_code,status,sort_order,created_at,updated_at) VALUES(?,?,'JOB',?,?,?,'TEST-LOCK','PUBLISHED',0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)",
+                jobId, groupId, "test-lock-job-" + suffix, "锁定测试职业", "锁定测试职业");
+        JsonNode created = data(mockMvc.perform(post("/api/v1/career-planning/canvases").cookie(owner)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"taxonomyNodeId\":\"" + jobId + "\",\"aiConsent\":true}"))
+                .andExpect(status().isOk()).andReturn());
+        String sessionId = created.path("id").asText();
+        List<String> refs = List.of("GOAL:" + created.path("activeGoal").path("id").asText());
+        when(ai.generateCanvas(anyString(), any(), any(), any())).thenReturn(new AiResult<>(new CanvasPayload(List.of(
+                canvasNode("platform", "DOMAIN", "平台基础", "ROOT", refs),
+                canvasNode("language", "DOMAIN", "语言基础", "ROOT", refs),
+                canvasNode("data", "DOMAIN", "数据能力", "ROOT", refs),
+                canvasNode("delivery", "DOMAIN", "项目交付", "ROOT", refs),
+                canvasNode("core-skill", "SKILL", "核心专业技能", "platform", refs),
+                canvasNode("core-knowledge", "KNOWLEDGE", "核心知识体系", "language", refs),
+                canvasNode("practice", "TASK", "完成综合实践", "delivery", refs),
+                canvasNode("evidence", "EVIDENCE", "提交验证材料", "practice", refs),
+                canvasNode("data-skill", "SKILL", "数据分析基础", "data", refs))),
+                "test-model", 180, 360, "lock-canvas-response-hash"));
+        JsonNode generated = data(mockMvc.perform(post("/api/v1/career-planning/sessions/{id}/canvas/generate", sessionId)
+                        .cookie(owner).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"requestId\":\"lock-canvas-generate\",\"expectedVersion\":1}"))
+                .andExpect(status().isOk()).andReturn());
+        String skill = nodeId(generated, "核心专业技能");
+        String platform = nodeId(generated, "平台基础");
+
+        // Dragging pins the node; the detail patch merges, so the summary the AI wrote stays.
+        JsonNode dragged = data(mockMvc.perform(patch("/api/v1/career-planning/sessions/{id}/canvas/nodes/{node}", sessionId, skill)
+                        .cookie(owner).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"x\":1111,\"y\":222,\"detail\":{\"layoutPinned\":true},\"expectedVersion\":2}"))
+                .andExpect(status().isOk()).andReturn());
+        JsonNode pinned = node(dragged, skill);
+        org.assertj.core.api.Assertions.assertThat(pinned.path("x").asInt()).isEqualTo(1111);
+        org.assertj.core.api.Assertions.assertThat(pinned.path("detail").path("layoutPinned").asBoolean()).isTrue();
+        org.assertj.core.api.Assertions.assertThat(pinned.path("detail").path("summary").asText()).contains("结构化学习内容");
+
+        JsonNode locked = data(mockMvc.perform(patch("/api/v1/career-planning/sessions/{id}/canvas/nodes/{node}", sessionId, skill)
+                        .cookie(owner).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"title\":\"核心专业技能（自己改过）\",\"locked\":true,\"expectedVersion\":3}"))
+                .andExpect(status().isOk()).andReturn());
+        org.assertj.core.api.Assertions.assertThat(node(locked, skill).path("locked").asBoolean()).isTrue();
+
+        mockMvc.perform(delete("/api/v1/career-planning/sessions/{id}/canvas/nodes/{node}", sessionId, platform)
+                        .cookie(owner).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"cascade\":true,\"expectedVersion\":4}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.reason").value("CP_CANVAS_NODE_LOCKED"));
+
+        // Restoring the AI's original tree keeps what the user locked.
+        JsonNode restored = data(mockMvc.perform(post("/api/v1/career-planning/sessions/{id}/canvas/versions/{version}/restore", sessionId, 2)
+                        .cookie(owner).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"expectedVersion\":4}"))
+                .andExpect(status().isOk()).andReturn());
+        org.assertj.core.api.Assertions.assertThat(node(restored, skill).path("title").asText()).isEqualTo("核心专业技能（自己改过）");
+        org.assertj.core.api.Assertions.assertThat(node(restored, skill).path("locked").asBoolean()).isTrue();
+        int afterRestore = restored.path("version").asInt();
+
+        JsonNode arranged = data(mockMvc.perform(patch("/api/v1/career-planning/sessions/{id}/canvas/nodes", sessionId)
+                        .cookie(owner).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"nodeIds\":[\"" + skill + "\"],\"resetLayout\":true,\"expectedVersion\":" + afterRestore + "}"))
+                .andExpect(status().isOk()).andReturn());
+        org.assertj.core.api.Assertions.assertThat(node(arranged, skill).path("detail").has("layoutPinned")).isFalse();
+        org.assertj.core.api.Assertions.assertThat(node(arranged, skill).path("detail").path("summary").asText()).contains("结构化学习内容");
+    }
+
+    @Test
+    void aKnownTargetGoesStraightToItsCanvasAndUnfinishedExplorationsCanBeResumedOrRemoved() throws Exception {
+        MockCookie owner = registerAndLogin("career-drafts+" + System.nanoTime() + "@example.com");
+        String suffix = Long.toString(System.nanoTime());
+        String categoryId = UUID.randomUUID().toString();
+        String groupId = UUID.randomUUID().toString();
+        String jobId = UUID.randomUUID().toString();
+        jdbc.update("INSERT INTO job_taxonomy_nodes(id,parent_id,node_level,code,display_name,normalized_name,catalog_occupation_code,status,sort_order,created_at,updated_at) VALUES(?,NULL,'CATEGORY',?,?,?,'TEST-CATEGORY','PUBLISHED',0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)",
+                categoryId, "test-draft-category-" + suffix, "草稿测试大类", "草稿测试大类");
+        jdbc.update("INSERT INTO job_taxonomy_nodes(id,parent_id,node_level,code,display_name,normalized_name,catalog_occupation_code,status,sort_order,created_at,updated_at) VALUES(?,?,'GROUP',?,?,?,'TEST-GROUP','PUBLISHED',0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)",
+                groupId, categoryId, "test-draft-group-" + suffix, "草稿测试子类", "草稿测试子类");
+        jdbc.update("INSERT INTO job_taxonomy_nodes(id,parent_id,node_level,code,display_name,normalized_name,catalog_occupation_code,status,sort_order,created_at,updated_at) VALUES(?,?,'JOB',?,?,?,'TEST-DRAFT','PUBLISHED',0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)",
+                jobId, groupId, "test-draft-job-" + suffix, "草稿测试职业", "草稿测试职业");
+
+        JsonNode known = data(mockMvc.perform(post("/api/v1/career-planning/sessions").cookie(owner)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"entryMode\":\"KNOWN_TARGET\",\"aiConsent\":true,\"objectiveTaxonomyId\":\"" + jobId + "\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.phase").value("CANVAS"))
+                .andExpect(jsonPath("$.data.canvas.nodes[0].type").value("CAREER"))
+                .andReturn());
+        JsonNode second = data(mockMvc.perform(post("/api/v1/career-planning/canvases").cookie(owner)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"taxonomyNodeId\":\"" + jobId + "\",\"aiConsent\":true}"))
+                .andExpect(status().isOk()).andReturn());
+        JsonNode draft = data(mockMvc.perform(post("/api/v1/career-planning/sessions").cookie(owner)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"entryMode\":\"AI_DISCOVERY\",\"aiConsent\":true}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.phase").value("PROFILE")).andReturn());
+
+        mockMvc.perform(get("/api/v1/career-planning/canvases").cookie(owner))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.stats.canvasCount").value(2))
+                .andExpect(jsonPath("$.data.drafts.length()").value(1))
+                .andExpect(jsonPath("$.data.drafts[0].sessionId").value(draft.path("id").asText()))
+                .andExpect(jsonPath("$.data.drafts[0].phase").value("PROFILE"));
+
+        MockCookie other = registerAndLogin("career-drafts-other+" + System.nanoTime() + "@example.com");
+        mockMvc.perform(delete("/api/v1/career-planning/sessions/{id}", draft.path("id").asText()).cookie(other))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.reason").value("CP_SESSION_NOT_FOUND"));
+        mockMvc.perform(delete("/api/v1/career-planning/sessions/{id}", draft.path("id").asText()).cookie(owner))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.drafts.length()").value(0));
+
+        // The first canvas was primary; removing it hands that role to the remaining one.
+        mockMvc.perform(delete("/api/v1/career-planning/sessions/{id}", known.path("id").asText()).cookie(owner))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.stats.canvasCount").value(1))
+                .andExpect(jsonPath("$.data.stats.primaryCount").value(1))
+                .andExpect(jsonPath("$.data.items[0].sessionId").value(second.path("id").asText()))
+                .andExpect(jsonPath("$.data.items[0].primary").value(true));
+        mockMvc.perform(get("/api/v1/career-planning/sessions/{id}", known.path("id").asText()).cookie(owner))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("ARCHIVED"));
+    }
+
+    private JsonNode node(JsonNode canvas, String logicalNodeId) {
+        for (JsonNode node : canvas.path("nodes")) {
+            if (logicalNodeId.equals(node.path("logicalNodeId").asText())) return node;
+        }
+        throw new AssertionError("Missing canvas node " + logicalNodeId);
+    }
+
+    @Test
     void profileReviewNeverConfirmsFactsAndClosesAnOpenInterviewWhenSkipped() throws Exception {
         MockCookie owner = registerAndLogin("career-profile-review+" + System.nanoTime() + "@example.com");
         MvcResult started = mockMvc.perform(post("/api/v1/career-planning/sessions").cookie(owner)

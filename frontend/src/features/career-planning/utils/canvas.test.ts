@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { CareerCanvas } from '../types'
-import { buildCanvasTree, canvasStatusCounts, layoutCanvas, virtualCanvasRange, visibleCanvasNodeIds } from './canvas.ts'
+import { buildCanvasTree, canvasStatusCounts, layoutCanvas, subtreeIds, virtualCanvasRange, visibleCanvasNodeIds } from './canvas.ts'
 
 const canvas: CareerCanvas = {
   versionId: 'v2', version: 2, reason: 'TEST', graphHash: 'hash', createdAt: '2026-08-27T00:00:00Z',
@@ -30,6 +30,23 @@ test('lays the career root to the right of deeper ability nodes', () => {
   const layout = new Map(layoutCanvas(canvas).map(item => [item.node.logicalNodeId, item]))
   assert.ok(layout.get('root')!.x > layout.get('backend')!.x)
   assert.ok(layout.get('backend')!.x > layout.get('spring')!.x)
+})
+
+test('a node the user dragged keeps its saved position; the rest are laid out around it', () => {
+  const dragged: CareerCanvas = {
+    ...canvas,
+    nodes: canvas.nodes.map(node => node.logicalNodeId === 'spring'
+      ? { ...node, x: 1234, y: 567, detail: { ...node.detail, layoutPinned: true } }
+      : node.logicalNodeId === 'java' ? { ...node, x: 999, y: 999 } : node),
+  }
+  const layout = new Map(layoutCanvas(dragged).map(item => [item.node.logicalNodeId, item]))
+  assert.deepEqual([layout.get('spring')!.x, layout.get('spring')!.y], [1234, 567])
+  assert.notEqual(layout.get('java')!.x, 999, 'stored coordinates without a pin are stale auto positions')
+})
+
+test('a subtree holds the node and all its descendants', () => {
+  assert.deepEqual([...subtreeIds(canvas, 'backend')].sort(), ['backend', 'java', 'spring'])
+  assert.deepEqual([...subtreeIds(canvas, 'spring')], ['spring'])
 })
 
 test('search keeps the matching node and its complete parent chain', () => {

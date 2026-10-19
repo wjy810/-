@@ -334,4 +334,71 @@ describe('CareerAbilityCanvas', () => {
     await wrapper.get('.batch-validate').trigger('click')
     expect(wrapper.emitted('error')?.at(-1)?.[0]).toContain('减少到 8 个以内')
   })
+
+  it('pins a dragged node and offers to auto-arrange it back into the layout', async () => {
+    const canvas = makeCanvas()
+    api.updateCareerCanvasNode.mockResolvedValue(canvas)
+    api.updateCareerCanvasNodes.mockResolvedValue(canvas)
+    const wrapper = mount(CareerAbilityCanvas, {
+      props: { sessionId: 'session-1', canvas, goalTitle: '后端开发', aiConsent: true },
+      global: { stubs: { UiSelect: SelectStub, Background: true, MiniMap: true, Controls: true } },
+    })
+    const component = wrapper.vm as unknown as { onNodeDragStop: (event: unknown) => Promise<void> }
+    await component.onNodeDragStop({ node: { id: 'task-api', position: { x: 410.4, y: 333.6 } } })
+    expect(api.updateCareerCanvasNode).toHaveBeenCalledWith('session-1', 'task-api', expect.objectContaining({
+      x: 410, y: 334, detail: { layoutPinned: true },
+    }))
+    expect(wrapper.find('[aria-label="自动整理布局"]').exists()).toBe(false)
+
+    const pinned = makeCanvas()
+    pinned.nodes[3] = { ...pinned.nodes[3], x: 410, y: 334, detail: { ...pinned.nodes[3].detail, layoutPinned: true } }
+    await wrapper.setProps({ canvas: pinned })
+    await wrapper.get('[aria-label="自动整理布局"]').trigger('click')
+    await flushPromises()
+    expect(api.updateCareerCanvasNodes).toHaveBeenCalledWith('session-1', {
+      nodeIds: ['task-api'], resetLayout: true, expectedVersion: 3,
+    })
+  })
+
+  it('keeps 已掌握 when a mastered node is edited without touching its status', async () => {
+    const canvas = makeCanvas()
+    canvas.nodes[2] = { ...canvas.nodes[2], status: 'MASTERED' }
+    api.updateCareerCanvasNode.mockResolvedValue(canvas)
+    const wrapper = mount(CareerAbilityCanvas, {
+      props: { sessionId: 'session-1', canvas, goalTitle: '后端开发', aiConsent: true },
+      global: { stubs: { UiSelect: SelectStub, Background: true, MiniMap: true, Controls: true } },
+    })
+    const component = wrapper.vm as unknown as {
+      startEdit: (node: unknown) => void
+      saveNode: () => Promise<void>
+      form: { title: string; status: string }
+    }
+    component.startEdit(canvas.nodes[2])
+    component.form.title = '面向对象建模与领域设计'
+    await component.saveNode()
+    expect(api.updateCareerCanvasNode.mock.calls[0]?.[2]).toMatchObject({ title: '面向对象建模与领域设计', status: undefined })
+
+    component.startEdit(canvas.nodes[2])
+    component.form.status = 'LEARNING'
+    await component.saveNode()
+    expect(api.updateCareerCanvasNode.mock.calls[1]?.[2]).toMatchObject({ status: 'LEARNING' })
+  })
+
+  it('does not offer delete when the node or anything under it is locked', async () => {
+    const canvas = makeCanvas()
+    canvas.nodes[3] = { ...canvas.nodes[3], locked: true }
+    const wrapper = mount(CareerAbilityCanvas, {
+      props: { sessionId: 'session-1', canvas, goalTitle: '后端开发', aiConsent: true },
+      global: { stubs: { UiSelect: SelectStub, Background: true, MiniMap: true, Controls: true } },
+    })
+    const component = wrapper.vm as unknown as { selectNode: (node: unknown) => void; removeNode: () => Promise<void> }
+    component.selectNode(canvas.nodes[1])
+    await wrapper.vm.$nextTick()
+    const remove = wrapper.findAll('.node-command-grid button').find(button => button.text().includes('删除'))!
+    expect(remove.attributes('disabled')).toBeDefined()
+    expect(remove.attributes('title')).toContain('已锁定')
+    await component.removeNode()
+    await component.removeNode()
+    expect(api.deleteCareerCanvasNode).not.toHaveBeenCalled()
+  })
 })

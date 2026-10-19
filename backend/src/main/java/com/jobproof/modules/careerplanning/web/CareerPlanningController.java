@@ -110,6 +110,11 @@ public class CareerPlanningController {
         return ApiResponse.ok(planning.makePrimary(current(), sessionId));
     }
 
+    @DeleteMapping("/sessions/{sessionId}")
+    public ApiResponse<CareerCanvasDashboard> archive(@PathVariable String sessionId) {
+        return ApiResponse.ok(planning.archive(current(), sessionId));
+    }
+
     @PostMapping("/sessions")
     public ApiResponse<SessionView> start(@RequestBody StartCommand command) {
         return ApiResponse.ok(planning.start(current(), command));

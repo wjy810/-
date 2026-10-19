@@ -570,6 +570,7 @@ public class CareerPlanningExecutionService {
         CanvasGraph sourceGraph = graphByVersion(source);
         CanvasGraph restored = new CanvasGraph(currentGraph.base(), new LinkedHashMap<>(sourceGraph.nodes()),
                 new ArrayList<>(sourceGraph.relations()));
+        keepLockedNodesAndNotes(currentGraph, restored);
         CanvasView saved = persistGraph(current.accountId(), session.goalId(), restored,
                 "USER_VERSION_RESTORED", "从 v" + sourceVersion + " 恢复为新版本", "USER",
                 null, null, null, null);
@@ -577,6 +578,36 @@ public class CareerPlanningExecutionService {
                 "sourceVersion=" + sourceVersion + " newVersion=" + saved.version());
         appendCanvasEvent(current.accountId(), sessionId, "canvas.restored", saved);
         return saved;
+    }
+
+    /**
+     * Restoring an older version keeps what the user protected: locked nodes stay as they are now (and come back
+     * if the old version did not have them), and every node keeps the user's current notes.
+     */
+    private void keepLockedNodesAndNotes(CanvasGraph current, CanvasGraph restored) {
+        String rootId = restored.nodes().values().stream().filter(node -> "CAREER".equals(node.type()))
+                .map(GraphNode::logicalId).findFirst().orElse(null);
+        for (GraphNode node : current.nodes().values()) {
+            if ("CAREER".equals(node.type())) continue;
+            GraphNode old = restored.nodes().get(node.logicalId());
+            if (node.locked()) {
+                restored.nodes().put(node.logicalId(), node);
+                boolean hasParent = restored.relations().stream().anyMatch(relation -> "TREE_PARENT".equals(relation.type())
+                        && node.logicalId().equals(relation.fromNodeId()) && restored.nodes().containsKey(relation.toNodeId()));
+                if (!hasParent) {
+                    restored.relations().removeIf(relation -> "TREE_PARENT".equals(relation.type()) && node.logicalId().equals(relation.fromNodeId()));
+                    String parent = current.relations().stream().filter(relation -> "TREE_PARENT".equals(relation.type())
+                                    && node.logicalId().equals(relation.fromNodeId()))
+                            .map(GraphRelation::toNodeId).filter(restored.nodes()::containsKey).findFirst().orElse(rootId);
+                    if (parent != null) restored.relations().add(new GraphRelation(Ids.newId(), node.logicalId(), parent, "TREE_PARENT"));
+                }
+            } else if (old != null && node.detail().hasNonNull("notes") && old.detail() instanceof ObjectNode oldDetail) {
+                ObjectNode detail = oldDetail.deepCopy();
+                detail.set("notes", node.detail().get("notes").deepCopy());
+                restored.nodes().put(old.logicalId(), new GraphNode(old.logicalId(), old.type(), old.status(), old.title(),
+                        detail, old.sourceRefs(), old.x(), old.y(), old.locked(), old.sortOrder()));
+            }
+        }
     }
 
     private ProposalView persistProposal(CurrentAccount current, SessionRow session, CanvasGraph graph,
@@ -661,11 +692,20 @@ public class CareerPlanningExecutionService {
         }
         int accepted = 0;
         int rejected = 0;
+        int skippedLocked = 0;
         Instant now = clock.now();
         for (ProposalItemRow item : items) {
             ProposalDecision decision = decisions.get(item.id());
             String value = enumValue(decision.decision(), Set.of("ACCEPTED", "REJECTED"),
                     "CP_PROPOSAL_DECISION_INVALID", "差异决定无效");
+            if ("ACCEPTED".equals(value) && touchesLockedNode(graph, item)) {
+                // 锁定节点不被 AI 改动：即便用户点了接受，这一项也不会应用。
+                jdbc.update("UPDATE career_canvas_ai_proposal_items SET decision_status='REJECTED',rejection_reason=?,decided_at=? WHERE id=?",
+                        "节点已锁定，AI 修改未应用", now, item.id());
+                rejected++;
+                skippedLocked++;
+                continue;
+            }
             if ("REJECTED".equals(value)) {
                 String reason = required(decision.rejectionReason(), "CP_PROPOSAL_REJECTION_REASON_REQUIRED", "请填写拒绝原因");
                 jdbc.update("UPDATE career_canvas_ai_proposal_items SET decision_status='REJECTED',rejection_reason=?,decided_at=? WHERE id=?",
@@ -686,7 +726,7 @@ public class CareerPlanningExecutionService {
         jdbc.update("UPDATE career_canvas_ai_proposals SET status=?,decided_at=? WHERE id=? AND account_id=?",
                 status, now, proposalId, current.accountId());
         audit.append(current.accountId(), "CAREER_CANVAS_AI_PROPOSAL_DECIDED", "CAREER_CANVAS_AI_PROPOSAL", proposalId,
-                "status=" + status + " accepted=" + accepted + " rejected=" + rejected);
+                "status=" + status + " accepted=" + accepted + " rejected=" + rejected + " skippedLocked=" + skippedLocked);
         events.append(current.accountId(), sessionId, "proposal.decided", Map.of(
                 "proposalId", proposalId, "status", status, "accepted", accepted,
                 "rejected", rejected, "canvasVersion", canvas.version()));
@@ -1036,6 +1076,16 @@ public class CareerPlanningExecutionService {
             default -> "根据目标职业检查缺口";
         };
         return action + "：“" + title + "”，生成" + ("ONE_LEVEL".equals(depth) ? "一层候选" : "完整发展分支");
+    }
+
+    /** An update, move or delete that would change a locked node (a delete also covers everything below it). */
+    private boolean touchesLockedNode(CanvasGraph graph, ProposalItemRow item) {
+        if (!Set.of("UPDATE", "MOVE", "DELETE").contains(item.operation()) || item.targetNodeId() == null) return false;
+        GraphNode target = graph.nodes().get(item.targetNodeId());
+        if (target == null) return false;
+        if (target.locked()) return true;
+        return "DELETE".equals(item.operation()) && descendants(graph, target.logicalId()).stream()
+                .map(graph.nodes()::get).anyMatch(node -> node != null && node.locked());
     }
 
     private void applyItem(CanvasGraph graph, ProposalItemRow item, Map<String, String> addedIds) {

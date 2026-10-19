@@ -282,7 +282,11 @@ export type CareerCanvasSummary = {
   title: string
   status: 'ACTIVE' | 'PAUSED' | string
   primary: boolean
+  /** Share of skills, knowledge and tasks validated as mastered (0–100). */
   overallProgress: number
+  masteredCount: number
+  learningCount: number
+  learnableCount: number
   nodeCount: number
   domainCount: number
   pendingValidationCount: number
@@ -297,9 +301,19 @@ export type CareerCanvasSummary = {
   updatedAt: string
 }
 
+export type CareerExplorationDraft = {
+  sessionId: string
+  phase: string
+  entryMode: 'AI_DISCOVERY' | 'KNOWN_TARGET'
+  createdAt: string
+  updatedAt: string
+}
+
 export type CareerCanvasDashboard = {
   stats: CareerCanvasStats
   items: CareerCanvasSummary[]
+  /** Explorations that never reached a confirmed goal. */
+  drafts: CareerExplorationDraft[]
 }
 
 export type ConfirmationToken = {

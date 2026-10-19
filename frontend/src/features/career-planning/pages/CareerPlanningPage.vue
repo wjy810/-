@@ -2,7 +2,7 @@
 import { computed, defineAsyncComponent, h, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
-  ArrowLeft, ArrowRight, Bookmark, Bot, BrainCircuit, BriefcaseBusiness, CalendarCheck2, Check, CheckCircle2,
+  ArrowLeft, ArrowRight, History, Bookmark, Bot, BrainCircuit, BriefcaseBusiness, CalendarCheck2, Check, CheckCircle2,
   ChevronRight, CircleAlert, Compass, Database, GitCompareArrows, Heart, Layers3, Link2,
   LoaderCircle, LockKeyhole, MessageCircle, Pencil, Save, Send, ShieldCheck, Sparkles, Target, Trash2, UserRound, X,
 } from 'lucide-vue-next'
@@ -160,6 +160,18 @@ const completedInterviewQuestions = computed(() => {
   }))
 })
 const activePermissions = computed(() => session.value?.permissions.filter(item => item.status === 'ACTIVE') ?? [])
+/** An exploration the user started and left before choosing a goal: offer it before a second one is begun. */
+const unfinishedSession = computed(() => {
+  const value = overview.value?.session
+  return !session.value && value && !isCareerExecutionPhase(value.phase) ? value : null
+})
+const UNFINISHED_PHASE_LABELS: Record<string, string> = {
+  PROFILE: '填写画像', EVIDENCE: '选择资料', INTERVIEW: 'AI 访谈', PROFILE_CONFIRMATION: '确认画像',
+  RECOMMENDATIONS: '选择方向', RECOMMENDATION_INSUFFICIENT: '补充信息',
+}
+function resumeUnfinished(): void {
+  if (unfinishedSession.value) void router.push({ name: 'career-planning-session', params: { sessionId: unfinishedSession.value.id } })
+}
 const quotaText = computed(() => overview.value ? `${overview.value.quota.remainingUnits} 次 AI 额度` : 'AI 额度')
 const recommendationSet = computed(() => session.value?.recommendationSet ?? null)
 const favoriteCount = computed(() => recommendationSet.value?.recommendations.filter(item => item.favorite).length ?? 0)
@@ -931,6 +943,11 @@ onBeforeUnmount(() => {
             <h1>先确定职业方向，再生成你的能力树</h1>
             <p>结合你确认的经历、技能与限制，给出 3–6 个可比较方向；最终选择始终由你确认。</p>
           </div>
+          <aside v-if="unfinishedSession" class="cp-unfinished" role="status">
+            <History :size="18" aria-hidden="true" />
+            <p><strong>你有一次没走完的规划</strong><span>停在「{{ UNFINISHED_PHASE_LABELS[unfinishedSession.phase] ?? '进行中' }}」，已填写的内容都还在。</span></p>
+            <button class="cp-primary" type="button" @click="resumeUnfinished">继续上次的<ArrowRight :size="16" aria-hidden="true" /></button>
+          </aside>
           <div class="cp-entry-grid">
             <article class="cp-entry cp-entry--primary">
               <header class="cp-entry__head">
@@ -950,9 +967,9 @@ onBeforeUnmount(() => {
             <article class="cp-entry cp-entry--known">
               <header class="cp-entry__head">
                 <span class="cp-entry__icon"><Target :size="24" aria-hidden="true" /></span>
-                <div><small>已有明确目标</small><h2>我已经确定目标职业</h2><p>直接进入目标确认与能力画布</p></div>
+                <div><small>已有明确目标</small><h2>我已经确定目标职业</h2><p>跳过访谈和推荐，直接建立能力画布</p></div>
               </header>
-              <p class="cp-entry__copy">从完整标准岗位库选择职业，AI 仍会检查已确认信息是否足够，不会替你改变目标。</p>
+              <p class="cp-entry__copy">从完整标准岗位库选择职业，系统直接以它为目标建立能力画布，并用资料库里的个人信息生成能力树，不会替你改变目标。</p>
               <div class="cp-known-checks"><p><Check :size="15" aria-hidden="true" />使用标准岗位分类</p><p><Check :size="15" aria-hidden="true" />创建独立能力画布</p></div>
               <div class="cp-known-target-action">
                 <Transition name="cp-target" mode="out-in">

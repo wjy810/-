@@ -41,6 +41,7 @@ import com.jobproof.modules.careerplanning.domain.CareerPlanningModels.ConfirmGo
 import com.jobproof.modules.careerplanning.domain.CareerPlanningModels.ConfirmProfileCommand;
 import com.jobproof.modules.careerplanning.domain.CareerPlanningModels.ConfirmationTokenCommand;
 import com.jobproof.modules.careerplanning.domain.CareerPlanningModels.ConfirmationTokenView;
+import com.jobproof.modules.careerplanning.domain.CareerPlanningModels.CareerExplorationDraft;
 import com.jobproof.modules.careerplanning.domain.CareerPlanningModels.CreateCareerCanvasCommand;
 import com.jobproof.modules.careerplanning.domain.CareerPlanningModels.EvidenceAuthorizationCommand;
 import com.jobproof.modules.careerplanning.domain.CareerPlanningModels.EvidenceOption;
@@ -204,7 +205,41 @@ public class CareerPlanningService {
                 .filter(item -> keyword == null || item.title().toLowerCase(Locale.ROOT)
                         .contains(keyword.toLowerCase(Locale.ROOT)) || nodeMatchedSessions.contains(item.sessionId()))
                 .sorted(comparator).toList();
-        return new CareerCanvasDashboard(stats, items);
+        List<CareerExplorationDraft> drafts = jdbc.query(
+                "SELECT id,phase_code,entry_mode,created_at,updated_at FROM career_planning_sessions WHERE account_id=? "
+                        + "AND current_goal_id IS NULL AND status='ACTIVE' AND archived_at IS NULL ORDER BY updated_at DESC LIMIT 10",
+                (rs, rowNum) -> new CareerExplorationDraft(rs.getString("id"), rs.getString("phase_code"),
+                        rs.getString("entry_mode"), rs.getTimestamp("created_at").toInstant(),
+                        rs.getTimestamp("updated_at").toInstant()),
+                current.accountId());
+        return new CareerCanvasDashboard(stats, items, drafts);
+    }
+
+    /**
+     * Removes a canvas or an unfinished exploration from the user's lists. History stays for audit and data export;
+     * when the primary canvas goes, the most recently used remaining one takes its place.
+     */
+    @Transactional
+    public CareerCanvasDashboard archive(CurrentAccount current, String sessionId) {
+        assertEnabled();
+        assertUser(current);
+        SessionRow session = requireSession(current.accountId(), sessionId);
+        if ("ARCHIVED".equals(session.status())) throw AppException.user("CP_SESSION_NOT_FOUND", "职业规划不存在");
+        Instant now = clock.now();
+        jdbc.update("UPDATE career_planning_sessions SET status='ARCHIVED',archived_at=?,is_primary=0,version_no=version_no+1,updated_at=? WHERE id=? AND account_id=?",
+                now, now, sessionId, current.accountId());
+        jdbc.update("UPDATE career_goals SET status='ARCHIVED',archived_at=?,updated_at=?,version_no=version_no+1 WHERE session_id=? AND account_id=? AND status='ACTIVE'",
+                now, now, sessionId, current.accountId());
+        jdbc.update("UPDATE career_learning_plans SET status='ARCHIVED',archived_at=?,updated_at=?,version_no=version_no+1 WHERE account_id=? AND status IN ('DRAFT','ACTIVE','PAUSED') AND goal_id IN (SELECT id FROM career_goals WHERE session_id=? AND account_id=?)",
+                now, now, current.accountId(), sessionId, current.accountId());
+        if (session.primary()) {
+            jdbc.query("SELECT id FROM career_planning_sessions WHERE account_id=? AND current_goal_id IS NOT NULL AND archived_at IS NULL AND status<>'ARCHIVED' ORDER BY updated_at DESC LIMIT 1",
+                    (rs, rowNum) -> rs.getString("id"), current.accountId()).stream().findFirst()
+                    .ifPresent(next -> jdbc.update("UPDATE career_planning_sessions SET is_primary=1 WHERE id=? AND account_id=?", next, current.accountId()));
+        }
+        audit.append(current.accountId(), "CAREER_PLANNING_SESSION_ARCHIVED", "CAREER_PLANNING_SESSION", sessionId,
+                session.goalId() == null ? "draft=true" : "draft=false");
+        return dashboard(current, null, "ALL", "RECENT");
     }
 
     @Transactional
@@ -285,7 +320,8 @@ public class CareerPlanningService {
         if (command == null) throw AppException.user("CP_ENTRY_REQUIRED", "请选择职业规划入口");
         String entryMode = enumValue(command.entryMode(), ENTRY_MODES, "CP_ENTRY_INVALID", "职业规划入口无效");
         String objectiveId = clean(command.objectiveTaxonomyId());
-        if ("KNOWN_TARGET".equals(entryMode)) requireTaxonomyJob(objectiveId);
+        // "我已确定目标职业" means exactly that: no interview, no recommendations, straight to that goal's canvas.
+        if ("KNOWN_TARGET".equals(entryMode)) return createCanvas(current, new CreateCareerCanvasCommand(objectiveId, command.aiConsent()));
 
         ProfileView sourceProfile = careerLibrary.profile(current);
         Instant now = clock.now();
@@ -935,7 +971,8 @@ public class CareerPlanningService {
         CanvasGraphNode existing = requireGraphNode(graph, logicalNodeId);
         String title = command.title() == null ? existing.title() : validateNodeTitle(command.title());
         String status = command.status() == null ? existing.status() : editableStatus(command.status(), false);
-        JsonNode detail = command.detail() == null ? existing.detail() : objectOrEmpty(command.detail()).deepCopy();
+        // Only the fields sent change: an edit form that knows nothing of AI-written fields must not erase them.
+        JsonNode detail = command.detail() == null ? existing.detail() : mergedDetail(existing.detail(), command.detail());
         if (detail.toString().length() > 24_000) {
             throw AppException.user("CP_CANVAS_NODE_DETAIL_TOO_LONG", "节点内容不能超过 24000 字符");
         }
@@ -981,31 +1018,47 @@ public class CareerPlanningService {
         List<String> nodeIds = command == null || command.nodeIds() == null ? List.of()
                 : command.nodeIds().stream().map(CareerPlanningService::clean)
                         .filter(java.util.Objects::nonNull).distinct().toList();
-        if (nodeIds.size() < 2 || nodeIds.size() > 100) {
+        boolean resetLayout = Boolean.TRUE.equals(command == null ? null : command.resetLayout());
+        if (nodeIds.isEmpty() || nodeIds.size() > 100 || (nodeIds.size() < 2 && !resetLayout)) {
             throw AppException.user("CP_CANVAS_BATCH_ITEMS_INVALID", "批量操作请选择 2 至 100 个能力节点");
         }
-        if (command.status() == null && command.locked() == null) {
+        if (command.status() == null && command.locked() == null && !resetLayout) {
             throw AppException.user("CP_CANVAS_BATCH_CHANGE_REQUIRED", "请选择要批量调整的状态或锁定设置");
         }
         CanvasGraph graph = canvasGraphForUpdate(current.accountId(), session.goalId(), command.expectedVersion());
         String status = command.status() == null ? null : editableStatus(command.status(), false);
         List<CanvasGraphNode> nodes = nodeIds.stream().map(id -> requireGraphNode(graph, id)).toList();
-        if (nodes.stream().anyMatch(node -> "CAREER".equals(node.type()))) {
+        if (!resetLayout && nodes.stream().anyMatch(node -> "CAREER".equals(node.type()))) {
             throw AppException.user("CP_CANVAS_ROOT_BATCH_FORBIDDEN", "职业根节点不能参与批量编辑");
         }
         for (CanvasGraphNode existing : nodes) {
+            JsonNode detail = existing.detail();
+            if (resetLayout && detail instanceof ObjectNode object && object.has("layoutPinned")) {
+                detail = object.deepCopy();
+                ((ObjectNode) detail).remove("layoutPinned");
+            }
             graph.nodes().put(existing.logicalId(), new CanvasGraphNode(existing.logicalId(), existing.type(),
-                    status == null ? existing.status() : status, existing.title(), existing.detail(),
+                    status == null || "CAREER".equals(existing.type()) ? existing.status() : status, existing.title(), detail,
                     existing.sourceRefs(), existing.x(), existing.y(),
-                    command.locked() == null ? existing.locked() : command.locked(), existing.sortOrder()));
+                    command.locked() == null || "CAREER".equals(existing.type()) ? existing.locked() : command.locked(),
+                    existing.sortOrder()));
         }
         CanvasView saved = persistGraph(current.accountId(), session.goalId(), graph,
-                "USER_NODES_BATCH_UPDATED", "批量更新 " + nodes.size() + " 个节点", "USER",
+                "USER_NODES_BATCH_UPDATED", resetLayout && status == null && command.locked() == null
+                        ? "自动整理 " + nodes.size() + " 个节点的位置" : "批量更新 " + nodes.size() + " 个节点", "USER",
                 null, null, null, null);
         audit.append(current.accountId(), "CAREER_CANVAS_NODES_BATCH_UPDATED", "CAREER_CANVAS",
                 session.goalId(), "version=" + saved.version() + " nodes=" + nodes.size());
         appendCanvasEvent(current.accountId(), sessionId, "canvas.updated", saved);
         return saved;
+    }
+
+    /** Shallow merge: keys in {@code patch} replace the node's, the rest stay. */
+    private JsonNode mergedDetail(JsonNode existing, JsonNode patch) {
+        ObjectNode merged = existing instanceof ObjectNode object ? object.deepCopy() : mapper.createObjectNode();
+        JsonNode update = objectOrEmpty(patch);
+        update.fields().forEachRemaining(entry -> merged.set(entry.getKey(), entry.getValue().deepCopy()));
+        return merged;
     }
 
     @Transactional
@@ -1021,6 +1074,11 @@ public class CareerPlanningService {
             throw AppException.user("CP_CANVAS_ROOT_DELETE_FORBIDDEN", "职业根节点不能删除");
         }
         Set<String> descendants = descendants(graph, logicalNodeId);
+        if (existing.locked() || descendants.stream().map(graph.nodes()::get)
+                .anyMatch(node -> node != null && node.locked())) {
+            throw AppException.conflict("CP_CANVAS_NODE_LOCKED", existing.locked()
+                    ? "节点已锁定，解锁后才能删除" : "下级节点中有已锁定的节点，解锁后才能删除");
+        }
         if (!descendants.isEmpty() && (command == null || !command.cascade())) {
             throw AppException.conflict("CP_CANVAS_NODE_HAS_CHILDREN",
                     "节点包含 " + descendants.size() + " 个下级节点，请确认级联删除或先迁移下级节点");
@@ -1961,14 +2019,13 @@ public class CareerPlanningService {
         CanvasView current = canvas(session.accountId(), session.goalId());
         List<CanvasNodeView> abilityNodes = current == null ? List.of() : current.nodes().stream()
                 .filter(node -> !"CAREER".equals(node.type())).toList();
-        int progress = abilityNodes.isEmpty() ? 0 : (int) Math.round(abilityNodes.stream()
-                .mapToInt(node -> switch (node.status()) {
-                    case "MASTERED" -> 100;
-                    case "PENDING_VALIDATION" -> 82;
-                    case "LEARNING" -> 58;
-                    case "PLANNED", "PAUSED" -> 28;
-                    default -> 0;
-                }).average().orElse(0));
+        // Progress is what was actually mastered: the share of skills, knowledge and tasks validated as 已掌握.
+        // "学习中" or "待验证" earn nothing yet; their counts are shown next to it instead of being folded in.
+        List<CanvasNodeView> learnable = abilityNodes.stream()
+                .filter(node -> Set.of("SKILL", "KNOWLEDGE", "TASK").contains(node.type())).toList();
+        int mastered = (int) learnable.stream().filter(node -> "MASTERED".equals(node.status())).count();
+        int learning = (int) learnable.stream().filter(node -> "LEARNING".equals(node.status())).count();
+        int progress = learnable.isEmpty() ? 0 : (int) Math.round(mastered * 100d / learnable.size());
         int pendingNodes = (int) abilityNodes.stream()
                 .filter(node -> "PENDING_VALIDATION".equals(node.status())).count();
         int pendingValidations = count("SELECT COUNT(*) FROM career_ability_validations WHERE session_id=? "
@@ -2000,7 +2057,7 @@ public class CareerPlanningService {
                 .filter(value -> value != null && !value.isBlank()).distinct().toList();
         int domainCount = (int) abilityNodes.stream().filter(node -> "DOMAIN".equals(node.type())).count();
         return new CareerCanvasSummary(session.id(), goal.id(), goal.title(), session.status(),
-                session.primary(), progress, abilityNodes.size(), domainCount,
+                session.primary(), progress, mastered, learning, learnable.size(), abilityNodes.size(), domainCount,
                 Math.max(pendingNodes, pendingValidations), current == null ? 0 : current.version(),
                 plan == null ? "NOT_CREATED" : plan.status(), currentWeek,
                 plan == null ? null : plan.durationWeeks(), planRevision, currentFocus,

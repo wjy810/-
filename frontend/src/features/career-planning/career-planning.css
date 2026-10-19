@@ -82,3 +82,14 @@
 .cp-consent-hint { margin:8px 0 0; display:flex; align-items:center; gap:6px; color:var(--text-secondary); font-size:12px; line-height:1.5; }
 .cp-consent-hint > svg { flex:0 0 auto; color:var(--color-warning-text); }
 .cp-target-setup > .cp-consent-hint { grid-column:1 / -1; margin:0; }
+
+/* 继续上次没走完的规划 */
+.cp-unfinished { width: min(760px, 100%); margin: 0 auto 18px; padding: 12px 14px; display: flex; align-items: center; gap: 12px; border: 1px solid var(--color-primary-border); border-radius: 8px; background: var(--color-primary-soft); color: var(--color-primary); }
+.cp-unfinished p { min-width: 0; flex: 1; display: grid; gap: 2px; margin: 0; }
+.cp-unfinished strong { color: var(--text-primary); font-size: 14px; }
+.cp-unfinished span { color: var(--text-secondary); font-size: 13px; }
+.cp-unfinished .cp-primary { height: 40px; padding: 0 14px; white-space: nowrap; }
+@media (max-width: 640px) {
+  .cp-unfinished { flex-wrap: wrap; }
+  .cp-unfinished .cp-primary { width: 100%; }
+}

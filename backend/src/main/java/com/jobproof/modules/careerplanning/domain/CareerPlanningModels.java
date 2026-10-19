@@ -47,7 +47,8 @@ public final class CareerPlanningModels {
     public record CanvasNodeUpdateCommand(String title, String status, String parentNodeId,
             JsonNode detail, List<String> sourceRefs, Boolean locked, Integer x, Integer y,
             Integer expectedVersion) {}
-    public record CanvasNodeBatchUpdateCommand(List<String> nodeIds, String status, Boolean locked,
+    /** {@code resetLayout}: forget the positions the user dragged these nodes to and lay them out automatically. */
+    public record CanvasNodeBatchUpdateCommand(List<String> nodeIds, String status, Boolean locked, Boolean resetLayout,
             Integer expectedVersion) {}
     public record CanvasNodeDeleteCommand(boolean cascade, Integer expectedVersion) {}
     public record CanvasSplitItem(String type, String title, String status, JsonNode detail,
@@ -114,11 +115,16 @@ public final class CareerPlanningModels {
     public record CareerCanvasStats(int canvasCount, int primaryCount, int abilityNodeCount,
             int pendingValidationCount, int versionCount) {}
     public record CareerCanvasSummary(String sessionId, String goalId, String title, String status,
-            boolean primary, int overallProgress, int nodeCount, int domainCount,
+            boolean primary, int overallProgress, int masteredCount, int learningCount, int learnableCount,
+            int nodeCount, int domainCount,
             int pendingValidationCount, int canvasVersion, String planStatus,
             Integer currentWeek, Integer durationWeeks, int planRevision,
             String currentFocus, List<String> recentChanges, Instant createdAt, Instant updatedAt) {}
-    public record CareerCanvasDashboard(CareerCanvasStats stats, List<CareerCanvasSummary> items) {}
+    /** {@code drafts}: explorations that never reached a confirmed goal, newest first, so the user can resume one. */
+    public record CareerCanvasDashboard(CareerCanvasStats stats, List<CareerCanvasSummary> items,
+            List<CareerExplorationDraft> drafts) {}
+    public record CareerExplorationDraft(String sessionId, String phase, String entryMode, Instant createdAt,
+            Instant updatedAt) {}
     public record ConfirmationTokenView(String setId, String recommendationId, String token,
             Instant expiresAt) {}
 }

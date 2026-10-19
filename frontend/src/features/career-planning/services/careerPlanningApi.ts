@@ -38,6 +38,9 @@ export const createCareerCanvas = (taxonomyNodeId: string, aiConsent = true) =>
   api<CareerPlanningSession>(`${ROOT}/canvases`, {
     method: 'POST', body: JSON.stringify({ taxonomyNodeId, aiConsent }),
   })
+/** Removes a canvas or an unfinished exploration from the lists; returns the refreshed overview. */
+export const archiveCareerPlanningSession = (sessionId: string) =>
+  api<CareerCanvasDashboard>(`${ROOT}/sessions/${id(sessionId)}`, { method: 'DELETE' })
 export const makeCareerCanvasPrimary = (sessionId: string) =>
   api<CareerCanvasDashboard>(`${ROOT}/canvases/${id(sessionId)}/primary`, { method: 'PUT' })
 export const fetchCareerPlanningSession = (sessionId: string) =>
@@ -129,7 +132,7 @@ export const updateCareerCanvasNode = (sessionId: string, nodeId: string, comman
 
 export const updateCareerCanvasNodes = (
   sessionId: string,
-  command: { nodeIds: string[]; status?: string; locked?: boolean; expectedVersion: number },
+  command: { nodeIds: string[]; status?: string; locked?: boolean; resetLayout?: boolean; expectedVersion: number },
 ) => api<CareerCanvas>(`${ROOT}/sessions/${id(sessionId)}/canvas/nodes`, {
   method: 'PATCH', body: JSON.stringify(command),
 })
