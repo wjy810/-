@@ -336,6 +336,84 @@ class CareerLibraryIT {
                 .andExpect(jsonPath("$.data.description").value(org.hamcrest.Matchers.containsString("稳定的数据分析交付")));
     }
 
+    @Test
+    void anAiSuggestionWrittenForOldTextNeverOverwritesALaterEdit() throws Exception {
+        String email = "career-ai-stale+" + System.nanoTime() + "@example.com";
+        MockCookie owner = registerAndLogin(email);
+        String accountId = jdbc.queryForObject("SELECT id FROM accounts WHERE email=?", String.class, email);
+        Instant now = Instant.now();
+        jdbc.update("INSERT INTO ai_user_consents(id,account_id,consent_type,policy_version,status,granted_at,revoked_at,updated_at) VALUES(?,?,'AI_RESUME_WORKBENCH','v1','GRANTED',?,NULL,?)",
+                UUID.randomUUID().toString(), accountId, now, now);
+        when(aiGatewayService.execute(anyString(), any())).thenReturn(new Response("response-2", "channel-1",
+                "qwen-plus", """
+                {"description":"• 清洗用户行为数据并维护分析报表，形成稳定的数据分析交付。","coreOutcome":"完成周报交付","reason":"重组已有事实","sourceQuotes":["负责清洗用户行为数据并维护分析报表"]}
+                """, new Usage(40, 80, 120), null));
+        String recordId = data(mockMvc.perform(post("/api/v1/career-library/records").cookie(owner)
+                        .contentType(MediaType.APPLICATION_JSON).content("""
+                        {"type":"EXPERIENCE","title":"数据分析实习","organization":"示例科技公司",
+                         "description":"负责清洗用户行为数据并维护分析报表","coreOutcome":"完成周报交付"}
+                        """))
+                .andExpect(status().isOk()).andReturn()).path("id").asText();
+        String first = data(mockMvc.perform(post("/api/v1/career-library/records/{id}/ai-candidates", recordId)
+                        .cookie(owner).contentType(MediaType.APPLICATION_JSON).content("{\"clientRequestId\":\"stale-1\"}"))
+                .andExpect(status().isOk()).andReturn()).path("id").asText();
+
+        // The user edits the record themselves: the waiting suggestion was written for the old text.
+        String edited = "负责清洗用户行为数据，并独立搭建了周报看板";
+        mockMvc.perform(put("/api/v1/career-library/records/{id}", recordId).cookie(owner)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"description\":\"" + edited + "\",\"expectedVersion\":0}"))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/api/v1/career-library/records/{id}/ai-candidates", recordId).cookie(owner))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(0));
+        mockMvc.perform(get("/api/v1/career-library/records/{id}/ai-candidates", recordId).cookie(owner).param("status", "STALE"))
+                .andExpect(jsonPath("$.data[0].id").value(first));
+        mockMvc.perform(post("/api/v1/career-library/records/ai-candidates/{id}/accept", first).cookie(owner)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"expectedCandidateVersion\":0,\"expectedRecordVersion\":1}"))
+                .andExpect(status().isConflict());
+        mockMvc.perform(get("/api/v1/career-library/records/{id}", recordId).cookie(owner))
+                .andExpect(jsonPath("$.data.description").value(edited));
+
+        // Even a suggestion that slipped past (text changed some other way) is refused, not applied.
+        jdbc.update("UPDATE career_library_records SET description_text=? WHERE id=?", "负责清洗用户行为数据并维护分析报表", recordId);
+        String second = data(mockMvc.perform(post("/api/v1/career-library/records/{id}/ai-candidates", recordId)
+                        .cookie(owner).contentType(MediaType.APPLICATION_JSON).content("{\"clientRequestId\":\"stale-2\"}"))
+                .andExpect(status().isOk()).andReturn()).path("id").asText();
+        jdbc.update("UPDATE career_library_records SET description_text=? WHERE id=?", "另一个页面改写的内容", recordId);
+        int recordVersion = data(mockMvc.perform(get("/api/v1/career-library/records/{id}", recordId).cookie(owner)).andReturn())
+                .path("version").asInt();
+        mockMvc.perform(post("/api/v1/career-library/records/ai-candidates/{id}/accept", second).cookie(owner)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"expectedCandidateVersion\":0,\"expectedRecordVersion\":" + recordVersion + "}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.reason").value("CAREER_AI_CANDIDATE_STALE"));
+        mockMvc.perform(get("/api/v1/career-library/records/{id}", recordId).cookie(owner))
+                .andExpect(jsonPath("$.data.description").value("另一个页面改写的内容"));
+        mockMvc.perform(get("/api/v1/career-library/records/{id}/ai-candidates", recordId).cookie(owner))
+                .andExpect(jsonPath("$.data.length()").value(0));
+    }
+
+    @Test
+    void savingTheProfileKeepsFieldsAnotherPageWrote() throws Exception {
+        MockCookie owner = registerAndLogin("career-profile-merge+" + System.nanoTime() + "@example.com");
+        int version = data(mockMvc.perform(get("/api/v1/career-library/profile").cookie(owner)).andReturn()).path("version").asInt();
+        // Onboarding writes the graduation date and major…
+        version = data(mockMvc.perform(put("/api/v1/career-library/profile").cookie(owner).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"basics\":{},\"intentions\":{\"targetJob\":\"数据分析\"},\"preferences\":{\"targetCity\":\"杭州\",\"graduationDate\":\"2026-06\",\"major\":\"统计学\"},\"expectedVersion\":" + version + "}"))
+                .andExpect(status().isOk()).andReturn()).path("version").asInt();
+        // …and the library's form, which knows nothing about them, saves city and work mode.
+        JsonNode saved = data(mockMvc.perform(put("/api/v1/career-library/profile").cookie(owner).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"basics\":{\"name\":\"林同学\"},\"intentions\":{\"targetJob\":\"数据分析师\",\"taxonomyNodeId\":\"job-1\"},\"preferences\":{\"targetCity\":\"上海\",\"workMode\":\"HYBRID\"},\"summary\":\"\",\"expectedVersion\":" + version + "}"))
+                .andExpect(status().isOk()).andReturn());
+        assertThat(saved.path("preferences").path("graduationDate").asText()).isEqualTo("2026-06");
+        assertThat(saved.path("preferences").path("major").asText()).isEqualTo("统计学");
+        assertThat(saved.path("preferences").path("targetCity").asText()).isEqualTo("上海");
+        assertThat(saved.path("intentions").path("targetJob").asText()).isEqualTo("数据分析师");
+        assertThat(saved.path("basics").path("name").asText()).isEqualTo("林同学");
+    }
+
     private MockCookie registerAndLogin(String email) throws Exception {
         String body = "{\"email\":\"" + email + "\",\"password\":\"Passw0rd!\"}";
         mockMvc.perform(post("/api/v1/auth/register").contentType(MediaType.APPLICATION_JSON).content(body))

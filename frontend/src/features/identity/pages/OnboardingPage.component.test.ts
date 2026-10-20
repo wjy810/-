@@ -5,6 +5,9 @@ import type { CareerProfile } from '@/features/career-library/types'
 const api = vi.hoisted(() => ({ fetchCareerProfile: vi.fn(), saveCareerProfile: vi.fn() }))
 const router = vi.hoisted(() => ({ push: vi.fn() }))
 vi.mock('@/features/career-library/services/careerLibraryApi', () => api)
+vi.mock('@/features/ai-resume/services/aiResumeApi', () => ({
+  listJobTaxonomy: vi.fn(async () => [{ id: 'cat-data', level: 'CATEGORY', displayName: '数据与分析' }]),
+}))
 vi.mock('vue-sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn(), dismiss: vi.fn() },
   Toaster: { template: '<div />' },
@@ -34,6 +37,11 @@ function profile(overrides: Partial<CareerProfile> = {}): CareerProfile {
 
 const stubs = {
   RouterLink: { props: ['to'], template: '<a :href="to"><slot /></a>' },
+  JobTaxonomyPicker: {
+    props: ['selectedName'],
+    emits: ['select'],
+    template: `<button type="button" class="job-picker" @click="$emit('select', { job: { id: 'job-ba', displayName: '商业分析', catalogOccupationCode: '2-02' }, categoryId: 'cat-data', groupId: 'grp-1' })">{{ selectedName || '选择岗位' }}</button>`,
+  },
   UiIllustration: true,
   UiSelect: {
     props: ['modelValue', 'options'],
@@ -75,13 +83,17 @@ describe('OnboardingPage', () => {
     await flushPromises()
 
     expect((wrapper.get('select').element as HTMLSelectElement).value).toBe('REMOTE')
+    // The target job comes from the shared catalogue, with its category, not as free text.
+    await wrapper.get('.job-picker').trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('岗位分类：数据与分析')
     await wrapper.get('form').trigger('submit')
     await flushPromises()
 
     expect(api.saveCareerProfile).toHaveBeenCalledTimes(1)
     expect(api.saveCareerProfile.mock.calls[0][0]).toMatchObject({
       version: 3,
-      intentions: { targetJob: '数据分析' },
+      intentions: { targetJob: '商业分析', jobCategory: '数据与分析', taxonomyNodeId: 'job-ba', taxonomyCategoryId: 'cat-data', taxonomyGroupId: 'grp-1' },
       preferences: { targetCity: '杭州', workMode: 'REMOTE' },
     })
     expect(wrapper.text()).toContain('补充基础信息')

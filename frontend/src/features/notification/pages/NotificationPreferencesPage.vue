@@ -75,7 +75,7 @@ onMounted(page.load)
               <p>只发你在下面打开的几类消息；每条消息最多发一封，邮件底部可以随时回到这里关闭。</p>
             </template>
           </div>
-          <UiButton v-if="prefs.emailAvailable && !prefs.emailAddress" size="sm" variant="secondary" to="/account">去绑定邮箱</UiButton>
+          <UiButton v-if="prefs.emailAvailable && !prefs.emailAddress" size="sm" variant="secondary" to="/account?bind=email" data-testid="bind-email">去绑定邮箱</UiButton>
         </section>
 
         <section class="settings-card prefs" aria-labelledby="prefs-title">
@@ -110,7 +110,7 @@ onMounted(page.load)
               </div>
             </li>
           </ul>
-          <p class="prefs__locked"><ShieldCheck :size="14" />账号安全、数据导出与删除、AI 任务结果的通知会一直显示在通知中心，不能关闭。</p>
+          <p class="prefs__locked"><ShieldCheck :size="14" />账号安全通知（改密码、新设备登录、更换联系方式等）不能关闭：会一直显示在通知中心，有已验证的邮箱时也会发邮件。数据导出与删除、AI 任务结果的通知会一直显示在通知中心。</p>
         </section>
 
         <p class="prefs__hint"><Info :size="14" />关掉“通知中心”后，这类消息不会再出现在铃铛里；已经收到的消息不受影响。</p>

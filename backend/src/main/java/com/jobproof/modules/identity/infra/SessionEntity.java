@@ -31,6 +31,29 @@ public class SessionEntity {
     @Column(name = "last_seen_at", nullable = false)
     private Instant lastSeenAt;
 
+    /** "Windows · Chrome": the kind of device it was signed in from (see LoginClient). */
+    @Column(name = "client_label")
+    private String clientLabel;
+
+    @Column(name = "client_hash")
+    private String clientHash;
+
+    public String getClientLabel() {
+        return clientLabel;
+    }
+
+    public void setClientLabel(String clientLabel) {
+        this.clientLabel = clientLabel;
+    }
+
+    public String getClientHash() {
+        return clientHash;
+    }
+
+    public void setClientHash(String clientHash) {
+        this.clientHash = clientHash;
+    }
+
     public String getId() {
         return id;
     }

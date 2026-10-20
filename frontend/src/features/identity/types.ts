@@ -7,6 +7,9 @@ export type AccountView = {
   status: string
   role: string
   createdAt?: string
+  /** False for an address or number that was never confirmed with a code (older accounts). */
+  emailVerified?: boolean
+  phoneVerified?: boolean
 }
 
 export type DevMailbox = {
@@ -18,6 +21,8 @@ export type DevMailbox = {
 export type SessionView = {
   id: string
   current: boolean
+  /** "Windows · Chrome"; missing for sessions signed in before devices were recorded. */
+  clientLabel?: string | null
   createdAt: string
   lastSeenAt: string
   expiresAt: string

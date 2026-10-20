@@ -22,8 +22,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * 通知偏好 (docs/phase2/03): per kind of notice, whether it shows in the notification center and whether
- * it is emailed. Only the kinds a user can reasonably do without are tunable; security, data rights and
- * task notices always show and are never emailed. Email goes only to a verified address.
+ * it is emailed. Only the kinds a user can reasonably do without are tunable. Security notices always show and
+ * are always emailed; data rights and task notices always show and are never emailed. Email goes only to a
+ * verified address.
  */
 @Service
 public class NotificationPreferences implements DeletionModuleHandler, AccountExportContributor {
@@ -31,6 +32,8 @@ public class NotificationPreferences implements DeletionModuleHandler, AccountEx
     /** The tunable kinds, in display order, with their defaults. */
     static final Map<NotificationType, Preference> DEFAULTS;
     private static final Preference FIXED = new Preference(true, false);
+    /** 账号安全 cannot be turned off, and is emailed too: a changed password must reach the owner wherever they are. */
+    private static final Preference SECURITY = new Preference(true, true);
 
     static {
         Map<NotificationType, Preference> defaults = new LinkedHashMap<>();
@@ -57,6 +60,7 @@ public class NotificationPreferences implements DeletionModuleHandler, AccountEx
 
     /** What applies to one notice; untunable kinds get the fixed rule. */
     public Preference of(String accountId, NotificationType type) {
+        if (type == NotificationType.SECURITY) return SECURITY;
         Preference fallback = DEFAULTS.get(type);
         if (fallback == null) return FIXED;
         return jdbc.query("SELECT in_app,email FROM notification_preferences WHERE account_id=? AND type=?",

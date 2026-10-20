@@ -70,7 +70,7 @@ describe('notification preferences', () => {
     const wrapper = mount(NotificationPreferencesPage)
     await flushPromises()
     expect(wrapper.get('.mailbox').text()).toContain('还没有可接收提醒的邮箱')
-    expect(wrapper.get('.mailbox a').attributes('data-to')).toBe('/account')
+    expect(wrapper.get('.mailbox a').attributes('data-to')).toBe('/account?bind=email')
     const email = wrapper.findAllComponents(UiSwitch).filter((_, index) => index % 2 === 1)
     expect(email.every(item => item.props('disabled') && item.props('modelValue') === false)).toBe(true)
   })

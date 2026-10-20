@@ -39,3 +39,13 @@ export function validateCode(code: string): string | null {
   }
   return null
 }
+
+/** A mainland China mobile number as +86XXXXXXXXXXX, from the ways people type it. */
+export function normalizePhone(raw: string): { value: string; error: string | null } {
+  let value = raw.trim().replace(/[\s()-]/g, '')
+  if (value.startsWith('0086')) value = value.slice(4)
+  else if (value.startsWith('+86')) value = value.slice(3)
+  else if (value.startsWith('86') && value.length === 13) value = value.slice(2)
+  if (!/^1[3-9]\d{9}$/.test(value)) return { value, error: '请输入正确的中国大陆手机号' }
+  return { value: `+86${value}`, error: null }
+}

@@ -68,7 +68,8 @@ public class AuthController {
                 request.verificationToken(),
                 request.password(),
                 request.acceptedTerms(),
-                request.acceptedPrivacy());
+                request.acceptedPrivacy(),
+                servletRequest.getHeader("User-Agent"));
         writeSessionCookie(servletRequest, response, result, true);
         return ApiResponse.ok(result.account());
     }
@@ -81,7 +82,8 @@ public class AuthController {
         if (identifier == null || identifier.isBlank()) {
             throw com.jobproof.shared.error.AppException.user("IDENTIFIER_REQUIRED", "请输入邮箱或手机号");
         }
-        LoginResult result = identityService.login(identifier, request.password(), servletRequest.getRemoteAddr());
+        LoginResult result = identityService.login(identifier, request.password(), servletRequest.getRemoteAddr(),
+                servletRequest.getHeader("User-Agent"));
         writeSessionCookie(servletRequest, response, result, !Boolean.FALSE.equals(request.rememberMe()));
         return ApiResponse.ok(result.account());
     }
@@ -138,6 +140,13 @@ public class AuthController {
     public ApiResponse<AccountView> me() {
         CurrentAccount current = SecurityConfig.currentAccount();
         return ApiResponse.ok(identityService.current(current));
+    }
+
+    /** 绑定或更换邮箱、手机号: a CHANGE_CONTACT verification for the new contact, plus the current password. */
+    @PostMapping("/auth/contacts")
+    public ApiResponse<AccountView> bindContact(@Valid @RequestBody BindContactRequest request) {
+        return ApiResponse.ok(identityService.bindContact(SecurityConfig.currentAccount(), request.channel(),
+                request.destination(), request.verificationToken(), request.currentPassword()));
     }
 
     @GetMapping("/auth/sessions")
@@ -198,6 +207,10 @@ public class AuthController {
     }
 
     public record LoginRequest(String identifier, String email, @NotBlank String password, Boolean rememberMe) {
+    }
+
+    public record BindContactRequest(@NotNull VerificationChannel channel, @NotBlank String destination,
+            @NotBlank String verificationToken, @NotBlank String currentPassword) {
     }
 
     public record ChangePasswordRequest(@NotBlank String currentPassword, @NotBlank String newPassword) {

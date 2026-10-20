@@ -14,6 +14,9 @@ import { useToastFeedback } from '@/shared/ui/toast'
 import { errorMessage } from '@/shared/api/types'
 import { fetchCareerProfile, saveCareerProfile } from '@/features/career-library/services/careerLibraryApi'
 import type { CareerProfile } from '@/features/career-library/types'
+import JobTaxonomyPicker from '@/features/ai-resume/components/JobTaxonomyPicker.vue'
+import { listJobTaxonomy } from '@/features/ai-resume/services/aiResumeApi'
+import type { JobTaxonomySelection } from '@/features/ai-resume/types'
 
 const router = useRouter()
 const steps = [
@@ -28,6 +31,8 @@ const notice = ref('')
 useToastFeedback(notice, 'success', 'onboarding-page-notice')
 
 const direction = reactive({ targetJob: '', city: '', workMode: '', graduationDate: '', major: '' })
+/** The job picked from the same catalogue the career library uses, so its category always matches. */
+const job = reactive({ taxonomyNodeId: '', taxonomyCategoryId: '', taxonomyGroupId: '', jobCategory: '' })
 const directionErrors = reactive({ targetJob: '', city: '', workMode: '' })
 const basics = reactive({ name: '', email: '', phone: '', location: '' })
 const basicsErrors = reactive({ email: '', phone: '' })
@@ -63,12 +68,31 @@ function hydrate(value: CareerProfile): void {
     graduationDate: text(value.preferences, 'graduationDate'),
     major: text(value.preferences, 'major'),
   })
+  Object.assign(job, {
+    taxonomyNodeId: text(value.intentions, 'taxonomyNodeId'),
+    taxonomyCategoryId: text(value.intentions, 'taxonomyCategoryId'),
+    taxonomyGroupId: text(value.intentions, 'taxonomyGroupId'),
+    jobCategory: text(value.intentions, 'jobCategory'),
+  })
   Object.assign(basics, {
     name: text(value.basics, 'name'),
     email: text(value.basics, 'email'),
     phone: text(value.basics, 'phone'),
     location: text(value.basics, 'location'),
   })
+}
+
+async function chooseJob(selection: JobTaxonomySelection): Promise<void> {
+  direction.targetJob = selection.job.displayName
+  directionErrors.targetJob = ''
+  Object.assign(job, {
+    taxonomyNodeId: selection.job.id, taxonomyCategoryId: selection.categoryId, taxonomyGroupId: selection.groupId,
+    jobCategory: selection.job.catalogOccupationCode || '通用其他',
+  })
+  try {
+    const categories = (await listJobTaxonomy()).filter(node => node.level === 'CATEGORY')
+    job.jobCategory = categories.find(node => node.id === selection.categoryId)?.displayName || job.jobCategory
+  } catch { /* the code above stands in for the category name */ }
 }
 
 function goTo(index: number): void {
@@ -93,7 +117,7 @@ async function save(patch: (current: CareerProfile) => CareerProfile, failure: s
 }
 
 function validateDirection(): boolean {
-  directionErrors.targetJob = direction.targetJob.trim() ? '' : '请填写目标岗位'
+  directionErrors.targetJob = direction.targetJob.trim() ? '' : '请选择目标岗位'
   directionErrors.city = direction.city.trim() ? '' : '请填写目标城市'
   directionErrors.workMode = direction.workMode ? '' : '请选择工作方式'
   return !directionErrors.targetJob && !directionErrors.city && !directionErrors.workMode
@@ -103,7 +127,11 @@ async function saveDirection(): Promise<void> {
   if (!validateDirection()) return
   const saved = await save(current => ({
     ...current,
-    intentions: { ...current.intentions, targetJob: direction.targetJob.trim() },
+    intentions: {
+      ...current.intentions,
+      targetJob: direction.targetJob.trim(), jobCategory: job.jobCategory, taxonomyNodeId: job.taxonomyNodeId,
+      taxonomyCategoryId: job.taxonomyCategoryId, taxonomyGroupId: job.taxonomyGroupId,
+    },
     preferences: {
       ...current.preferences,
       targetCity: direction.city.trim(), workMode: direction.workMode,
@@ -152,8 +180,8 @@ onMounted(() => void profileLoad.load())
           <form v-if="step === 0" novalidate @submit.prevent="saveDirection">
             <h1>先确定你的求职方向</h1>
             <p class="lead">只填写当前需要的信息，之后可以在求职资料库继续修改。</p>
-            <UiField v-slot="{ id }" label="目标岗位" required :error="directionErrors.targetJob" hint="可填写多个方向，便于生成更相关的简历内容">
-              <UiInput :id="id" v-model="direction.targetJob" placeholder="例如：数据分析 / 商业分析" maxlength="120" :disabled="saving" :invalid="!!directionErrors.targetJob" />
+            <UiField label="目标岗位" required :error="directionErrors.targetJob" :hint="job.jobCategory ? `岗位分类：${job.jobCategory}` : '从岗位库里选，资料库、简历和岗位匹配会用同一个分类'">
+              <JobTaxonomyPicker :selected-name="direction.targetJob" :selected-node-id="job.taxonomyNodeId" :disabled="saving" @select="chooseJob" />
             </UiField>
             <UiField v-slot="{ id }" label="目标城市" required :error="directionErrors.city">
               <UiInput :id="id" v-model="direction.city" placeholder="例如：杭州" maxlength="60" :disabled="saving" :invalid="!!directionErrors.city" />

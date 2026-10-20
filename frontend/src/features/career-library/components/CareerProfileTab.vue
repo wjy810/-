@@ -29,7 +29,8 @@ const emit = defineEmits<{
 
 const form = reactive({
   name: '', email: '', phone: '', location: '', links: '', targetJob: '', jobCategory: '',
-  taxonomyNodeId: '', taxonomyCategoryId: '', taxonomyGroupId: '', targetCity: '', workMode: '', summary: '',
+  taxonomyNodeId: '', taxonomyCategoryId: '', taxonomyGroupId: '', targetCity: '', workMode: '',
+  graduationDate: '', major: '', summary: '',
 })
 const privacyOpen = ref(false)
 const categoryNodes = ref<JobTaxonomyNode[]>([])
@@ -73,6 +74,7 @@ function hydrate(profile: CareerProfile): void {
     taxonomyCategoryId: read(profile.intentions, 'taxonomyCategoryId'),
     taxonomyGroupId: read(profile.intentions, 'taxonomyGroupId'),
     targetCity: read(profile.preferences, 'targetCity'), workMode: read(profile.preferences, 'workMode'),
+    graduationDate: read(profile.preferences, 'graduationDate'), major: read(profile.preferences, 'major'),
     summary: profile.summary || '',
   })
   baseline = JSON.stringify(form)
@@ -91,17 +93,23 @@ async function chooseJob(selection: JobTaxonomySelection): Promise<void> {
     || selection.job.catalogOccupationCode || '通用其他'
 }
 
+/** Fields other pages wrote (onboarding, imports) and this form does not show are carried along unchanged. */
 function submit(): void {
   emit('save', {
     basics: {
+      ...props.profile.basics,
       name: form.name, email: form.email, phone: form.phone, location: form.location,
       links: form.links.split('\n').map((value) => value.trim()).filter(Boolean),
     },
     intentions: {
+      ...props.profile.intentions,
       targetJob: form.targetJob, jobCategory: form.jobCategory, taxonomyNodeId: form.taxonomyNodeId,
       taxonomyCategoryId: form.taxonomyCategoryId, taxonomyGroupId: form.taxonomyGroupId,
     },
-    preferences: { targetCity: form.targetCity, workMode: form.workMode },
+    preferences: {
+      ...props.profile.preferences,
+      targetCity: form.targetCity, workMode: form.workMode, graduationDate: form.graduationDate, major: form.major,
+    },
     summary: form.summary,
   })
 }
@@ -221,6 +229,8 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', beforeUnload))
             <label><span>岗位分类</span><input id="profile-job-category" v-model.trim="form.jobCategory" class="career-input" readonly placeholder="选择岗位后自动填写" /></label>
             <label><span>目标城市</span><UiSelect id="profile-target-city" v-model="form.targetCity" :options="cityOptions" aria-label="目标城市" searchable /></label>
             <label><span>办公方式</span><UiSelect v-model="form.workMode" :options="workModes" aria-label="办公方式" placeholder="办公方式" /></label>
+            <label><span>毕业时间 <small>选填</small></span><input id="profile-graduation" v-model.trim="form.graduationDate" class="career-input" maxlength="20" placeholder="例如：2026-06" /></label>
+            <label><span>专业 <small>选填</small></span><input id="profile-major" v-model.trim="form.major" class="career-input" maxlength="60" placeholder="例如：统计学" /></label>
             <label class="span-2 summary-field"><span>职业简介 <small>{{ form.summary.length }}/300</small></span><textarea id="profile-summary" v-model="form.summary" class="career-input" rows="3" maxlength="300" placeholder="用 3-5 句话概括专业背景、核心技能与价值亮点，突出你能为目标岗位带来的贡献。" /></label>
           </div>
         </section>

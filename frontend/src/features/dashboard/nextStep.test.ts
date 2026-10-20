@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { isNewUser, nextStep, readiness } from './nextStep.ts'
+import { isNewUser, needsDirection, nextStep, readiness } from './nextStep.ts'
 import type { WorkspaceOverview } from './types.ts'
 
 function overview(patch: Partial<WorkspaceOverview> = {}): WorkspaceOverview {
@@ -71,4 +71,16 @@ test('with an exportable resume and a match, the next step is to send it with a 
   assert.equal(nextStep(overview({ ...base, applications: applications(0, 0) })).kind, 'track-application')
   assert.equal(nextStep(overview({ ...base, applications: applications(0, 0) })).to, '/applications?new=1')
   assert.equal(nextStep(overview({ ...base, applications: applications(1, 1) })).kind, 'practice-interview')
+})
+
+test('without a target job the profile step leads to onboarding', () => {
+  const without = overview({ profile: { completeness: 50, missing: ['目标岗位', '职业简介'] } })
+  assert.equal(needsDirection(without), true)
+  const step = readiness(without).items.find(item => item.key === 'profile')
+  assert.equal(step?.to, '/onboarding')
+  assert.equal(step?.label, '确定求职方向')
+  const set = overview({ profile: { completeness: 80, missing: ['职业简介'] } })
+  assert.equal(needsDirection(set), false)
+  assert.equal(readiness(set).items.find(item => item.key === 'profile')?.to, '/career-library')
+  assert.equal(needsDirection(overview({ profile: null })), false)
 })

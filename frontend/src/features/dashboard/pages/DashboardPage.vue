@@ -17,7 +17,7 @@ import { useSessionStore } from '@/stores/session'
 import { listNotifications } from '@/features/notification/services/notificationApi'
 import { notificationKeys } from '@/features/notification/queries'
 import { useWorkspaceOverview } from '../api'
-import { isNewUser, nextStep, readiness } from '../nextStep'
+import { isNewUser, needsDirection, nextStep, readiness } from '../nextStep'
 import ResumeMiniCard from '../components/ResumeMiniCard.vue'
 import { summaryRoute } from '@/features/job-match/utils/stage'
 
@@ -33,6 +33,7 @@ const data = computed(() => overview.data.value)
 const step = computed(() => (data.value ? nextStep(data.value) : null))
 const ready = computed(() => (data.value ? readiness(data.value) : null))
 const fresh = computed(() => (data.value ? isNewUser(data.value) : false))
+const direction = computed(() => (data.value ? needsDirection(data.value) : false))
 const firstName = computed(() => {
   const name = session.displayName
   return name.includes('@') ? name.split('@')[0] : name
@@ -151,6 +152,14 @@ function noticeVisual(type: string) {
             </li>
           </ul>
         </aside>
+      </section>
+
+      <section v-if="direction" class="direction surface-card" data-testid="direction-prompt">
+        <div>
+          <strong>先花 1 分钟确定求职方向</strong>
+          <p>目标岗位、城市和工作方式会用在简历目标、岗位匹配和模拟面试里，之后随时可以在资料库修改。</p>
+        </div>
+        <UiButton size="sm" to="/onboarding" :icon-right="ArrowRight">去设置</UiButton>
       </section>
 
       <p v-if="data.degraded.length" class="degraded">部分模块暂时没有加载成功，显示的数据可能不完整。</p>
@@ -356,6 +365,35 @@ function noticeVisual(type: string) {
 }
 
 .hero__copy,
+.direction {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-5);
+  border: 1px solid var(--color-primary-border);
+  background: linear-gradient(135deg, var(--color-primary-soft), transparent 70%), var(--surface-1);
+}
+
+.direction strong {
+  font-size: var(--fs-body);
+  font-weight: 650;
+}
+
+.direction p {
+  margin-top: 2px;
+  color: var(--text-secondary);
+  font-size: var(--fs-sm);
+  line-height: 1.6;
+}
+
+@media (max-width: 640px) {
+  .direction {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
 .readiness {
   position: relative;
 }

@@ -82,6 +82,13 @@ export function fetchMe(): Promise<AccountView> {
   return api<AccountView>('/api/v1/me')
 }
 
+/** 绑定或更换邮箱、手机号: a CHANGE_CONTACT verification of the new contact, plus the current password. */
+export function bindContact(input: {
+  channel: VerificationChannel; destination: string; verificationToken: string; currentPassword: string
+}): Promise<AccountView> {
+  return api<AccountView>('/api/v1/auth/contacts', { method: 'POST', body: JSON.stringify(input) })
+}
+
 export function fetchSessions(): Promise<SessionView[]> {
   return api<SessionView[]>('/api/v1/auth/sessions')
 }

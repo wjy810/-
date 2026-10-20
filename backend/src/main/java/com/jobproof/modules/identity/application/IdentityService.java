@@ -8,6 +8,7 @@ import com.jobproof.infrastructure.mail.DevMailbox;
 import com.jobproof.modules.audit.application.AuditService;
 import com.jobproof.modules.identity.domain.AccountRules;
 import com.jobproof.modules.identity.domain.AccountStatus;
+import com.jobproof.modules.identity.domain.LoginClient;
 import com.jobproof.modules.identity.domain.PasswordResetPolicy;
 import com.jobproof.modules.identity.domain.VerificationChannel;
 import com.jobproof.modules.identity.domain.VerificationPurpose;
@@ -55,6 +56,7 @@ public class IdentityService implements SessionAuthenticator {
     private final ContactVerificationService verificationService;
     private final JobProofProperties properties;
     private final LoginRateLimitService loginRateLimit;
+    private final SecurityNotices securityNotices;
     private static final String DUMMY_PASSWORD_HASH = "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy";
 
     @Autowired
@@ -73,7 +75,8 @@ public class IdentityService implements SessionAuthenticator {
             @Value("${jobproof.dev.mailbox-enabled:false}") boolean mailboxEnabled,
             ContactVerificationService verificationService,
             JobProofProperties properties,
-            LoginRateLimitService loginRateLimit) {
+            LoginRateLimitService loginRateLimit,
+            SecurityNotices securityNotices) {
         this.accounts = accounts;
         this.sessions = sessions;
         this.resets = resets;
@@ -89,6 +92,7 @@ public class IdentityService implements SessionAuthenticator {
         this.verificationService = verificationService;
         this.properties = properties;
         this.loginRateLimit = loginRateLimit;
+        this.securityNotices = securityNotices;
     }
 
     public IdentityService(
@@ -104,7 +108,8 @@ public class IdentityService implements SessionAuthenticator {
             long resetTtlMinutes,
             boolean mailboxEnabled) {
         this(accounts, sessions, resets, passwordEncoder, clock, auditService, mailbox, devAdmin,
-                new DevSeekerProperties(), sessionTtlDays, resetTtlMinutes, mailboxEnabled, null, new JobProofProperties(), localLoginLimiter(clock));
+                new DevSeekerProperties(), sessionTtlDays, resetTtlMinutes, mailboxEnabled, null, new JobProofProperties(), localLoginLimiter(clock),
+                null);
     }
 
     private static LoginRateLimitService localLoginLimiter(ClockPort clock) {
@@ -115,7 +120,6 @@ public class IdentityService implements SessionAuthenticator {
                         .getBeanProvider(org.springframework.data.redis.core.StringRedisTemplate.class), clock);
     }
 
-    @Transactional
     public LoginResult register(
             VerificationChannel channel,
             String destination,
@@ -123,6 +127,18 @@ public class IdentityService implements SessionAuthenticator {
             String password,
             boolean acceptedTerms,
             boolean acceptedPrivacy) {
+        return register(channel, destination, verificationToken, password, acceptedTerms, acceptedPrivacy, null);
+    }
+
+    @Transactional
+    public LoginResult register(
+            VerificationChannel channel,
+            String destination,
+            String verificationToken,
+            String password,
+            boolean acceptedTerms,
+            boolean acceptedPrivacy,
+            String userAgent) {
         if (!properties.getPolicies().isRegistrationOpen()) {
             throw AppException.dependency("REGISTRATION_UNAVAILABLE", "账号注册暂未开放");
         }
@@ -166,7 +182,7 @@ public class IdentityService implements SessionAuthenticator {
         }
         auditService.append(account.getId(), "ACCOUNT_REGISTERED", "ACCOUNT", account.getId(),
                 channel == VerificationChannel.EMAIL ? "邮箱验证注册成功" : "手机号验证注册成功");
-        return createSession(account, now, "注册后建立登录会话");
+        return createSession(account, now, "注册后建立登录会话", LoginClient.of(userAgent));
     }
 
     @Transactional
@@ -205,8 +221,12 @@ public class IdentityService implements SessionAuthenticator {
         return login(rawIdentifier, password, "internal");
     }
 
-    @Transactional(noRollbackFor = AppException.class)
     public LoginResult login(String rawIdentifier, String password, String clientIp) {
+        return login(rawIdentifier, password, clientIp, null);
+    }
+
+    @Transactional(noRollbackFor = AppException.class)
+    public LoginResult login(String rawIdentifier, String password, String clientIp, String userAgent) {
         String key = loginKey(rawIdentifier);
         // Acquire before account lookup and BCrypt, including unknown/disabled accounts.
         loginRateLimit.checkAndRecord(key, clientIp);
@@ -228,7 +248,23 @@ public class IdentityService implements SessionAuthenticator {
         String auditMessage = phoneLogin ? "手机号登录成功"
                 : devAdmin.matchesAlias(rawIdentifier) || devSeeker.matchesAlias(rawIdentifier)
                         ? "账号登录成功" : "邮箱登录成功";
-        return createSession(account, now, auditMessage);
+        LoginClient client = LoginClient.of(userAgent);
+        boolean newDevice = isNewDevice(account.getId(), client);
+        LoginResult result = createSession(account, now, auditMessage, client);
+        String accountId = account.getId();
+        if (newDevice) notice(notices -> notices.newDevice(accountId, client.label(), now));
+        return result;
+    }
+
+    /**
+     * A device is new when the account has signed in before from known devices and never from this kind. Sessions
+     * from before devices were recorded say nothing, so the first sign-in after that only starts the record.
+     */
+    private boolean isNewDevice(String accountId, LoginClient client) {
+        List<SessionEntity> earlier = sessions.findByAccountId(accountId);
+        String hash = Tokens.sha256(client.label());
+        boolean known = earlier.stream().anyMatch(session -> session.getClientHash() != null);
+        return known && earlier.stream().noneMatch(session -> hash.equals(session.getClientHash()));
     }
 
     private AppException failedLogin(String key, String ip) {
@@ -290,6 +326,7 @@ public class IdentityService implements SessionAuthenticator {
         Instant now = clock.now();
         replacePasswordAndRevokeSessions(account, newPassword, now);
         auditService.append(account.getId(), "PASSWORD_CHANGED", "ACCOUNT", account.getId(), "登录态改密，全部会话已失效");
+        notice(notices -> notices.passwordChanged(account.getId(), now));
     }
 
     @Transactional
@@ -344,6 +381,7 @@ public class IdentityService implements SessionAuthenticator {
         resets.consumeAllOpenByAccountId(account.getId(), now);
         replacePasswordAndRevokeSessions(account, newPassword, now);
         auditService.append(account.getId(), "PASSWORD_RESET_CONFIRMED", "ACCOUNT", account.getId(), "验证码改密，全部会话已失效");
+        notice(notices -> notices.passwordReset(account.getId(), now));
         return account.getId();
     }
 
@@ -368,7 +406,72 @@ public class IdentityService implements SessionAuthenticator {
         replacePasswordAndRevokeSessions(account, newPassword, now);
         auditService.append(account.getId(), "PASSWORD_RESET_CONFIRMED", "ACCOUNT", account.getId(),
                 "验证凭据改密，全部会话已失效");
+        notice(notices -> notices.passwordReset(account.getId(), now));
         return account.getId();
+    }
+
+    /**
+     * 绑定或更换邮箱、手机号: the new contact proves itself with a code (purpose CHANGE_CONTACT) and the user proves
+     * themselves with their password. The security notice goes out before the change, so an email about a changed
+     * address reaches the old one, where it can warn the owner.
+     */
+    @Transactional
+    public AccountView bindContact(CurrentAccount current, VerificationChannel channel, String destination,
+            String verificationToken, String currentPassword) {
+        if (verificationService == null) {
+            throw AppException.dependency("VERIFICATION_PROVIDER_UNAVAILABLE", "身份验证服务暂时不可用");
+        }
+        AccountEntity account = accounts.findById(current.accountId()).orElseThrow(AppException::unauthenticated);
+        if (currentPassword == null || currentPassword.length() > 72
+                || currentPassword.getBytes(java.nio.charset.StandardCharsets.UTF_8).length > 72
+                || !passwordEncoder.matches(currentPassword, account.getPasswordHash())) {
+            throw AppException.user("INVALID_CREDENTIALS", "当前密码不正确");
+        }
+        var verified = verificationService.consumeVerifiedToken(
+                verificationToken, channel, destination, VerificationPurpose.CHANGE_CONTACT);
+        String value = verified.destination();
+        boolean email = channel == VerificationChannel.EMAIL;
+        String before = email ? account.getEmail() : account.getPhoneE164();
+        if (value.equals(before)) return toView(account);
+        Optional<AccountEntity> holder = findByContact(channel, value);
+        if (holder.isPresent() && !holder.get().getId().equals(account.getId())) {
+            throw AppException.conflict("CONTACT_IN_USE", email ? "这个邮箱已被其他账号使用" : "这个手机号已被其他账号使用");
+        }
+        Instant now = clock.now();
+        String kind = email ? "邮箱" : "手机号";
+        String shownBefore = before == null ? null : email ? maskEmail(before) : maskPhone(before);
+        String shownAfter = email ? maskEmail(value) : maskPhone(value);
+        notice(notices -> notices.contactChanged(account.getId(), kind, shownBefore, shownAfter, now));
+        if (email) {
+            account.setEmail(value);
+            account.setEmailVerifiedAt(verified.verifiedAt());
+        } else {
+            account.setPhoneE164(value);
+            account.setPhoneVerifiedAt(verified.verifiedAt());
+        }
+        account.setUpdatedAt(now);
+        try {
+            accounts.saveAndFlush(account);
+        } catch (DataIntegrityViolationException exception) {
+            if (isAccountsContactUniqueViolation(exception)) {
+                throw AppException.conflict("CONTACT_IN_USE", email ? "这个邮箱已被其他账号使用" : "这个手机号已被其他账号使用");
+            }
+            throw exception;
+        }
+        auditService.append(account.getId(), before == null ? "CONTACT_BOUND" : "CONTACT_CHANGED", "ACCOUNT", account.getId(),
+                (before == null ? "绑定" : "更换") + kind);
+        return toView(account);
+    }
+
+    private void notice(java.util.function.Consumer<SecurityNotices> send) {
+        if (securityNotices != null) send.accept(securityNotices);
+    }
+
+    private static String maskEmail(String value) {
+        int at = value.indexOf('@');
+        if (at <= 0) return value;
+        String name = value.substring(0, at);
+        return (name.length() <= 2 ? name.charAt(0) + "*" : name.charAt(0) + "***" + name.charAt(name.length() - 1)) + value.substring(at);
     }
 
     @Transactional(readOnly = true)
@@ -386,6 +489,7 @@ public class IdentityService implements SessionAuthenticator {
                 .map(session -> new SessionView(
                         session.getId(),
                         session.getId().equals(current.sessionId()),
+                        session.getClientLabel(),
                         session.getCreatedAt(),
                         session.getLastSeenAt(),
                         session.getExpiresAt()))
@@ -403,9 +507,11 @@ public class IdentityService implements SessionAuthenticator {
             throw AppException.conflict("CURRENT_SESSION_PROTECTED", "当前会话请使用退出登录结束");
         }
         if (session.getRevokedAt() == null) {
-            session.setRevokedAt(clock.now());
+            Instant now = clock.now();
+            session.setRevokedAt(now);
             sessions.save(session);
             auditService.append(current.accountId(), "SESSION_REVOKED", "SESSION", sessionId, "已退出其他登录设备");
+            notice(notices -> notices.otherDevicesSignedOut(current.accountId(), 1, now));
         }
     }
 
@@ -422,6 +528,8 @@ public class IdentityService implements SessionAuthenticator {
         }
         if (revoked > 0) {
             auditService.append(current.accountId(), "OTHER_SESSIONS_REVOKED", "ACCOUNT", current.accountId(), "已退出其他登录设备");
+            int count = revoked;
+            notice(notices -> notices.otherDevicesSignedOut(current.accountId(), count, now));
         }
         return revoked;
     }
@@ -463,7 +571,7 @@ public class IdentityService implements SessionAuthenticator {
         sessions.revokeAllByAccountId(account.getId(), now);
     }
 
-    private LoginResult createSession(AccountEntity account, Instant now, String auditMessage) {
+    private LoginResult createSession(AccountEntity account, Instant now, String auditMessage, LoginClient client) {
         String rawToken = Tokens.randomToken();
         SessionEntity session = new SessionEntity();
         session.setId(Ids.newId());
@@ -472,6 +580,8 @@ public class IdentityService implements SessionAuthenticator {
         session.setExpiresAt(now.plus(sessionTtl));
         session.setCreatedAt(now);
         session.setLastSeenAt(now);
+        session.setClientLabel(client.label());
+        session.setClientHash(Tokens.sha256(client.label()));
         sessions.save(session);
         auditService.append(account.getId(), "ACCOUNT_LOGIN", "SESSION", session.getId(), auditMessage);
         return new LoginResult(toView(account), rawToken, session.getExpiresAt());
@@ -500,7 +610,9 @@ public class IdentityService implements SessionAuthenticator {
                 account.getPrimaryChannel(),
                 account.getStatus(),
                 account.getRole(),
-                account.getCreatedAt());
+                account.getCreatedAt(),
+                account.getEmail() != null && account.getEmailVerifiedAt() != null,
+                account.getPhoneE164() != null && account.getPhoneVerifiedAt() != null);
     }
 
     private static AppException emailAlreadyRegistered() {
@@ -556,10 +668,13 @@ public class IdentityService implements SessionAuthenticator {
             String primaryChannel,
             String status,
             String role,
-            Instant createdAt) {
+            Instant createdAt,
+            boolean emailVerified,
+            boolean phoneVerified) {
     }
 
-    public record SessionView(String id, boolean current, Instant createdAt, Instant lastSeenAt, Instant expiresAt) {
+    /** {@code clientLabel}: the kind of device ("Windows · Chrome"), null for sessions from before it was recorded. */
+    public record SessionView(String id, boolean current, String clientLabel, Instant createdAt, Instant lastSeenAt, Instant expiresAt) {
     }
 
     public record LoginResult(AccountView account, String rawSessionToken, Instant expiresAt) {

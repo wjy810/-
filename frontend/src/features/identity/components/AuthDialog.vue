@@ -25,7 +25,7 @@ import {
 import type { VerificationCapabilities, VerificationChallenge, VerificationChannel } from '@/features/identity/types'
 import { useSessionStore } from '@/stores/session'
 import { errorMessage } from '@/shared/api/types'
-import { normalizeEmail, validateCode, validatePassword } from '@/shared/lib/validation'
+import { normalizeEmail, normalizePhone, validateCode, validatePassword } from '@/shared/lib/validation'
 
 type ResetStep = 'verify' | 'password' | 'complete'
 
@@ -100,15 +100,6 @@ function clearFeedback(): void {
   Object.keys(fieldError).forEach((key) => {
     fieldError[key as keyof typeof fieldError] = ''
   })
-}
-
-function normalizePhone(raw: string): { value: string; error: string | null } {
-  let value = raw.trim().replace(/[\s()-]/g, '')
-  if (value.startsWith('0086')) value = value.slice(4)
-  else if (value.startsWith('+86')) value = value.slice(3)
-  else if (value.startsWith('86') && value.length === 13) value = value.slice(2)
-  if (!/^1[3-9]\d{9}$/.test(value)) return { value, error: '请输入正确的中国大陆手机号' }
-  return { value: `+86${value}`, error: null }
 }
 
 function normalizedDestination(): { value: string; error: string | null } {
@@ -223,7 +214,8 @@ async function onRegister(): Promise<void> {
       acceptedPrivacy: true,
     })
     session.remember(account)
-    await router.replace(props.next ? safeNextPath(props.next) : '/dashboard')
+    // A new account starts with the one-minute onboarding, unless it signed up to reach a specific page.
+    await router.replace(props.next ? safeNextPath(props.next) : '/onboarding')
   } catch (error) {
     formError.value = errorMessage(error, '账号创建失败')
   } finally {

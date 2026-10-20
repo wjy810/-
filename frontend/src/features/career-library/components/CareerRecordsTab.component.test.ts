@@ -6,12 +6,17 @@ import UiDropdownMenu, { type MenuItem } from '@/shared/ui/UiDropdownMenu.vue'
 import CareerRecordsTab from './CareerRecordsTab.vue'
 import type { CareerOverview, CareerRecord } from '../types'
 
-const api = vi.hoisted(() => ({ records: vi.fn(), availability: vi.fn(), update: vi.fn() }))
+const api = vi.hoisted(() => ({
+  records: vi.fn(), availability: vi.fn(), update: vi.fn(), candidates: vi.fn(), generate: vi.fn(), accept: vi.fn(),
+}))
 vi.mock('../services/careerLibraryApi', async (importOriginal) => ({
   ...await importOriginal<typeof import('../services/careerLibraryApi')>(),
   fetchCareerRecords: api.records,
   fetchCareerAiAvailability: api.availability,
   updateCareerRecord: api.update,
+  fetchCareerAiCandidates: api.candidates,
+  generateCareerAiCandidate: api.generate,
+  acceptCareerAiCandidate: api.accept,
 }))
 
 const record: CareerRecord = {
@@ -116,5 +121,31 @@ describe('career records list', () => {
     await tip('补充可量化的成果').trigger('click')
     await flushPromises()
     expect(document.querySelector('#record-core-outcome')).not.toBeNull()
+  })
+})
+
+describe('career record AI suggestions', () => {
+  it('closes a suggestion written for text that changed since, instead of applying it', async () => {
+    api.availability.mockResolvedValue({ available: true, model: 'qwen-plus' })
+    api.candidates.mockResolvedValue([{
+      id: 'candidate-old', recordId: record.id, status: 'PENDING', version: 0, modelName: 'qwen-plus',
+      proposed: { description: '旧建议', coreOutcome: '', reason: '重组' },
+      diff: { description: { before: '另一版内容', after: '旧建议', changed: true }, coreOutcome: { before: '', after: '', changed: false } },
+      sourceRefs: [], createdAt: '2026-09-06', updatedAt: '2026-09-06',
+    }])
+    api.accept.mockRejectedValue(new ApiClientError({ category: 'CONFLICT', reason: 'CAREER_AI_CANDIDATE_STALE', message: '这条经历在 AI 建议生成之后改过了' }, 409, 'req-stale'))
+    const wrapper = await mountTab()
+    api.records.mockClear()
+    await wrapper.get('button.ai-optimize').trigger('click')
+    await flushPromises()
+    const accept = Array.from(document.body.querySelectorAll('button')).find(button => button.textContent?.includes('采纳并更新经历'))
+    expect(accept).toBeTruthy()
+    accept!.click()
+    await flushPromises()
+    expect(api.accept).toHaveBeenCalledTimes(1)
+    expect(wrapper.emitted('error')?.at(-1)?.[0]).toContain('AI 建议生成之后改过了')
+    expect(Array.from(document.body.querySelectorAll('button')).some(button => button.textContent?.includes('采纳并更新经历'))).toBe(false)
+    expect(api.records).toHaveBeenCalled()
+    wrapper.unmount()
   })
 })

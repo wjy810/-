@@ -88,12 +88,14 @@ public class CareerLibraryService implements DeletionModuleHandler, AccountExpor
         ensureProfile(current.accountId());
         ProfileView existing = profileOf(current.accountId());
         assertVersion(write.expectedVersion(), existing.version());
-        JsonNode basics = objectOrEmpty(write.basics());
-        JsonNode intentions = objectOrEmpty(write.intentions());
-        JsonNode preferences = objectOrEmpty(write.preferences());
-        rejectSensitiveKeys(basics);
-        rejectSensitiveKeys(intentions);
-        rejectSensitiveKeys(preferences);
+        rejectSensitiveKeys(objectOrEmpty(write.basics()));
+        rejectSensitiveKeys(objectOrEmpty(write.intentions()));
+        rejectSensitiveKeys(objectOrEmpty(write.preferences()));
+        // Each section merges into what is stored: a page that edits some fields (the library's profile form,
+        // onboarding) leaves the fields it does not know about — 毕业时间、专业 from onboarding — as they were.
+        JsonNode basics = merged(existing.basics(), write.basics());
+        JsonNode intentions = merged(existing.intentions(), write.intentions());
+        JsonNode preferences = merged(existing.preferences(), write.preferences());
         Instant now = clock.now();
         int changed = jdbc.update("UPDATE career_library_profiles SET basics_json=?,intentions_json=?,preferences_json=?,summary_text=?,snapshot_version=snapshot_version+1,version_no=version_no+1,updated_at=? WHERE account_id=? AND version_no=?",
                 json(basics), json(intentions), json(preferences), blankToNull(write.summary()), now,
@@ -103,6 +105,14 @@ public class CareerLibraryService implements DeletionModuleHandler, AccountExpor
         audit.append(current.accountId(), "CAREER_LIBRARY_PROFILE_UPDATED", "CAREER_LIBRARY_PROFILE",
                 current.accountId(), "职业主档已由本人更新");
         return profileOf(current.accountId());
+    }
+
+    /** Keys in {@code patch} replace the stored ones (null clears a value); the others stay. */
+    private JsonNode merged(JsonNode stored, JsonNode patch) {
+        com.fasterxml.jackson.databind.node.ObjectNode result = stored instanceof com.fasterxml.jackson.databind.node.ObjectNode object
+                ? object.deepCopy() : mapper.createObjectNode();
+        objectOrEmpty(patch).fields().forEachRemaining(entry -> result.set(entry.getKey(), entry.getValue().deepCopy()));
+        return result;
     }
 
     @Transactional
@@ -236,8 +246,15 @@ public class CareerLibraryService implements DeletionModuleHandler, AccountExpor
                 json(payload), choose(write.strength(), existing.strength()),
                 write.sortOrder() == null ? existing.sortOrder() : write.sortOrder(), now, id, current.accountId(), existing.version());
         requireUpdated(changed);
+        RecordView updated = requireRecord(current.accountId(), id);
+        if (!Objects.equals(existing.description(), updated.description())
+                || !Objects.equals(existing.coreOutcome(), updated.coreOutcome())) {
+            // AI suggestions still pending were written for the old text; offering them now would undo this edit.
+            jdbc.update("UPDATE career_library_ai_candidates SET status='STALE',version_no=version_no+1,updated_at=?,decided_at=? WHERE account_id=? AND record_id=? AND status='PENDING'",
+                    now, now, current.accountId(), id);
+        }
         bump(current.accountId(), "RECORD_UPDATED");
-        return requireRecord(current.accountId(), id);
+        return updated;
     }
 
     @Transactional

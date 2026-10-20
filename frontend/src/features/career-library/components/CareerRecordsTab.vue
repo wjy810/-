@@ -10,7 +10,7 @@ import PageState from '@/shared/ui/PageState.vue'
 import UiDialog from '@/shared/ui/UiDialog.vue'
 import UiDropdownMenu, { type MenuItem } from '@/shared/ui/UiDropdownMenu.vue'
 import UiSelect from '@/shared/ui/UiSelect.vue'
-import { errorMessage } from '@/shared/api/types'
+import { errorMessage, isApiClientError } from '@/shared/api/types'
 import {
   acceptCareerAiCandidate, archiveCareerRecord, copyCareerRecord, createCareerRecord,
   fetchCareerAiAvailability, fetchCareerAiCandidates, fetchCareerRecords, generateCareerAiCandidate,
@@ -181,7 +181,15 @@ async function acceptAi(): Promise<void> {
     await load()
     emit('changed')
     emit('notice', '已采纳 AI 优化建议，经历内容已更新。')
-  } catch (reason) { emit('error', errorMessage(reason, '采纳建议失败')) }
+  } catch (reason) {
+    // Written for text that has changed since (here or in another tab): close it rather than offer it again.
+    if (isApiClientError(reason) && ['CAREER_AI_CANDIDATE_STALE', 'CAREER_AI_CANDIDATE_DECIDED'].includes(reason.reason ?? '')) {
+      aiOpen.value = false
+      aiCandidate.value = null
+      await load()
+    }
+    emit('error', errorMessage(reason, '采纳建议失败'))
+  }
   finally { aiPending.value = false }
 }
 

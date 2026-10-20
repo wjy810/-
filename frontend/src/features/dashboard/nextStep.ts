@@ -95,10 +95,16 @@ export function nextStep(overview: WorkspaceOverview): NextStep {
 
 export type ReadinessItem = { key: string; label: string; done: boolean; progress: number; to: string }
 
+/** No target job yet: the one-minute onboarding (direction, then basics) is the quickest way to set it. */
+export function needsDirection(overview: WorkspaceOverview): boolean {
+  return Boolean(overview.profile?.missing.includes('目标岗位'))
+}
+
 export function readiness(overview: WorkspaceOverview): { score: number; items: ReadinessItem[] } {
   const profile = Math.max(0, Math.min(100, overview.profile?.completeness ?? 0))
   const items: ReadinessItem[] = [
-    { key: 'profile', label: '完善求职资料', done: profile >= 80, progress: profile / 100, to: '/career-library' },
+    { key: 'profile', label: needsDirection(overview) ? '确定求职方向' : '完善求职资料', done: profile >= 80, progress: profile / 100,
+      to: needsDirection(overview) ? '/onboarding' : '/career-library' },
     { key: 'resume', label: '一份可导出的简历', done: (overview.resumes?.exportable ?? 0) > 0, progress: Math.min(1, (overview.resumes?.recent[0]?.confirmedModules ?? 0) / 5), to: '/resumes' },
     { key: 'match', label: '完成一次岗位匹配', done: (overview.jobMatches?.completed ?? 0) > 0, progress: (overview.jobMatches?.total ?? 0) > 0 ? 0.5 : 0, to: '/job-match' },
     { key: 'interview', label: '练过一次面试', done: (overview.mockInterviews?.completed ?? 0) > 0, progress: (overview.mockInterviews?.total ?? 0) > 0 ? 0.5 : 0, to: '/mock-interviews' },

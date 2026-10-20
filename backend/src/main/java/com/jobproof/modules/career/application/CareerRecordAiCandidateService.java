@@ -130,14 +130,19 @@ public class CareerRecordAiCandidateService {
         }
     }
 
-    @Transactional(readOnly = true)
+    /**
+     * A pending suggestion is only offered while the record still reads the way it did when the suggestion was
+     * written; one the user has edited past is set aside as STALE first, so it is never shown or reused.
+     */
+    @Transactional
     public List<CandidateView> list(CurrentAccount current, String recordId, String status) {
         assertSeeker(current);
-        library.record(current, recordId);
+        RecordView record = library.record(current, recordId);
         String normalized = status == null || status.isBlank() ? "PENDING" : status.trim().toUpperCase();
-        if (!List.of("PENDING", "ACCEPTED", "REJECTED", "ALL").contains(normalized)) {
+        if (!List.of("PENDING", "ACCEPTED", "REJECTED", "STALE", "ALL").contains(normalized)) {
             throw AppException.user("CAREER_AI_CANDIDATE_STATUS_INVALID", "AI 候选状态无效");
         }
+        retireStale(current.accountId(), record);
         String sql = "SELECT * FROM career_library_ai_candidates WHERE account_id=? AND record_id=?"
                 + ("ALL".equals(normalized) ? "" : " AND status=?") + " ORDER BY created_at DESC";
         return "ALL".equals(normalized)
@@ -145,6 +150,10 @@ public class CareerRecordAiCandidateService {
                 : jdbc.query(sql, this::view, current.accountId(), recordId, normalized);
     }
 
+    /**
+     * Accepting writes the suggestion's description and core outcome over the record's, so it is refused once
+     * the user has changed either since the suggestion was written: that would silently undo their edit.
+     */
     @Transactional
     public CandidateView accept(CurrentAccount current, String candidateId, Decision command) {
         assertSeeker(current);
@@ -152,14 +161,20 @@ public class CareerRecordAiCandidateService {
         requirePending(candidate);
         assertVersion(command == null ? null : command.expectedCandidateVersion(), candidate.version());
         RecordView record = library.record(current, candidate.recordId());
+        if (!basedOn(candidate, record)) {
+            // Rolled back with the refusal; the next listing sets it aside as STALE.
+            throw AppException.conflict("CAREER_AI_CANDIDATE_STALE",
+                    "这条经历在 AI 建议生成之后改过了，建议基于旧内容，已失效。需要的话请重新生成");
+        }
         assertVersion(command == null ? null : command.expectedRecordVersion(), record.version());
         JsonNode proposed = candidate.proposed();
         RecordWrite write = new RecordWrite(record.type(), record.title(), record.organization(), record.role(),
                 record.startDate(), record.endDate(), record.location(), proposed.path("description").asText(""),
                 proposed.path("coreOutcome").asText(""), record.url(), record.payload(), record.strength(),
                 record.sortOrder(), record.version());
-        library.updateRecord(current, record.id(), write);
+        // Decided first: the update below retires the record's other pending suggestions, written for the old text.
         decide(current.accountId(), candidate.id(), "ACCEPTED");
+        library.updateRecord(current, record.id(), write);
         audit.append(current.accountId(), "CAREER_RECORD_AI_CANDIDATE_ACCEPTED", "CAREER_LIBRARY_AI_CANDIDATE",
                 candidate.id(), "recordId=" + record.id());
         return require(current.accountId(), candidate.id());
@@ -274,6 +289,26 @@ public class CareerRecordAiCandidateService {
         int updated = jdbc.update("UPDATE career_library_ai_candidates SET status=?,version_no=version_no+1,updated_at=?,decided_at=? WHERE id=? AND account_id=? AND status='PENDING'",
                 status, now, now, id, accountId);
         if (updated != 1) throw AppException.conflict("CAREER_AI_CANDIDATE_DECIDED", "AI 候选已经处理");
+    }
+
+    /** The record still has the description and core outcome the suggestion was written from. */
+    private static boolean basedOn(CandidateView candidate, RecordView record) {
+        JsonNode diff = candidate.diff();
+        return same(diff.path("description").path("before").asText(""), record.description())
+                && same(diff.path("coreOutcome").path("before").asText(""), record.coreOutcome());
+    }
+
+    private void retireStale(String accountId, RecordView record) {
+        for (CandidateView pending : jdbc.query("SELECT * FROM career_library_ai_candidates WHERE account_id=? AND record_id=? AND status='PENDING'",
+                this::view, accountId, record.id())) {
+            if (!basedOn(pending, record)) markStale(accountId, pending.id());
+        }
+    }
+
+    private void markStale(String accountId, String id) {
+        Instant now = clock.now();
+        jdbc.update("UPDATE career_library_ai_candidates SET status='STALE',version_no=version_no+1,updated_at=?,decided_at=? WHERE id=? AND account_id=? AND status='PENDING'",
+                now, now, id, accountId);
     }
 
     private void assertSupportedFacts(String proposed, String sourceText) {
