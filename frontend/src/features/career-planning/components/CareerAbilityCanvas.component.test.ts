@@ -13,6 +13,7 @@ const api = vi.hoisted(() => ({
   mergeCareerCanvasNodes: vi.fn(),
   splitCareerCanvasNode: vi.fn(),
   restoreCareerCanvasVersion: vi.fn(),
+  saveCareerCanvasLayout: vi.fn(),
   startCareerCanvasGeneration: vi.fn(),
   startCareerNodeInference: vi.fn(),
   updateCareerCanvasNode: vi.fn(),
@@ -335,29 +336,30 @@ describe('CareerAbilityCanvas', () => {
     expect(wrapper.emitted('error')?.at(-1)?.[0]).toContain('减少到 8 个以内')
   })
 
-  it('pins a dragged node and offers to auto-arrange it back into the layout', async () => {
+  it('saves a dragged position as layout, not as a new version, and can hand it back to auto-arrange', async () => {
     const canvas = makeCanvas()
-    api.updateCareerCanvasNode.mockResolvedValue(canvas)
-    api.updateCareerCanvasNodes.mockResolvedValue(canvas)
+    const pinned = makeCanvas()
+    pinned.nodes[3] = { ...pinned.nodes[3], x: 410, y: 334, detail: { ...pinned.nodes[3].detail, layoutPinned: true } }
+    pinned.graphHash = 'hash-after-drag'
+    api.saveCareerCanvasLayout.mockResolvedValueOnce(pinned).mockResolvedValueOnce(canvas)
     const wrapper = mount(CareerAbilityCanvas, {
       props: { sessionId: 'session-1', canvas, goalTitle: '后端开发', aiConsent: true },
       global: { stubs: { UiSelect: SelectStub, Background: true, MiniMap: true, Controls: true } },
     })
     const component = wrapper.vm as unknown as { onNodeDragStop: (event: unknown) => Promise<void> }
     await component.onNodeDragStop({ node: { id: 'task-api', position: { x: 410.4, y: 333.6 } } })
-    expect(api.updateCareerCanvasNode).toHaveBeenCalledWith('session-1', 'task-api', expect.objectContaining({
-      x: 410, y: 334, detail: { layoutPinned: true },
-    }))
-    expect(wrapper.find('[aria-label="自动整理布局"]').exists()).toBe(false)
+    await flushPromises()
+    expect(api.saveCareerCanvasLayout).toHaveBeenCalledWith('session-1', {
+      positions: [{ nodeId: 'task-api', x: 410, y: 334 }],
+    })
+    expect(api.updateCareerCanvasNode).not.toHaveBeenCalled()
+    // Same version: the drag is not a content step, so there is nothing to undo.
+    expect(wrapper.get('[aria-label="撤销画布变更"]').attributes('disabled')).toBeDefined()
 
-    const pinned = makeCanvas()
-    pinned.nodes[3] = { ...pinned.nodes[3], x: 410, y: 334, detail: { ...pinned.nodes[3].detail, layoutPinned: true } }
-    await wrapper.setProps({ canvas: pinned })
     await wrapper.get('[aria-label="自动整理布局"]').trigger('click')
     await flushPromises()
-    expect(api.updateCareerCanvasNodes).toHaveBeenCalledWith('session-1', {
-      nodeIds: ['task-api'], resetLayout: true, expectedVersion: 3,
-    })
+    expect(api.saveCareerCanvasLayout).toHaveBeenLastCalledWith('session-1', { resetNodeIds: ['task-api'] })
+    expect(api.updateCareerCanvasNodes).not.toHaveBeenCalled()
   })
 
   it('keeps 已掌握 when a mastered node is edited without touching its status', async () => {

@@ -342,6 +342,13 @@ async function retryBatchTask(): Promise<void> {
   finally { pending.value = '' }
 }
 
+function validationSettledNotice(accepted: boolean, result?: string | null): string {
+  if (accepted && result === 'PASSED') return '你已确认验证结果，能力节点已标记为掌握。'
+  if (accepted && result === 'NEEDS_WORK') return '已确认需要补强：节点回到学习中；有进行中的学习计划时，当前周会多一项补强任务。'
+  if (accepted) return '已确认材料不足：节点回到验证前的状态，补充材料后可以再次验证。'
+  return '已拒绝这次评估：节点回到验证前的状态，可以重新发起验证。'
+}
+
 async function confirm(validation: CareerAbilityValidation, accepted: boolean): Promise<void> {
   pending.value = `${accepted ? 'confirm' : 'reject'}:${validation.id}`
   try {
@@ -349,7 +356,7 @@ async function confirm(validation: CareerAbilityValidation, accepted: boolean): 
     batchResults.value = batchResults.value.map(item => item.id === value.id ? value : item)
     selectedValidationId.value = value.id
     emit('updated', value, true)
-    emit('notice', accepted && value.result === 'PASSED' ? '你已确认验证结果，能力节点已标记为掌握。' : '验证结果已记录，节点不会被自动标记为掌握。')
+    emit('notice', validationSettledNotice(accepted, value.result))
   } catch (reason) { emit('error', errorMessage(reason, '验证结果确认失败')) }
   finally { pending.value = '' }
 }

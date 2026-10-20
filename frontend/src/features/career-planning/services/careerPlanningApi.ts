@@ -137,6 +137,14 @@ export const updateCareerCanvasNodes = (
   method: 'PATCH', body: JSON.stringify(command),
 })
 
+/** Layout is not content: positions are saved on the current version, without a new one or a version check. */
+export const saveCareerCanvasLayout = (
+  sessionId: string,
+  command: { positions?: Array<{ nodeId: string; x: number; y: number }>; resetNodeIds?: string[] },
+) => api<CareerCanvas>(`${ROOT}/sessions/${id(sessionId)}/canvas/layout`, {
+  method: 'PUT', body: JSON.stringify(command),
+})
+
 export const deleteCareerCanvasNode = (sessionId: string, nodeId: string, cascade: boolean, expectedVersion: number) =>
   api<CareerCanvas>(`${ROOT}/sessions/${id(sessionId)}/canvas/nodes/${id(nodeId)}`, {
     method: 'DELETE', body: JSON.stringify({ cascade, expectedVersion }),

@@ -122,7 +122,9 @@ async function repositionTask(task: CareerPlanTask, targetWeek: number, sortOrde
     })
     emit('updated', value, false)
     activeWeek.value = targetWeek
-    emit('notice', targetWeek === task.week ? '任务顺序已更新。' : `任务已移到第 ${targetWeek} 周。`)
+    const due = value.tasks.find(item => item.id === task.id)?.dueDate
+    emit('notice', targetWeek === task.week ? '任务顺序已更新。'
+      : `任务已移到第 ${targetWeek} 周${due ? `，截止日改为 ${due}` : ''}。`)
   } catch (reason) { emit('error', errorMessage(reason, '任务位置更新失败')) }
   finally { pending.value = '' }
 }

@@ -17,7 +17,9 @@ import com.jobproof.modules.careerplanning.application.CareerPlanningAiService.C
 import com.jobproof.modules.careerplanning.application.CareerPlanningAiService.InterviewPayload;
 import com.jobproof.modules.careerplanning.application.CareerPlanningAiService.ProgressListener;
 import com.jobproof.modules.careerplanning.application.CareerPlanningAiService.RecommendationPayload;
+import com.jobproof.modules.careerplanning.domain.CareerPlanningModels.CanvasLayoutCommand;
 import com.jobproof.modules.careerplanning.domain.CareerPlanningModels.CanvasNodeCreateCommand;
+import com.jobproof.modules.careerplanning.domain.CareerPlanningModels.CanvasNodePosition;
 import com.jobproof.modules.careerplanning.domain.CareerPlanningModels.CanvasNodeBatchUpdateCommand;
 import com.jobproof.modules.careerplanning.domain.CareerPlanningModels.CanvasNodeDeleteCommand;
 import com.jobproof.modules.careerplanning.domain.CareerPlanningModels.CanvasNodeMergeCommand;
@@ -372,6 +374,11 @@ public class CareerPlanningService {
             String id = clean(item.id());
             if (id != null && !incomingIds.add(id)) throw AppException.user("CP_PROFILE_ITEM_DUPLICATE", "画像条目重复");
         }
+        // Opening the profile and leaving it as it was is not an edit: it must not send a confirmed profile back
+        // to draft or set its recommendations aside (regenerating them costs AI quota).
+        if (sameProfile(profile, basics, preferences, constraints, objectiveId, items)) {
+            return sessionView(requireSession(current.accountId(), sessionId));
+        }
         jdbc.update("UPDATE career_planning_profile_items SET status='RETIRED',updated_at=? WHERE profile_id=? AND status='ACTIVE' AND locked=0",
                 clock.now(), profile.id());
         int fallbackOrder = 0;
@@ -402,6 +409,29 @@ public class CareerPlanningService {
         events.append(current.accountId(), sessionId, "profile.updated",
                 Map.of("phase", "PROFILE", "profileVersion", profile.version() + 1));
         return sessionView(requireSession(current.accountId(), sessionId));
+    }
+
+    private boolean sameProfile(ProfileRow profile, JsonNode basics, JsonNode preferences, JsonNode constraints,
+            String objectiveId, List<ProfileItemWrite> items) {
+        if (!profile.basics().equals(basics) || !profile.preferences().equals(preferences)
+                || !profile.constraints().equals(constraints)
+                || !Objects.equals(clean(profile.objectiveTaxonomyId()), objectiveId)) return false;
+        Map<String, ProfileItemView> active = profileItems(profile.id(), false).stream()
+                .collect(Collectors.toMap(ProfileItemView::id, Function.identity()));
+        Set<String> kept = new LinkedHashSet<>();
+        for (ProfileItemWrite item : items) {
+            ProfileItemView existing = item.id() == null ? null : active.get(clean(item.id()));
+            if (existing == null
+                    || !normalize(item.section()).equals(existing.section())
+                    || !normalize(item.claimType()).equals(existing.claimType())
+                    || !Objects.equals(clean(item.title()), existing.title())
+                    || !objectOrEmpty(item.payload()).equals(existing.payload())
+                    || !arrayOrEmpty(item.sourceRefs()).equals(existing.sourceRefs())
+                    || item.locked() != existing.locked() || item.sortOrder() != existing.sortOrder()) return false;
+            kept.add(existing.id());
+        }
+        // Unlocked items left out of the write would be retired.
+        return active.values().stream().allMatch(item -> item.locked() || kept.contains(item.id()));
     }
 
     @Transactional(readOnly = true)
@@ -435,17 +465,30 @@ public class CareerPlanningService {
         if (selections.size() > 100) throw AppException.user("CP_EVIDENCE_LIMIT", "一次最多授权 100 项资料");
         Map<String, EvidenceOption> eligible = eligibleEvidence(current, sessionId).stream()
                 .collect(Collectors.toMap(EvidenceOption::sourceId, Function.identity()));
-        Set<String> selectedIds = new LinkedHashSet<>();
+        Map<String, List<String>> requested = new LinkedHashMap<>();
+        for (EvidenceSelection selection : selections) {
+            String sourceId = clean(selection.sourceId());
+            if (sourceId == null || requested.containsKey(sourceId) || !eligible.containsKey(sourceId)) {
+                throw AppException.user("CP_EVIDENCE_INVALID", "所选资料不存在、未确认或已归档");
+            }
+            requested.put(sourceId, normalizeScopes(selection.scopes()));
+        }
+        // Saving the same selection again is not a change: a confirmed profile and its recommendations stay.
+        if (sameEvidence(profile, requested, eligible)) {
+            if ("PROFILE".equals(session.phase())) {
+                updateSessionPhase(sessionId, current.accountId(), "EVIDENCE");
+                events.append(current.accountId(), sessionId, "evidence.updated",
+                        Map.of("phase", "EVIDENCE", "selectedCount", selections.size()));
+            }
+            return sessionView(requireSession(current.accountId(), sessionId));
+        }
         int nextPermissionVersion = integer("SELECT COALESCE(MAX(permission_version),0)+1 FROM career_planning_evidence_permissions WHERE profile_id=?", profile.id());
         Instant now = clock.now();
         jdbc.update("UPDATE career_planning_evidence_permissions SET status='REVOKED',revoked_at=? WHERE profile_id=? AND status='ACTIVE'",
                 now, profile.id());
-        for (EvidenceSelection selection : selections) {
-            String sourceId = clean(selection.sourceId());
-            if (sourceId == null || !selectedIds.add(sourceId) || !eligible.containsKey(sourceId)) {
-                throw AppException.user("CP_EVIDENCE_INVALID", "所选资料不存在、未确认或已归档");
-            }
-            List<String> scopes = normalizeScopes(selection.scopes());
+        for (Map.Entry<String, List<String>> selection : requested.entrySet()) {
+            String sourceId = selection.getKey();
+            List<String> scopes = selection.getValue();
             EvidenceOption option = eligible.get(sourceId);
             ObjectNode snapshot = mapper.createObjectNode();
             snapshot.put("sourceId", option.sourceId());
@@ -472,6 +515,19 @@ public class CareerPlanningService {
         events.append(current.accountId(), sessionId, "evidence.updated",
                 Map.of("phase", "EVIDENCE", "selectedCount", selections.size()));
         return sessionView(requireSession(current.accountId(), sessionId));
+    }
+
+    private boolean sameEvidence(ProfileRow profile, Map<String, List<String>> requested,
+            Map<String, EvidenceOption> eligible) {
+        List<PermissionView> active = permissions(profile.id()).stream()
+                .filter(permission -> "ACTIVE".equals(permission.status())).toList();
+        if (active.size() != requested.size()) return false;
+        return active.stream().allMatch(permission -> {
+            List<String> scopes = requested.get(permission.sourceId());
+            EvidenceOption option = eligible.get(permission.sourceId());
+            return scopes != null && option != null && option.sourceVersion() == permission.sourceVersion()
+                    && Set.copyOf(scopes).equals(Set.copyOf(permission.scopes()));
+        });
     }
 
     public SessionView startInterview(CurrentAccount current, String sessionId, InterviewStartCommand command) {
@@ -1025,6 +1081,9 @@ public class CareerPlanningService {
         if (command.status() == null && command.locked() == null && !resetLayout) {
             throw AppException.user("CP_CANVAS_BATCH_CHANGE_REQUIRED", "请选择要批量调整的状态或锁定设置");
         }
+        if (command.status() == null && command.locked() == null) {
+            return saveCanvasLayout(current, sessionId, new CanvasLayoutCommand(List.of(), nodeIds));
+        }
         CanvasGraph graph = canvasGraphForUpdate(current.accountId(), session.goalId(), command.expectedVersion());
         String status = command.status() == null ? null : editableStatus(command.status(), false);
         List<CanvasGraphNode> nodes = nodeIds.stream().map(id -> requireGraphNode(graph, id)).toList();
@@ -1050,6 +1109,59 @@ public class CareerPlanningService {
         audit.append(current.accountId(), "CAREER_CANVAS_NODES_BATCH_UPDATED", "CAREER_CANVAS",
                 session.goalId(), "version=" + saved.version() + " nodes=" + nodes.size());
         appendCanvasEvent(current.accountId(), sessionId, "canvas.updated", saved);
+        return saved;
+    }
+
+    /**
+     * Where nodes sit is layout, not content. Dragging or auto-arranging updates the current version in place: it
+     * adds no version, so it neither makes a pending AI proposal stale nor trips a running inference or batch
+     * validation that expects the version it started from. Undo and version history stay about content.
+     */
+    @Transactional
+    public CanvasView saveCanvasLayout(CurrentAccount current, String sessionId, CanvasLayoutCommand command) {
+        assertEnabled();
+        assertUser(current);
+        SessionRow session = requireCanvasSession(current, sessionId);
+        List<CanvasNodePosition> positions = command == null || command.positions() == null ? List.of() : command.positions();
+        List<String> resetIds = command == null || command.resetNodeIds() == null ? List.of()
+                : command.resetNodeIds().stream().map(CareerPlanningService::clean)
+                        .filter(java.util.Objects::nonNull).distinct().toList();
+        if ((positions.isEmpty() && resetIds.isEmpty()) || positions.size() + resetIds.size() > 200) {
+            throw AppException.user("CP_CANVAS_LAYOUT_INVALID", "请提供 1 至 200 个节点的位置");
+        }
+        CanvasGraph graph = canvasGraphForUpdate(current.accountId(), session.goalId(), null);
+        Set<String> changed = new LinkedHashSet<>();
+        for (CanvasNodePosition position : positions) {
+            String nodeId = required(position == null ? null : position.nodeId(),
+                    "CP_CANVAS_NODE_REQUIRED", "请指定要移动的节点");
+            CanvasGraphNode node = requireGraphNode(graph, nodeId);
+            if (node.locked()) throw AppException.conflict("CP_CANVAS_NODE_LOCKED", "节点已锁定，不能移动：" + node.title());
+            ObjectNode detail = node.detail() instanceof ObjectNode object ? object.deepCopy() : mapper.createObjectNode();
+            detail.put("layoutPinned", true);
+            graph.nodes().put(nodeId, new CanvasGraphNode(nodeId, node.type(), node.status(), node.title(), detail,
+                    node.sourceRefs(), boundedCoordinate(position.x(), node.x()), boundedCoordinate(position.y(), node.y()),
+                    node.locked(), node.sortOrder()));
+            changed.add(nodeId);
+        }
+        for (String nodeId : resetIds) {
+            CanvasGraphNode node = requireGraphNode(graph, nodeId);
+            if (!(node.detail() instanceof ObjectNode object) || !object.has("layoutPinned")) continue;
+            ObjectNode detail = object.deepCopy();
+            detail.remove("layoutPinned");
+            graph.nodes().put(nodeId, new CanvasGraphNode(nodeId, node.type(), node.status(), node.title(), detail,
+                    node.sourceRefs(), node.x(), node.y(), node.locked(), node.sortOrder()));
+            changed.add(nodeId);
+        }
+        if (changed.isEmpty()) return canvasByVersion(graph.base());
+        for (String nodeId : changed) {
+            CanvasGraphNode node = graph.nodes().get(nodeId);
+            jdbc.update("UPDATE canvas_nodes SET position_x=?,position_y=?,detail_json=? WHERE version_id=? AND logical_node_id=? AND account_id=?",
+                    node.x(), node.y(), json(node.detail()), graph.base().id(), nodeId, current.accountId());
+        }
+        jdbc.update("UPDATE canvas_versions SET graph_hash=? WHERE id=? AND account_id=?",
+                graphHash(graph), graph.base().id(), current.accountId());
+        CanvasView saved = canvas(current.accountId(), session.goalId());
+        appendCanvasEvent(current.accountId(), sessionId, "canvas.layout-updated", saved);
         return saved;
     }
 
@@ -2026,10 +2138,15 @@ public class CareerPlanningService {
         int mastered = (int) learnable.stream().filter(node -> "MASTERED".equals(node.status())).count();
         int learning = (int) learnable.stream().filter(node -> "LEARNING".equals(node.status())).count();
         int progress = learnable.isEmpty() ? 0 : (int) Math.round(mastered * 100d / learnable.size());
-        int pendingNodes = (int) abilityNodes.stream()
-                .filter(node -> "PENDING_VALIDATION".equals(node.status())).count();
-        int pendingValidations = count("SELECT COUNT(*) FROM career_ability_validations WHERE session_id=? "
-                + "AND account_id=? AND user_confirmed=0", session.id(), session.accountId());
+        // 待验证 counts nodes: those at 待验证 plus those with a result still awaiting confirmation. A rejected
+        // result is settled, and two results for one node are still one node.
+        Set<String> abilityIds = abilityNodes.stream().map(CanvasNodeView::logicalNodeId).collect(Collectors.toSet());
+        Set<String> pendingIds = abilityNodes.stream().filter(node -> "PENDING_VALIDATION".equals(node.status()))
+                .map(CanvasNodeView::logicalNodeId).collect(Collectors.toCollection(LinkedHashSet::new));
+        jdbc.query("SELECT DISTINCT logical_node_id FROM career_ability_validations WHERE session_id=? "
+                        + "AND account_id=? AND status='EVALUATED'",
+                (rs, n) -> rs.getString("logical_node_id"), session.id(), session.accountId()).stream()
+                .filter(abilityIds::contains).forEach(pendingIds::add);
         PlanSummary plan = jdbc.query("SELECT id,status,duration_weeks,updated_at FROM career_learning_plans "
                         + "WHERE session_id=? AND account_id=? AND status<>'ARCHIVED' "
                         + "ORDER BY CASE status WHEN 'ACTIVE' THEN 0 WHEN 'PAUSED' THEN 1 ELSE 2 END,updated_at DESC LIMIT 1",
@@ -2058,7 +2175,7 @@ public class CareerPlanningService {
         int domainCount = (int) abilityNodes.stream().filter(node -> "DOMAIN".equals(node.type())).count();
         return new CareerCanvasSummary(session.id(), goal.id(), goal.title(), session.status(),
                 session.primary(), progress, mastered, learning, learnable.size(), abilityNodes.size(), domainCount,
-                Math.max(pendingNodes, pendingValidations), current == null ? 0 : current.version(),
+                pendingIds.size(), current == null ? 0 : current.version(),
                 plan == null ? "NOT_CREATED" : plan.status(), currentWeek,
                 plan == null ? null : plan.durationWeeks(), planRevision, currentFocus,
                 recentChanges, session.createdAt(), session.updatedAt());

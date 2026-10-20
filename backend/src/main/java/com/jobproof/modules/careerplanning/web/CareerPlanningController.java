@@ -9,6 +9,7 @@ import com.jobproof.modules.careerplanning.application.CareerPlanningSseService;
 import com.jobproof.modules.careerplanning.domain.CareerPlanningModels.ConfirmGoalCommand;
 import com.jobproof.modules.careerplanning.domain.CareerPlanningModels.ConfirmProfileCommand;
 import com.jobproof.modules.careerplanning.domain.CareerPlanningModels.CanvasNodeCreateCommand;
+import com.jobproof.modules.careerplanning.domain.CareerPlanningModels.CanvasLayoutCommand;
 import com.jobproof.modules.careerplanning.domain.CareerPlanningModels.CanvasNodeBatchUpdateCommand;
 import com.jobproof.modules.careerplanning.domain.CareerPlanningModels.CanvasNodeDeleteCommand;
 import com.jobproof.modules.careerplanning.domain.CareerPlanningModels.CanvasNodeMergeCommand;
@@ -258,6 +259,12 @@ public class CareerPlanningController {
     public ApiResponse<CanvasView> updateCanvasNodes(@PathVariable String sessionId,
             @RequestBody CanvasNodeBatchUpdateCommand command) {
         return ApiResponse.ok(planning.updateCanvasNodes(current(), sessionId, command));
+    }
+
+    @PutMapping("/sessions/{sessionId}/canvas/layout")
+    public ApiResponse<CanvasView> saveCanvasLayout(@PathVariable String sessionId,
+            @RequestBody CanvasLayoutCommand command) {
+        return ApiResponse.ok(planning.saveCanvasLayout(current(), sessionId, command));
     }
 
     @DeleteMapping("/sessions/{sessionId}/canvas/nodes/{logicalNodeId}")

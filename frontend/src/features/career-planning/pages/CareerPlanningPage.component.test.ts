@@ -2,12 +2,14 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiClientError } from '@/shared/api/types'
 import { clearToasts } from '@/shared/ui/toast'
+import { confirmState, settleConfirm } from '@/shared/ui/confirm'
 import { makeSession } from '../../../../tests/careerPlanningFixtures'
 
 const api = vi.hoisted(() => ({
   fetchCareerPlanningOverview: vi.fn(),
   fetchCareerPlanningSession: vi.fn(),
   startCareerPlanning: vi.fn(),
+  updateCareerPlanningProfile: vi.fn(),
 }))
 const sonner = vi.hoisted(() => ({
   success: vi.fn(() => 'toast-id'),
@@ -268,5 +270,84 @@ describe('CareerPlanningPage sessions', () => {
     expect(wrapper.text()).toContain('AI 辅助生成')
     expect(wrapper.text()).not.toContain('internal-model-v3')
     expect(wrapper.text()).not.toContain('SYSTEM')
+  })
+})
+
+describe('CareerPlanningPage confirmed profile', () => {
+  const stubs = {
+    AppChrome: { template: '<div><slot /></div>' },
+    UiDialog: { template: '<div />' },
+    UiSelect: { template: '<div />' },
+    CareerSkillPicker: { template: '<div />' },
+    CareerProfilePreview: { template: '<aside />' },
+    CareerPlanningWorkbench: { template: '<div />' },
+  }
+  const basics = { identity: '应届生', education: '本科', experienceYears: '暂无正式经验', weeklyLearningHours: '5~10小时' }
+
+  function recommendingSession() {
+    const session = makeSession()
+    return { ...session, phase: 'RECOMMENDATIONS', activeGoal: null, canvas: null,
+      profile: { ...session.profile, basics } }
+  }
+
+  beforeEach(() => {
+    route.params.sessionId = 'session-1'
+    Object.defineProperty(globalThis, 'EventSource', { configurable: true, value: TestEventSource })
+    api.fetchCareerPlanningOverview.mockReset().mockResolvedValue({
+      enabled: true, session: null,
+      quota: { periodKey: '2026-08', grantedUnits: 500, usedUnits: 0, heldUnits: 0, remainingUnits: 500 },
+    })
+    api.fetchCareerPlanningSession.mockReset().mockResolvedValue(recommendingSession())
+    api.updateCareerPlanningProfile.mockReset()
+  })
+  afterEach(() => { if (confirmState.current) settleConfirm(false) })
+
+  async function openProfile() {
+    const wrapper = mount(CareerPlanningPage, { global: { stubs } })
+    await flushPromises()
+    await wrapper.findAll('.cp-mobile-nav button').find(button => button.text() === '画像')!.trigger('click')
+    return wrapper
+  }
+
+  it('lets the user look at a confirmed profile and leave without touching its recommendations', async () => {
+    const wrapper = await openProfile()
+    const banner = wrapper.get('[data-testid="settled-profile"]')
+    expect(banner.text()).toContain('现有 2 个职业方向')
+    expect(banner.text()).toContain('消耗 1 次 AI 额度')
+    expect(wrapper.get('.cp-autosave-state').text()).toBe('没有未保存的修改')
+    expect(wrapper.text()).not.toContain('修改后自动保存')
+
+    await wrapper.get('form.cp-profile-form').trigger('submit')
+    await flushPromises()
+    expect(api.updateCareerPlanningProfile).not.toHaveBeenCalled()
+    expect(confirmState.current).toBeNull()
+
+    await banner.get('button').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('[data-testid="settled-profile"]').exists()).toBe(false)
+    expect(wrapper.text()).toContain('职业方向推荐')
+  })
+
+  it('asks before an edit sets the recommendations aside and saves only when the user agrees', async () => {
+    api.updateCareerPlanningProfile.mockResolvedValue({ ...recommendingSession(), phase: 'PROFILE', recommendationSet: null,
+      profile: { ...recommendingSession().profile, status: 'DRAFT', version: 3, basics: { ...basics, currentRole: '实习生' } } })
+    const wrapper = await openProfile()
+    await wrapper.get('input[placeholder="例如：机械设计助理"]').setValue('实习生')
+    expect(wrapper.get('.cp-autosave-state').text()).toBe('有未保存的修改')
+
+    await wrapper.get('form.cp-profile-form').trigger('submit')
+    await flushPromises()
+    expect(confirmState.current?.title).toBe('现有职业方向会失效')
+    expect(confirmState.current?.message).toContain('现有 2 个职业方向')
+    settleConfirm(false)
+    await flushPromises()
+    expect(api.updateCareerPlanningProfile).not.toHaveBeenCalled()
+
+    await wrapper.get('form.cp-profile-form').trigger('submit')
+    await flushPromises()
+    settleConfirm(true)
+    await flushPromises()
+    expect(api.updateCareerPlanningProfile).toHaveBeenCalledTimes(1)
+    expect(api.updateCareerPlanningProfile.mock.calls[0]![1]).toMatchObject({ basics: { currentRole: '实习生' } })
   })
 })

@@ -34,6 +34,8 @@ import com.jobproof.modules.careerplanning.domain.CareerPlanningModels.Interview
 import com.jobproof.modules.task.application.TaskService;
 import com.jobproof.modules.task.domain.TaskTypes;
 import com.jobproof.shared.auth.CurrentAccount;
+import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -660,9 +662,13 @@ class CareerPlanningIT {
                 .andExpect(jsonPath("$.data[1].batchId").value(batchId))
                 .andExpect(jsonPath("$.data[0].status").value("EVALUATED"))
                 .andExpect(jsonPath("$.data[1].status").value("EVALUATED"));
+        // Moving nodes to 待验证 is progress, not content: no new canvas version.
         org.assertj.core.api.Assertions.assertThat(jdbc.queryForObject(
                 "SELECT MAX(version_no) FROM canvas_versions WHERE goal_id=?", Integer.class, goalId))
-                .isEqualTo(batchBaseVersion + 1);
+                .isEqualTo(batchBaseVersion);
+        org.assertj.core.api.Assertions.assertThat(jdbc.queryForList(
+                "SELECT node_status FROM canvas_nodes WHERE version_id=(SELECT id FROM canvas_versions WHERE goal_id=? AND version_no=?) AND logical_node_id IN (?,?)",
+                String.class, goalId, batchBaseVersion, springNodeId, sqlNodeId)).containsOnly("PENDING_VALIDATION");
 
         int proposalBaseVersion = jdbc.queryForObject("SELECT MAX(version_no) FROM canvas_versions WHERE goal_id=?",
                 Integer.class, goalId);
@@ -1046,6 +1052,249 @@ class CareerPlanningIT {
         mockMvc.perform(get("/api/v1/career-planning/sessions/{id}", known.path("id").asText()).cookie(owner))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("ARCHIVED"));
+    }
+
+    @Test
+    void layoutAndProgressChangeTheCurrentVersionInPlaceSoPendingProposalsStayValid() throws Exception {
+        MockCookie owner = registerAndLogin("career-live+" + System.nanoTime() + "@example.com");
+        GeneratedCanvas created = generatedCanvas(owner, "live");
+        String sessionId = created.sessionId();
+        String rootId = null;
+        for (JsonNode node : created.canvas().path("nodes")) {
+            if ("CAREER".equals(node.path("type").asText())) rootId = node.path("logicalNodeId").asText();
+        }
+        LocalDate start = LocalDate.now().minusDays(10);
+        JsonNode plan = data(mockMvc.perform(post("/api/v1/career-planning/sessions/{id}/plans", sessionId)
+                        .cookie(owner).contentType(MediaType.APPLICATION_JSON).content("""
+                        {"durationWeeks":6,"intensity":"STANDARD","weeklyHours":10,
+                         "learningDays":[1,2,3,4,5,6,7],"startDate":"%s","expectedCanvasVersion":2}
+                        """.formatted(start)))
+                .andExpect(status().isOk()).andReturn());
+        String planId = plan.path("id").asText();
+        JsonNode task = null;
+        for (JsonNode candidate : plan.path("tasks")) {
+            if (!candidate.path("nodeId").asText("").isBlank() && candidate.path("week").asInt() == 1) {
+                task = candidate;
+                break;
+            }
+        }
+        org.assertj.core.api.Assertions.assertThat(task).isNotNull();
+        String nodeId = task.path("nodeId").asText();
+        String title = node(created.canvas(), nodeId).path("title").asText();
+        List<String> refs = new ArrayList<>();
+        node(created.canvas(), nodeId).path("sourceRefs").forEach(ref -> refs.add(ref.asText()));
+
+        when(ai.generateCanvasProposal(anyString(), any(), any(), any())).thenReturn(new AiResult<>(
+                new ProposalPayload(List.of(new AiProposalItem("rename", "UPDATE", nodeId, null, null,
+                        title + "（工程化）", "PLANNED", mapper.createObjectNode().put("summary", "补齐工程化实践"),
+                        "补强工程化能力", refs, List.of()))),
+                "test-model", 60, 90, "live-proposal-hash"));
+        String proposalId = data(mockMvc.perform(post("/api/v1/career-planning/sessions/{id}/canvas/proposals", sessionId)
+                        .cookie(owner).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"requestId\":\"live-proposal\",\"instruction\":\"补强工程化\",\"expectedVersion\":2}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("DRAFT")).andReturn()).path("id").asText();
+
+        // Dragging saves the position on the current version: no version, no expected version, no conflict.
+        JsonNode dragged = data(mockMvc.perform(put("/api/v1/career-planning/sessions/{id}/canvas/layout", sessionId)
+                        .cookie(owner).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"positions\":[{\"nodeId\":\"" + nodeId + "\",\"x\":905,\"y\":310}]}"))
+                .andExpect(status().isOk()).andReturn());
+        org.assertj.core.api.Assertions.assertThat(dragged.path("version").asInt()).isEqualTo(2);
+        org.assertj.core.api.Assertions.assertThat(node(dragged, nodeId).path("x").asInt()).isEqualTo(905);
+        org.assertj.core.api.Assertions.assertThat(node(dragged, nodeId).path("detail").path("layoutPinned").asBoolean()).isTrue();
+        mockMvc.perform(put("/api/v1/career-planning/sessions/{id}/canvas/layout", sessionId)
+                        .cookie(owner).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"positions\":[{\"nodeId\":\"" + rootId + "\",\"x\":10,\"y\":10}]}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.reason").value("CP_CANVAS_NODE_LOCKED"));
+
+        // Starting the task moves its node to 学习中, again on the current version.
+        JsonNode started = data(mockMvc.perform(patch("/api/v1/career-planning/sessions/{id}/plans/{planId}/tasks/{taskId}",
+                        sessionId, planId, task.path("id").asText()).cookie(owner).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"IN_PROGRESS\",\"expectedVersion\":" + task.path("version").asInt() + "}"))
+                .andExpect(status().isOk()).andReturn());
+        JsonNode session = data(mockMvc.perform(get("/api/v1/career-planning/sessions/{id}", sessionId).cookie(owner))
+                .andExpect(status().isOk()).andReturn());
+        org.assertj.core.api.Assertions.assertThat(session.path("canvas").path("version").asInt()).isEqualTo(2);
+        org.assertj.core.api.Assertions.assertThat(node(session.path("canvas"), nodeId).path("status").asText()).isEqualTo("LEARNING");
+        mockMvc.perform(get("/api/v1/career-planning/sessions/{id}/execution", sessionId).cookie(owner))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.pendingProposal.id").value(proposalId))
+                .andExpect(jsonPath("$.data.pendingProposal.status").value("DRAFT"));
+
+        // Moving the task to week 3 moves its due date into week 3 (every day is a learning day here).
+        int taskVersion = 0;
+        for (JsonNode candidate : started.path("tasks")) {
+            if (task.path("id").asText().equals(candidate.path("id").asText())) taskVersion = candidate.path("version").asInt();
+        }
+        JsonNode moved = data(mockMvc.perform(patch("/api/v1/career-planning/sessions/{id}/plans/{planId}/tasks/{taskId}",
+                        sessionId, planId, task.path("id").asText()).cookie(owner).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"targetWeek\":3,\"expectedVersion\":" + taskVersion + "}"))
+                .andExpect(status().isOk()).andReturn());
+        for (JsonNode candidate : moved.path("tasks")) {
+            if (task.path("id").asText().equals(candidate.path("id").asText())) {
+                org.assertj.core.api.Assertions.assertThat(candidate.path("week").asInt()).isEqualTo(3);
+                org.assertj.core.api.Assertions.assertThat(candidate.path("dueDate").asText()).isEqualTo(start.plusDays(20).toString());
+            }
+        }
+
+        // The proposal still applies; progress made after it was written wins over the status it proposed.
+        JsonNode applied = data(mockMvc.perform(post("/api/v1/career-planning/sessions/{id}/canvas/proposals/{proposalId}/decide",
+                        sessionId, proposalId).cookie(owner).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"decisions\":[{\"itemId\":\"%s\",\"decision\":\"ACCEPTED\"}],\"expectedVersion\":2}"
+                                .formatted(data(mockMvc.perform(get("/api/v1/career-planning/sessions/{id}/canvas/proposals/{proposalId}",
+                                        sessionId, proposalId).cookie(owner)).andReturn()).path("items").get(0).path("id").asText())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.proposal.status").value("ACCEPTED")).andReturn()).path("canvas");
+        org.assertj.core.api.Assertions.assertThat(applied.path("version").asInt()).isEqualTo(3);
+        org.assertj.core.api.Assertions.assertThat(node(applied, nodeId).path("title").asText()).isEqualTo(title + "（工程化）");
+        org.assertj.core.api.Assertions.assertThat(node(applied, nodeId).path("status").asText()).isEqualTo("LEARNING");
+        org.assertj.core.api.Assertions.assertThat(node(applied, nodeId).path("x").asInt()).isEqualTo(905);
+
+        // A rejected result puts the node back to where it was instead of leaving it 待验证.
+        var score = mapper.createObjectNode().put("overall", 55);
+        score.set("dimensions", mapper.createArrayNode().add(mapper.createObjectNode().put("name", "完整性").put("score", 55)));
+        var feedback = mapper.createObjectNode().put("summary", "还缺少可复核的产出");
+        feedback.set("strengths", mapper.createArrayNode());
+        feedback.set("gaps", mapper.createArrayNode().add("缺少项目产物"));
+        feedback.set("nextActions", mapper.createArrayNode().add("补一个可运行示例"));
+        when(ai.evaluateAbility(anyString(), any(), any())).thenReturn(new AiResult<>(
+                new ValidationPayload("NEEDS_WORK", score, feedback), "test-model", 50, 80, "live-validation-hash"));
+        String validationRequest = """
+                {"nodeId":"%s","method":"PROJECT_CHECK","evidenceIds":[],
+                 "submission":{"summary":"说明了做法"},"expectedCanvasVersion":3}
+                """.formatted(nodeId);
+        String rejectedId = data(mockMvc.perform(post("/api/v1/career-planning/sessions/{id}/validations", sessionId)
+                        .cookie(owner).contentType(MediaType.APPLICATION_JSON).content(validationRequest))
+                .andExpect(status().isOk()).andReturn()).path("id").asText();
+        session = data(mockMvc.perform(get("/api/v1/career-planning/sessions/{id}", sessionId).cookie(owner)).andReturn());
+        org.assertj.core.api.Assertions.assertThat(session.path("canvas").path("version").asInt()).isEqualTo(3);
+        org.assertj.core.api.Assertions.assertThat(node(session.path("canvas"), nodeId).path("status").asText()).isEqualTo("PENDING_VALIDATION");
+        mockMvc.perform(get("/api/v1/career-planning/canvases").cookie(owner))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].pendingValidationCount").value(1));
+        mockMvc.perform(post("/api/v1/career-planning/sessions/{id}/validations/{validationId}/confirm", sessionId, rejectedId)
+                        .cookie(owner).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"accepted\":false,\"expectedCanvasVersion\":3}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("REJECTED"));
+        session = data(mockMvc.perform(get("/api/v1/career-planning/sessions/{id}", sessionId).cookie(owner)).andReturn());
+        org.assertj.core.api.Assertions.assertThat(node(session.path("canvas"), nodeId).path("status").asText()).isEqualTo("LEARNING");
+        mockMvc.perform(get("/api/v1/career-planning/canvases").cookie(owner))
+                .andExpect(jsonPath("$.data.items[0].pendingValidationCount").value(0));
+
+        // An accepted 需要补强 goes back to 学习中 with a remediation task in the week the user is in now.
+        String needsWorkId = data(mockMvc.perform(post("/api/v1/career-planning/sessions/{id}/validations", sessionId)
+                        .cookie(owner).contentType(MediaType.APPLICATION_JSON).content(validationRequest))
+                .andExpect(status().isOk()).andReturn()).path("id").asText();
+        mockMvc.perform(post("/api/v1/career-planning/sessions/{id}/validations/{validationId}/confirm", sessionId, needsWorkId)
+                        .cookie(owner).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"accepted\":true,\"expectedCanvasVersion\":3}"))
+                .andExpect(status().isOk());
+        session = data(mockMvc.perform(get("/api/v1/career-planning/sessions/{id}", sessionId).cookie(owner)).andReturn());
+        org.assertj.core.api.Assertions.assertThat(node(session.path("canvas"), nodeId).path("status").asText()).isEqualTo("LEARNING");
+        JsonNode activePlan = data(mockMvc.perform(get("/api/v1/career-planning/sessions/{id}/plans/active", sessionId).cookie(owner))
+                .andExpect(status().isOk()).andReturn());
+        JsonNode remediation = null;
+        for (JsonNode candidate : activePlan.path("tasks")) {
+            if ("REMEDIATION".equals(candidate.path("taskType").asText())) remediation = candidate;
+        }
+        org.assertj.core.api.Assertions.assertThat(remediation).isNotNull();
+        org.assertj.core.api.Assertions.assertThat(remediation.path("week").asInt()).isEqualTo(2);
+        org.assertj.core.api.Assertions.assertThat(remediation.path("dueDate").asText()).isEqualTo(start.plusDays(13).toString());
+
+        // Restoring the generated tree brings its content back, not its progress or layout.
+        JsonNode restored = data(mockMvc.perform(post("/api/v1/career-planning/sessions/{id}/canvas/versions/{version}/restore", sessionId, 2)
+                        .cookie(owner).contentType(MediaType.APPLICATION_JSON).content("{\"expectedVersion\":3}"))
+                .andExpect(status().isOk()).andReturn());
+        org.assertj.core.api.Assertions.assertThat(restored.path("version").asInt()).isEqualTo(4);
+        org.assertj.core.api.Assertions.assertThat(node(restored, nodeId).path("title").asText()).isEqualTo(title);
+        org.assertj.core.api.Assertions.assertThat(node(restored, nodeId).path("status").asText()).isEqualTo("LEARNING");
+        org.assertj.core.api.Assertions.assertThat(node(restored, nodeId).path("x").asInt()).isEqualTo(905);
+    }
+
+    @Test
+    void openingAConfirmedProfileWithoutChangesKeepsItsRecommendations() throws Exception {
+        MockCookie owner = registerAndLogin("career-keep-recs+" + System.nanoTime() + "@example.com");
+        String sessionId = data(mockMvc.perform(post("/api/v1/career-planning/sessions").cookie(owner)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"entryMode\":\"AI_DISCOVERY\",\"aiConsent\":true}"))
+                .andExpect(status().isOk()).andReturn()).path("id").asText();
+        JsonNode drafted = data(mockMvc.perform(put("/api/v1/career-planning/sessions/{id}/profile", sessionId)
+                        .cookie(owner).contentType(MediaType.APPLICATION_JSON).content("""
+                        {"basics":{"identity":"应届生","education":"本科","experienceYears":"暂无正式经验","weeklyLearningHours":"5~10小时"},
+                         "preferences":{"workMode":"不限"},"constraints":{},
+                         "items":[{"section":"SKILLS","claimType":"SELF_REPORTED","title":"Java",
+                           "payload":{"origin":"PROFILE_FORM","proficiency":"PRACTICED"},"sourceRefs":[],"locked":false,"sortOrder":1}],
+                         "expectedVersion":0}
+                        """))
+                .andExpect(status().isOk()).andReturn());
+        String itemId = drafted.path("profile").path("items").get(0).path("id").asText();
+        JsonNode reviewed = data(mockMvc.perform(post("/api/v1/career-planning/sessions/{id}/profile/review", sessionId)
+                        .cookie(owner).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"expectedVersion\":" + drafted.path("profile").path("version").asInt() + "}"))
+                .andExpect(status().isOk()).andReturn());
+        mockMvc.perform(post("/api/v1/career-planning/sessions/{id}/profile/confirm", sessionId)
+                        .cookie(owner).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"confirmedItemIds\":[\"" + itemId + "\"],\"expectedVersion\":"
+                                + reviewed.path("profile").path("version").asInt() + "}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.phase").value("RECOMMENDATIONS"));
+        List<String> refs = List.of("PROFILE_ITEM:" + itemId);
+        when(ai.generateRecommendations(anyString(), any(), any())).thenReturn(new AiResult<>(
+                new RecommendationPayload("READY", List.of(
+                        recommendation(taxonomyId("Java"), "Java", "READY_NOW", refs),
+                        recommendation(taxonomyId("后端开发"), "后端开发", "AFTER_SMALL_GAP", refs),
+                        recommendation(taxonomyId("软件测试"), "软件测试", "EXPLORATORY", refs)), List.of()),
+                "test-model", 100, 180, "keep-recommendation-hash"));
+        mockMvc.perform(post("/api/v1/career-planning/sessions/{id}/recommendations/tasks", sessionId)
+                        .cookie(owner).header("Idempotency-Key", "keep-recs-" + sessionId)
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"requestId\":\"keep-recs-" + sessionId + "\"}"))
+                .andExpect(status().isAccepted());
+        careerPlanningAsync.processClaimedTask(taskService.claimNext(TaskTypes.CAREER_PLANNING_RECOMMENDATIONS).orElseThrow());
+        JsonNode recommended = data(mockMvc.perform(get("/api/v1/career-planning/sessions/{id}", sessionId).cookie(owner))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.recommendationSet.status").value("READY")).andReturn());
+        String setId = recommended.path("recommendationSet").path("id").asText();
+        JsonNode profile = recommended.path("profile");
+
+        // Saving the profile exactly as it is — what opening it and moving on used to do — changes nothing.
+        var items = mapper.createArrayNode();
+        for (JsonNode item : profile.path("items")) {
+            items.addObject().put("id", item.path("id").asText()).put("section", item.path("section").asText())
+                    .put("claimType", item.path("claimType").asText()).put("title", item.path("title").asText())
+                    .put("locked", item.path("locked").asBoolean()).put("sortOrder", item.path("sortOrder").asInt())
+                    .set("payload", item.path("payload"));
+            ((com.fasterxml.jackson.databind.node.ObjectNode) items.get(items.size() - 1)).set("sourceRefs", item.path("sourceRefs"));
+        }
+        var unchanged = mapper.createObjectNode();
+        unchanged.set("basics", profile.path("basics"));
+        unchanged.set("preferences", profile.path("preferences"));
+        unchanged.set("constraints", profile.path("constraints"));
+        unchanged.set("items", items);
+        unchanged.put("expectedVersion", profile.path("version").asInt());
+        mockMvc.perform(put("/api/v1/career-planning/sessions/{id}/profile", sessionId)
+                        .cookie(owner).contentType(MediaType.APPLICATION_JSON).content(unchanged.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.phase").value("RECOMMENDATIONS"))
+                .andExpect(jsonPath("$.data.profile.status").value("CONFIRMED"))
+                .andExpect(jsonPath("$.data.profile.version").value(profile.path("version").asInt()))
+                .andExpect(jsonPath("$.data.recommendationSet.id").value(setId));
+        mockMvc.perform(put("/api/v1/career-planning/sessions/{id}/evidence", sessionId).cookie(owner)
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"selections\":[]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.phase").value("RECOMMENDATIONS"))
+                .andExpect(jsonPath("$.data.recommendationSet.id").value(setId));
+
+        // A real edit is what sets the recommendations aside.
+        ((com.fasterxml.jackson.databind.node.ObjectNode) items.get(0)).put("title", "Java 与 Spring");
+        JsonNode edited = data(mockMvc.perform(put("/api/v1/career-planning/sessions/{id}/profile", sessionId)
+                        .cookie(owner).contentType(MediaType.APPLICATION_JSON).content(unchanged.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.phase").value("PROFILE")).andReturn());
+        org.assertj.core.api.Assertions.assertThat(edited.path("recommendationSet").isNull()
+                || edited.path("recommendationSet").isMissingNode()).isTrue();
     }
 
     private record GeneratedCanvas(String sessionId, JsonNode canvas) {}

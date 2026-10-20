@@ -13,6 +13,7 @@ import UiErrorState from '@/shared/ui/UiErrorState.vue'
 import UiSelect from '@/shared/ui/UiSelect.vue'
 import { useLoadState } from '@/shared/lib/useLoadState'
 import { useToastFeedback } from '@/shared/ui/toast'
+import { confirm } from '@/shared/ui/confirm'
 import JobTaxonomyPicker from '@/features/ai-resume/components/JobTaxonomyPicker.vue'
 import type { JobTaxonomySelection } from '@/features/ai-resume/types'
 import { errorMessage } from '@/shared/api/types'
@@ -106,7 +107,8 @@ const taskCheckpoint = ref('')
 const streamConnected = ref(true)
 const profileSaveState = ref<'idle' | 'waiting' | 'saving' | 'saved' | 'error'>('idle')
 const interviewScroll = ref<HTMLElement | null>(null)
-let lastSavedProfileSignature = ''
+const savedProfileSignature = ref('')
+let savedEvidenceSignature = ''
 
 const form = reactive({
   ageRange: '', identity: '', currentRole: '', education: '', major: '', graduationYear: '',
@@ -301,7 +303,7 @@ function hydrateForm(value: CareerPlanningSession, interviewPosition?: number): 
   }
   const validRecommendationIds = new Set(value.recommendationSet?.recommendations.map(item => item.id) ?? [])
   compareIds.value = compareIds.value.filter(id => validRecommendationIds.has(id))
-  lastSavedProfileSignature = profileDraftSignature()
+  savedProfileSignature.value = profileDraftSignature()
   void nextTick(() => { hydratingProfile = false })
 }
 
@@ -399,6 +401,56 @@ function profileWriteCommand(value: CareerPlanningSession): Record<string, unkno
   }
 }
 
+const profileDirty = computed(() => profileDraftSignature() !== savedProfileSignature.value)
+// Past drafting (核对中, or confirmed with recommendations): the form is open for a look, and saving an edit sends
+// the profile back to draft. Only drafting autosaves.
+const reviewingSettledProfile = computed(() => forceProfileEdit.value && !['PROFILE', 'EVIDENCE'].includes(phase.value))
+const readyRecommendationCount = computed(() => phase.value.includes('RECOMMEND') && recommendationSet.value?.status === 'READY'
+  ? recommendationSet.value.recommendations.length : 0)
+const profileSaveLabel = computed(() => {
+  const state = profileSaveState.value
+  if (state === 'saving') return phase.value === 'PROFILE' ? '正在自动保存' : '正在保存'
+  if (state === 'error') return '保存失败'
+  if (state === 'waiting') return '等待自动保存'
+  if (phase.value !== 'PROFILE') return profileDirty.value ? '有未保存的修改' : '没有未保存的修改'
+  return state === 'saved' ? '草稿已保存' : '修改后自动保存'
+})
+const settledProfileNotice = computed(() => {
+  if (readyRecommendationCount.value) {
+    return `这是已确认的画像。只查看不会影响现有 ${readyRecommendationCount.value} 个职业方向；保存修改后需要重新核对确认，再生成推荐，成功后消耗 1 次 AI 额度。`
+  }
+  if (phase.value.includes('RECOMMEND')) return '补充画像并保存后，需要重新核对确认，再生成推荐，成功后消耗 1 次 AI 额度。'
+  return '画像正在核对。保存修改后需要重新逐项确认。'
+})
+const settledProfileBackLabel = computed(() => phase.value === 'PROFILE_CONFIRMATION' ? '返回画像核对'
+  : readyRecommendationCount.value ? '返回职业方向' : '返回推荐结果')
+
+/** Setting existing recommendations aside costs a regeneration, so it is never a side effect of a save. */
+async function confirmSettingRecommendationsAside(cause: string): Promise<boolean> {
+  const count = readyRecommendationCount.value
+  if (!count) return true
+  return confirm({
+    title: '现有职业方向会失效',
+    message: `${cause}后，现有 ${count} 个职业方向不再对应你的画像：需要重新核对确认画像，再生成推荐，成功后消耗 1 次 AI 额度。不保存则推荐保持不变。`,
+    confirmText: '保存并重新确认',
+    cancelText: '先不保存',
+  })
+}
+
+async function leaveSettledProfile(): Promise<void> {
+  const current = session.value
+  if (!current) return
+  if (profileDirty.value && !(await confirm({
+    title: '放弃未保存的修改？',
+    message: '画像会保持原样，现有推荐不受影响。',
+    confirmText: '放弃修改',
+    cancelText: '继续编辑',
+  }))) return
+  hydrateForm(current)
+  forceProfileEdit.value = false
+  resetNotice()
+}
+
 async function saveProfile(requireComplete = true, announce = true): Promise<boolean> {
   window.clearTimeout(profileAutosaveTimer)
   if (profileSaveInFlight) await profileSaveInFlight
@@ -410,10 +462,15 @@ async function saveProfile(requireComplete = true, announce = true): Promise<boo
     return false
   }
   const signature = profileDraftSignature()
-  if (!requireComplete && signature === lastSavedProfileSignature) {
-    profileSaveState.value = 'saved'
+  // Nothing changed, nothing to send: opening a confirmed profile and moving on must not reopen it.
+  if (signature === savedProfileSignature.value) {
+    if (profileSaveState.value !== 'error') profileSaveState.value = phase.value === 'PROFILE' ? 'saved' : 'idle'
+    if (announce && requireComplete) {
+      notice.value = reviewingSettledProfile.value ? '画像没有修改，现有推荐保持不变。' : '职业画像草稿已保存。'
+    }
     return true
   }
+  if (announce && !(await confirmSettingRecommendationsAside('保存画像修改'))) return false
   if (announce) { pending.value = 'profile'; pageError.value = ''; notice.value = '' }
   profileSaveState.value = 'saving'
   const operation = (async () => {
@@ -421,7 +478,7 @@ async function saveProfile(requireComplete = true, announce = true): Promise<boo
       const value = await updateCareerPlanningProfile(current.id, profileWriteCommand(current))
       const unchangedWhileSaving = signature === profileDraftSignature()
       updateWorkbenchSession(value)
-      lastSavedProfileSignature = signature
+      savedProfileSignature.value = signature
       if (unchangedWhileSaving) hydrateForm(value)
       else scheduleProfileAutosave(80)
       profileSaveState.value = 'saved'
@@ -454,6 +511,7 @@ async function openEvidence(): Promise<void> {
   try {
     evidenceOptions.value = await fetchCareerPlanningEvidence(session.value.id)
     evidenceScopeSelections.value = hydrateEvidenceScopeSelections(evidenceOptions.value)
+    savedEvidenceSignature = evidenceSignature()
   } catch (reason) {
     pageError.value = errorMessage(reason, '资料库记录读取失败')
   } finally { evidenceLoading.value = false }
@@ -463,8 +521,16 @@ function toggleEvidenceScope(sourceId: string, scope: EvidenceScope, selected: b
   evidenceScopeSelections.value = setEvidenceScope(evidenceScopeSelections.value, sourceId, scope, selected)
 }
 
+function evidenceSignature(): string {
+  return JSON.stringify(toEvidenceAuthorizationSelections(evidenceScopeSelections.value)
+    .map(item => ({ sourceId: item.sourceId, scopes: [...item.scopes].sort() }))
+    .sort((left, right) => left.sourceId.localeCompare(right.sourceId)))
+}
+
 async function saveEvidence(): Promise<void> {
   if (!session.value) return
+  const changed = evidenceSignature() !== savedEvidenceSignature
+  if (changed && !(await confirmSettingRecommendationsAside('修改资料授权'))) return
   pending.value = 'evidence'; pageError.value = ''
   try {
     session.value = await authorizeCareerPlanningEvidence(
@@ -472,6 +538,12 @@ async function saveEvidence(): Promise<void> {
       toEvidenceAuthorizationSelections(evidenceScopeSelections.value),
     )
     evidenceOpen.value = false
+    if (!changed && !['PROFILE', 'EVIDENCE'].includes(session.value.phase)) {
+      // Same selection on a profile past drafting: nothing was reopened, so go back to where the user was.
+      forceProfileEdit.value = false
+      notice.value = '资料授权没有变化，画像和推荐保持不变。'
+      return
+    }
     notice.value = selectedEvidenceCount.value ? `已授权 ${selectedEvidenceCount.value} 项结构化资料。` : '本次规划不使用资料库记录。'
   } catch (reason) { pageError.value = errorMessage(reason, '资料授权保存失败') }
   finally { pending.value = '' }
@@ -1006,6 +1078,11 @@ onBeforeUnmount(() => {
               <button :class="{ active: profileTab === 'PREFERENCES' }" type="button" role="tab" :aria-selected="profileTab === 'PREFERENCES'" @click="profileTab = 'PREFERENCES'">3 个人倾向与限制</button>
               <i aria-hidden="true" />
             </nav>
+            <div v-if="reviewingSettledProfile" class="cp-settled-profile" data-testid="settled-profile" role="note">
+              <LockKeyhole :size="17" />
+              <p>{{ settledProfileNotice }}</p>
+              <button class="cp-secondary" type="button" @click="leaveSettledProfile"><ArrowLeft :size="15" />{{ settledProfileBackLabel }}</button>
+            </div>
             <form class="cp-profile-form" @submit.prevent="saveProfile()">
               <Transition name="cp-form-view" mode="out-in"><section v-if="profileTab === 'BASICS'" key="basics" class="cp-form-section">
                 <header><div><h1>基础信息</h1><p>用于判断规划节奏，不用于年龄歧视或敏感推断。</p></div><UserRound :size="23" /></header>
@@ -1039,9 +1116,9 @@ onBeforeUnmount(() => {
                   <LoaderCircle v-if="profileSaveState === 'saving'" class="cp-spin" :size="14" />
                   <Check v-else-if="profileSaveState === 'saved'" :size="14" />
                   <Save v-else :size="14" />
-                  {{ profileSaveState === 'waiting' ? '等待自动保存' : profileSaveState === 'saving' ? '正在自动保存' : profileSaveState === 'saved' ? '草稿已保存' : profileSaveState === 'error' ? '保存失败' : '修改后自动保存' }}
+                  {{ profileSaveLabel }}
                 </span>
-                <button class="cp-secondary" type="submit" :disabled="pending === 'profile' || profileSaveState === 'saving'"><LoaderCircle v-if="pending === 'profile'" class="cp-spin" :size="16" />保存草稿</button>
+                <button class="cp-secondary" type="submit" :disabled="pending === 'profile' || profileSaveState === 'saving'"><LoaderCircle v-if="pending === 'profile'" class="cp-spin" :size="16" />{{ reviewingSettledProfile ? '保存修改' : '保存草稿' }}</button>
                 <button v-if="profileTab !== 'PREFERENCES'" class="cp-primary" type="button" @click="profileTab = profileTab === 'BASICS' ? 'SKILLS' : 'PREFERENCES'">下一步 <ArrowRight :size="16" /></button>
                 <button v-else class="cp-primary" type="button" @click="openEvidence"><Database :size="16" />选择资料授权</button>
               </footer>

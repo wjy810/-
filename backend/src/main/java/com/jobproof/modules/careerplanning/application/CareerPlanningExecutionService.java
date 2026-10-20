@@ -387,7 +387,9 @@ public class CareerPlanningExecutionService {
                     taskId, current.accountId());
             if (evidenceCount == 0) throw AppException.conflict("CP_PLAN_TASK_EVIDENCE_REQUIRED", "该任务需要先关联至少一项证据");
         }
-        LocalDate due = command.dueDate() == null ? task.dueDate() : command.dueDate();
+        // Moving a task to another week moves its due date with it, unless a date is given with the move.
+        LocalDate due = command.dueDate() != null ? command.dueDate()
+                : week != task.week() ? weekDueDate(plan.startDate(), week, plan.learningDays()) : task.dueDate();
         Instant now = clock.now();
         jdbc.update("UPDATE career_learning_plan_tasks SET status=?,week_no=?,estimated_minutes=?,due_date=?,version_no=version_no+1,updated_at=?,completed_at=? WHERE id=? AND account_id=?",
                 status, week, minutes, due, now, "DONE".equals(status) ? now : null, taskId, current.accountId());
@@ -399,7 +401,7 @@ public class CareerPlanningExecutionService {
         recordPlanRevision(planId, current.accountId(), "TASK_UPDATED", "USER", now);
         if (task.nodeId() != null && ("IN_PROGRESS".equals(status) || "DONE".equals(status))) {
             updateNodeFromTask(current.accountId(), session.goalId(), task.nodeId(),
-                    "DONE".equals(status) ? "PENDING_VALIDATION" : "LEARNING", task.title());
+                    "DONE".equals(status) ? "PENDING_VALIDATION" : "LEARNING");
         }
         audit.append(current.accountId(), "CAREER_PLAN_TASK_UPDATED", "CAREER_PLAN_TASK", taskId,
                 "status=" + status + " week=" + week);
@@ -626,8 +628,8 @@ public class CareerPlanningExecutionService {
     }
 
     /**
-     * Restoring an older version keeps what the user protected: locked nodes stay as they are now (and come back
-     * if the old version did not have them), and every node keeps the user's current notes.
+     * Restoring an older version brings back content, not the past: locked nodes stay as they are now (and come back
+     * if the old version did not have them), and every other node keeps its current progress, position and notes.
      */
     private void keepLockedNodesAndNotes(CanvasGraph current, CanvasGraph restored) {
         String rootId = restored.nodes().values().stream().filter(node -> "CAREER".equals(node.type()))
@@ -646,11 +648,14 @@ public class CareerPlanningExecutionService {
                             .map(GraphRelation::toNodeId).filter(restored.nodes()::containsKey).findFirst().orElse(rootId);
                     if (parent != null) restored.relations().add(new GraphRelation(Ids.newId(), node.logicalId(), parent, "TREE_PARENT"));
                 }
-            } else if (old != null && node.detail().hasNonNull("notes") && old.detail() instanceof ObjectNode oldDetail) {
-                ObjectNode detail = oldDetail.deepCopy();
-                detail.set("notes", node.detail().get("notes").deepCopy());
-                restored.nodes().put(old.logicalId(), new GraphNode(old.logicalId(), old.type(), old.status(), old.title(),
-                        detail, old.sourceRefs(), old.x(), old.y(), old.locked(), old.sortOrder()));
+            } else if (old != null) {
+                ObjectNode detail = old.detail() instanceof ObjectNode oldDetail ? oldDetail.deepCopy() : mapper.createObjectNode();
+                for (String live : List.of("notes", "layoutPinned", "lastValidationId", "masteredAt")) {
+                    if (node.detail().hasNonNull(live)) detail.set(live, node.detail().get(live).deepCopy());
+                    else detail.remove(live);
+                }
+                restored.nodes().put(old.logicalId(), new GraphNode(old.logicalId(), old.type(), node.status(), old.title(),
+                        detail, old.sourceRefs(), node.x(), node.y(), old.locked(), old.sortOrder()));
             }
         }
     }
@@ -778,27 +783,28 @@ public class CareerPlanningExecutionService {
         return new ProposalApplyResult(requireProposal(current.accountId(), sessionId, proposalId, false), canvas);
     }
 
-    private ValidationView persistValidation(CurrentAccount current, SessionRow session, CanvasGraph graph,
-            GraphNode node, String method, List<String> evidenceIds, JsonNode submission,
+    private ValidationView persistValidation(CurrentAccount current, SessionRow session, CanvasGraph evaluated,
+            GraphNode evaluatedNode, String method, List<String> evidenceIds, JsonNode submission,
             AiResult<ValidationPayload> result) {
+        // The AI call took a while: write onto the canvas as it is now, not as it was when the validation started.
+        CanvasGraph graph = latestGraph(current.accountId(), session.goalId(), true);
+        GraphNode node = graph.nodes().getOrDefault(evaluatedNode.logicalId(), evaluatedNode);
         Instant now = clock.now();
         String validationId = Ids.newId();
         String planId = jdbc.query("SELECT id FROM career_learning_plans WHERE goal_id=? AND account_id=? AND status IN ('ACTIVE','PAUSED') ORDER BY updated_at DESC LIMIT 1",
                 (rs, n) -> rs.getString("id"), session.goalId(), current.accountId()).stream().findFirst().orElse(null);
-        jdbc.update("INSERT INTO career_ability_validations(id,session_id,goal_id,plan_id,account_id,logical_node_id,canvas_version_id,method_code,status,submission_json,score_json,result_code,feedback_json,user_confirmed,prompt_version,schema_version,model_code,response_hash,created_at,evaluated_at,confirmed_at) VALUES(?,?,?,?,?,?,?,?,'EVALUATED',?,?,?,?,0,?,?,?,?,?,?,NULL)",
+        jdbc.update("INSERT INTO career_ability_validations(id,session_id,goal_id,plan_id,account_id,logical_node_id,canvas_version_id,method_code,status,submission_json,score_json,result_code,feedback_json,user_confirmed,prompt_version,schema_version,model_code,response_hash,created_at,evaluated_at,confirmed_at,previous_node_status) VALUES(?,?,?,?,?,?,?,?,'EVALUATED',?,?,?,?,0,?,?,?,?,?,?,NULL,?)",
                 validationId, session.id(), session.goalId(), planId, current.accountId(), node.logicalId(),
                 graph.base().id(), method, json(submission), json(result.value().score()), result.value().result(),
                 json(result.value().feedback()), CareerPlanningAiService.VALIDATION_PROMPT_VERSION,
-                CareerPlanningAiService.VALIDATION_SCHEMA_VERSION, result.model(), result.responseHash(), now, now);
+                CareerPlanningAiService.VALIDATION_SCHEMA_VERSION, result.model(), result.responseHash(), now, now,
+                node.status());
         for (String evidenceId : evidenceIds) {
             jdbc.update("INSERT INTO career_ability_validation_evidences(validation_id,evidence_id,account_id,created_at) VALUES(?,?,?,?)",
                     validationId, evidenceId, current.accountId(), now);
         }
-        if (!"MASTERED".equals(node.status())) {
-            graph.nodes().put(node.logicalId(), node.withStatus("PENDING_VALIDATION"));
-            persistGraph(current.accountId(), session.goalId(), graph, "VALIDATION_STARTED",
-                    "发起能力验证：" + node.title(), "USER", CareerPlanningAiService.VALIDATION_PROMPT_VERSION,
-                    CareerPlanningAiService.VALIDATION_SCHEMA_VERSION, result.model(), result.responseHash());
+        if (graph.nodes().containsKey(node.logicalId()) && !"MASTERED".equals(node.status())) {
+            setLiveStatus(current.accountId(), graph, node, "PENDING_VALIDATION", node.detail());
         }
         jdbc.update("UPDATE career_planning_sessions SET phase_code='VALIDATION',updated_at=?,version_no=version_no+1 WHERE id=? AND account_id=?",
                 now, session.id(), current.accountId());
@@ -825,25 +831,22 @@ public class CareerPlanningExecutionService {
             PreparedValidation input = inputs.get(evaluated.nodeId());
             if (input == null) throw AppException.dependency("CP_VALIDATION_BATCH_RESULT_INVALID", "批量验证返回了未知节点");
             String validationId = Ids.newId();
-            jdbc.update("INSERT INTO career_ability_validations(id,batch_id,session_id,goal_id,plan_id,account_id,logical_node_id,canvas_version_id,method_code,status,submission_json,score_json,result_code,feedback_json,user_confirmed,prompt_version,schema_version,model_code,response_hash,created_at,evaluated_at,confirmed_at) VALUES(?,?,?,?,?,?,?,?,?,'EVALUATED',?,?,?,?,0,?,?,?,?,?,?,NULL)",
+            GraphNode node = latest.nodes().get(input.node().logicalId());
+            jdbc.update("INSERT INTO career_ability_validations(id,batch_id,session_id,goal_id,plan_id,account_id,logical_node_id,canvas_version_id,method_code,status,submission_json,score_json,result_code,feedback_json,user_confirmed,prompt_version,schema_version,model_code,response_hash,created_at,evaluated_at,confirmed_at,previous_node_status) VALUES(?,?,?,?,?,?,?,?,?,'EVALUATED',?,?,?,?,0,?,?,?,?,?,?,NULL,?)",
                     validationId, batchId, prepared.session().id(), prepared.session().goalId(), planId,
                     current.accountId(), input.node().logicalId(), latest.base().id(), prepared.method(),
                     json(input.submission()), json(evaluated.score()), evaluated.result(), json(evaluated.feedback()),
                     CareerPlanningAiService.BATCH_VALIDATION_PROMPT_VERSION,
-                    CareerPlanningAiService.BATCH_VALIDATION_SCHEMA_VERSION, result.model(), result.responseHash(), now, now);
+                    CareerPlanningAiService.BATCH_VALIDATION_SCHEMA_VERSION, result.model(), result.responseHash(), now, now,
+                    node == null ? null : node.status());
             for (String evidenceId : input.evidenceIds()) {
                 jdbc.update("INSERT INTO career_ability_validation_evidences(validation_id,evidence_id,account_id,created_at) VALUES(?,?,?,?)",
                         validationId, evidenceId, current.accountId(), now);
             }
-            GraphNode node = latest.nodes().get(input.node().logicalId());
             if (node != null && !"MASTERED".equals(node.status())) {
-                latest.nodes().put(node.logicalId(), node.withStatus("PENDING_VALIDATION"));
+                setLiveStatus(current.accountId(), latest, node, "PENDING_VALIDATION", node.detail());
             }
         }
-        persistGraph(current.accountId(), prepared.session().goalId(), latest, "VALIDATION_BATCH_STARTED",
-                "批量发起 " + result.value().items().size() + " 项能力验证", "USER",
-                CareerPlanningAiService.BATCH_VALIDATION_PROMPT_VERSION,
-                CareerPlanningAiService.BATCH_VALIDATION_SCHEMA_VERSION, result.model(), result.responseHash());
         jdbc.update("UPDATE career_planning_sessions SET phase_code='VALIDATION',updated_at=?,version_no=version_no+1 WHERE id=? AND account_id=?",
                 now, prepared.session().id(), current.accountId());
         audit.append(current.accountId(), "CAREER_ABILITY_VALIDATION_BATCH_EVALUATED",
@@ -918,14 +921,13 @@ public class CareerPlanningExecutionService {
             ObjectNode detail = node.detail().deepCopy();
             detail.put("lastValidationId", validationId);
             detail.put("masteredAt", now.toString());
-            graph.nodes().put(node.logicalId(), new GraphNode(node.logicalId(), node.type(), "MASTERED",
-                    node.title(), detail, node.sourceRefs(), node.x(), node.y(), node.locked(), node.sortOrder()));
-            persistGraph(current.accountId(), session.goalId(), graph, "VALIDATION_CONFIRMED",
-                    "验证通过并确认掌握：" + node.title(), "USER", null, null, null, null);
+            setLiveStatus(current.accountId(), graph, node, "MASTERED", detail);
             jdbc.update("UPDATE career_learning_evidences SET verification_status='CONFIRMED',confirmed_at=? WHERE id IN (SELECT evidence_id FROM career_ability_validation_evidences WHERE validation_id=?)",
                     now, validationId);
-        } else if (accepted && "NEEDS_WORK".equals(validation.result())) {
-            addRemediationTask(current.accountId(), session.goalId(), node, validationId, now);
+        } else {
+            boolean remediation = accepted && "NEEDS_WORK".equals(validation.result());
+            if (remediation) addRemediationTask(current.accountId(), session.goalId(), node, validationId, now);
+            settleUnpassedValidation(current.accountId(), graph, node, validation, remediation);
         }
         audit.append(current.accountId(), "CAREER_ABILITY_VALIDATION_CONFIRMED", "CAREER_ABILITY_VALIDATION", validationId,
                 "accepted=" + accepted + " result=" + validation.result());
@@ -1158,6 +1160,9 @@ public class CareerPlanningExecutionService {
                 GraphNode node = requireNode(graph, item.targetNodeId());
                 String title = clean(after.path("title").asText());
                 String status = clean(after.path("status").asText());
+                // Progress made after the proposal was written (a task done, a validation passed) wins over it.
+                String proposedFrom = clean(item.before().path("status").asText());
+                if (proposedFrom != null && !proposedFrom.equals(node.status())) status = null;
                 JsonNode detail = sanitizedAiDetail(after.path("detail"), node.detail());
                 List<String> refs = after.path("sourceRefs").isArray() ? stringList(after.path("sourceRefs")) : node.sourceRefs();
                 graph.nodes().put(node.logicalId(), new GraphNode(node.logicalId(), node.type(),
@@ -1233,13 +1238,48 @@ public class CareerPlanningExecutionService {
                 summary, hash, createdBy, promptVersion, schemaVersion, model, responseHash, now));
     }
 
-    private void updateNodeFromTask(String accountId, String goalId, String nodeId, String status, String title) {
+    private void updateNodeFromTask(String accountId, String goalId, String nodeId, String status) {
         CanvasGraph graph = latestGraph(accountId, goalId, true);
         GraphNode node = graph.nodes().get(nodeId);
         if (node == null || "MASTERED".equals(node.status()) || status.equals(node.status())) return;
-        graph.nodes().put(nodeId, node.withStatus(status));
-        persistGraph(accountId, goalId, graph, "PLAN_TASK_STATUS_SYNC",
-                "任务进度同步到能力节点：" + title, "SYSTEM", null, null, null, null);
+        // A node with a result still awaiting confirmation stays 待验证 until that result is settled.
+        if ("PENDING_VALIDATION".equals(node.status()) && openValidations(accountId, goalId, nodeId) > 0) return;
+        setLiveStatus(accountId, graph, node, status, node.detail());
+    }
+
+    /**
+     * Progress is live state, not content. Tasks and validations moving a node to 学习中、待验证 or 已掌握 change the
+     * current version in place: no new version, so pending AI proposals stay valid and running inference or batch
+     * validation is not refused for a canvas that only moved forward.
+     */
+    private void setLiveStatus(String accountId, CanvasGraph graph, GraphNode node, String status, JsonNode detail) {
+        GraphNode next = new GraphNode(node.logicalId(), node.type(), status, node.title(), detail,
+                node.sourceRefs(), node.x(), node.y(), node.locked(), node.sortOrder());
+        graph.nodes().put(node.logicalId(), next);
+        jdbc.update("UPDATE canvas_nodes SET node_status=?,detail_json=? WHERE version_id=? AND logical_node_id=? AND account_id=?",
+                status, json(detail), graph.base().id(), node.logicalId(), accountId);
+        jdbc.update("UPDATE canvas_versions SET graph_hash=? WHERE id=? AND account_id=?",
+                graphHash(graph), graph.base().id(), accountId);
+    }
+
+    /**
+     * A validation that did not end in mastery — rejected by the user, judged 需要补强 or 材料不足 — no longer
+     * holds the node at 待验证. Accepted 需要补强 sends it back to 学习中 with a remediation task; otherwise it goes
+     * back to what it was before the validation started. Another result still awaiting confirmation keeps it 待验证.
+     */
+    private void settleUnpassedValidation(String accountId, CanvasGraph graph, GraphNode node,
+            ValidationRow validation, boolean remediation) {
+        if (!"PENDING_VALIDATION".equals(node.status())) return;
+        if (openValidations(accountId, graph.base().goalId(), node.logicalId()) > 0) return;
+        String previous = remediation ? "LEARNING" : validation.previousNodeStatus();
+        if (previous == null || "MASTERED".equals(previous)) previous = "LEARNING";
+        if (previous.equals(node.status())) return;
+        setLiveStatus(accountId, graph, node, previous, node.detail());
+    }
+
+    private int openValidations(String accountId, String goalId, String nodeId) {
+        return count("SELECT COUNT(*) FROM career_ability_validations WHERE goal_id=? AND account_id=? AND logical_node_id=? AND status='EVALUATED'",
+                goalId, accountId, nodeId);
     }
 
     private ValidationView validationView(ResultSet rs) throws SQLException {
@@ -1399,8 +1439,9 @@ public class CareerPlanningExecutionService {
         return jdbc.query("SELECT * FROM career_canvas_ai_proposal_items WHERE proposal_id=? AND account_id=? ORDER BY sequence_no",
                 (rs, n) -> new ProposalItemRow(rs.getString("id"), rs.getString("proposal_key"),
                         rs.getString("operation_code"), rs.getString("target_logical_node_id"),
-                        rs.getString("parent_logical_node_id"), read(rs.getString("after_json")),
-                        stringList(rs.getString("impact_node_ids_json"))), proposalId, accountId);
+                        rs.getString("parent_logical_node_id"), read(rs.getString("before_json")),
+                        read(rs.getString("after_json")), stringList(rs.getString("impact_node_ids_json"))),
+                proposalId, accountId);
     }
 
     private PlanRow requirePlan(String accountId, String sessionId, String planId, boolean lock) {
@@ -1467,7 +1508,8 @@ public class CareerPlanningExecutionService {
         String sql = "SELECT * FROM career_ability_validations WHERE id=? AND session_id=? AND account_id=?"
                 + (lock ? " FOR UPDATE" : "");
         return jdbc.query(sql, (rs, n) -> new ValidationRow(rs.getString("id"), rs.getString("logical_node_id"),
-                rs.getString("status"), rs.getString("result_code")), validationId, sessionId, accountId)
+                rs.getString("status"), rs.getString("result_code"), rs.getString("previous_node_status")),
+                validationId, sessionId, accountId)
                 .stream().findFirst().orElseThrow(() -> AppException.user("CP_VALIDATION_NOT_FOUND", "能力验证不存在"));
     }
 
@@ -1648,7 +1690,8 @@ public class CareerPlanningExecutionService {
         if (planId == null) return;
         PlanRow plan = requirePlan(accountId, jdbc.queryForObject("SELECT session_id FROM career_learning_plans WHERE id=?", String.class, planId), planId, false);
         int order = count("SELECT COUNT(*) FROM career_learning_plan_tasks WHERE plan_id=?", planId) + 1;
-        int week = Math.min(plan.durationWeeks(), Math.max(1, order / 3 + 1));
+        int week = remediationWeek(plan.startDate(), plan.durationWeeks(), plan.learningDays(),
+                LocalDate.ofInstant(now, ZoneId.systemDefault()));
         insertPlanTask(planId, accountId, node.logicalId(), "REMEDIATION", week,
                 "补强：" + node.title(), "根据验证 " + validationId + " 的缺口完成针对性练习并补充证据。",
                 "HIGH", Math.max(60, estimatedMinutes(node) / 2), weekDueDate(plan.startDate(), week, plan.learningDays()),
@@ -1772,6 +1815,17 @@ public class CareerPlanningExecutionService {
     }
 
     /**
+     * 补强 belongs in the week the user is in now, not at an index derived from how many tasks the plan has: the
+     * current plan week, or the next one when this week's last learning day has already passed.
+     */
+    static int remediationWeek(LocalDate start, int durationWeeks, List<Integer> days, LocalDate today) {
+        if (!today.isAfter(start)) return 1;
+        int week = (int) Math.min(durationWeeks, java.time.temporal.ChronoUnit.WEEKS.between(start, today) + 1);
+        if (week < durationWeeks && weekDueDate(start, week, days).isBefore(today)) week++;
+        return week;
+    }
+
+    /**
      * The last chosen learning day inside plan week {@code week} (the 7 days from start + (week-1) weeks).
      * Learning days are ISO weekdays (1 = Monday), so a plan starting on a Wednesday with 周一/周三/周六 is due
      * on that week's Monday, not on "start + 5 days".
@@ -1886,11 +1940,7 @@ public class CareerPlanningExecutionService {
             String createdBy, String promptVersion, String schemaVersion, String model,
             String responseHash, Instant createdAt) {}
     private record GraphNode(String logicalId, String type, String status, String title,
-            JsonNode detail, List<String> sourceRefs, int x, int y, boolean locked, int sortOrder) {
-        GraphNode withStatus(String value) {
-            return new GraphNode(logicalId, type, value, title, detail, sourceRefs, x, y, locked, sortOrder);
-        }
-    }
+            JsonNode detail, List<String> sourceRefs, int x, int y, boolean locked, int sortOrder) {}
     private record GraphRelation(String id, String fromNodeId, String toNodeId, String type) {}
     private record CanvasGraph(VersionRow base, LinkedHashMap<String, GraphNode> nodes,
             List<GraphRelation> relations) {}
@@ -1899,7 +1949,7 @@ public class CareerPlanningExecutionService {
             int expectedVersion, Set<String> allowedRefs) {}
     private record ProposalRow(String id, String status, int baseVersion, String model, String responseHash) {}
     private record ProposalItemRow(String id, String proposalKey, String operation,
-            String targetNodeId, String parentNodeId, JsonNode after, List<String> impactNodeIds) {}
+            String targetNodeId, String parentNodeId, JsonNode before, JsonNode after, List<String> impactNodeIds) {}
     private record PlanRow(String id, String sessionId, String goalId, String canvasVersionId,
             int canvasVersion, int durationWeeks, String intensity, int weeklyHours,
             List<Integer> learningDays, LocalDate startDate, LocalDate targetDate, String status,
@@ -1908,7 +1958,7 @@ public class CareerPlanningExecutionService {
             String currentRevisionId) {}
     private record TaskRow(String id, String planId, String nodeId, String title, int week,
             int estimatedMinutes, LocalDate dueDate, String status, boolean evidenceRequired, int version) {}
-    private record ValidationRow(String id, String nodeId, String status, String result) {}
+    private record ValidationRow(String id, String nodeId, String status, String result, String previousNodeStatus) {}
     private record PreparedValidation(GraphNode node, List<String> evidenceIds,
             List<LearningEvidenceView> evidence, JsonNode submission) {}
     private record PreparedValidationBatch(SessionRow session, CanvasGraph graph, String method,

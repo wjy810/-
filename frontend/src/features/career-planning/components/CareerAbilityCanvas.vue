@@ -24,7 +24,7 @@ import { isAbortError, pollTask } from '@/shared/lib/pollTask'
 import {
   addCareerCanvasRelation, createCareerCanvasNode, deleteCareerCanvasNode,
   fetchCareerCanvasProposal, fetchCareerPlanningSession, mergeCareerCanvasNodes, splitCareerCanvasNode,
-  restoreCareerCanvasVersion, startCareerCanvasGeneration, startCareerNodeInference, updateCareerCanvasNode,
+  restoreCareerCanvasVersion, saveCareerCanvasLayout, startCareerCanvasGeneration, startCareerNodeInference, updateCareerCanvasNode,
   updateCareerCanvasNodes,
 } from '../services/careerPlanningApi'
 import type {
@@ -324,7 +324,8 @@ function restoreCanvasHistory(): void {
 }
 
 function recordCanvasMutation(before: CareerCanvas, after: CareerCanvas): void {
-  if (before.graphHash !== after.graphHash) {
+  // Undo walks content versions; a layout save keeps the version and is not a step to undo.
+  if (before.version !== after.version && before.graphHash !== after.graphHash) {
     pushHistoryVersion(undoVersions.value, before.version)
     redoVersions.value = []
   }
@@ -724,18 +725,16 @@ async function applyBatchChange(change: 'LOCK' | 'UNLOCK' | 'STATUS'): Promise<v
 async function onNodeDragStop(event: NodeDragEvent): Promise<void> {
   const node = currentCanvas.value.nodes.find(item => item.logicalNodeId === event.node.id)
   if (!node || node.locked) return
-  await mutate(`position:${node.logicalNodeId}`, () => updateCareerCanvasNode(props.sessionId, node.logicalNodeId, {
-    x: Math.round(event.node.position.x), y: Math.round(event.node.position.y),
-    detail: { layoutPinned: true }, expectedVersion: currentCanvas.value.version,
+  await mutate(`position:${node.logicalNodeId}`, () => saveCareerCanvasLayout(props.sessionId, {
+    positions: [{ nodeId: node.logicalNodeId, x: Math.round(event.node.position.x), y: Math.round(event.node.position.y) }],
   }), '节点位置已保存，之后的自动布局不会再移动它。')
 }
 
 async function autoArrange(): Promise<void> {
   const nodeIds = pinnedNodeIds.value
   if (!nodeIds.length) return
-  await mutate('auto-layout', () => updateCareerCanvasNodes(props.sessionId, {
-    nodeIds, resetLayout: true, expectedVersion: currentCanvas.value.version,
-  }), `已自动整理 ${nodeIds.length} 个手动摆放的节点。`)
+  await mutate('auto-layout', () => saveCareerCanvasLayout(props.sessionId, { resetNodeIds: nodeIds }),
+    `已自动整理 ${nodeIds.length} 个手动摆放的节点。`)
 }
 
 function startEdit(node: CanvasNode): void {

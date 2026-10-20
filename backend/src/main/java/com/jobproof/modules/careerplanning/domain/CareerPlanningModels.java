@@ -50,6 +50,13 @@ public final class CareerPlanningModels {
     /** {@code resetLayout}: forget the positions the user dragged these nodes to and lay them out automatically. */
     public record CanvasNodeBatchUpdateCommand(List<String> nodeIds, String status, Boolean locked, Boolean resetLayout,
             Integer expectedVersion) {}
+    /**
+     * Where nodes sit on the canvas. {@code positions} are where the user dragged nodes (they stay put after that);
+     * {@code resetNodeIds} hand nodes back to the automatic layout. Layout is not content, so saving it changes the
+     * current version in place and needs no expected version.
+     */
+    public record CanvasLayoutCommand(List<CanvasNodePosition> positions, List<String> resetNodeIds) {}
+    public record CanvasNodePosition(String nodeId, Integer x, Integer y) {}
     public record CanvasNodeDeleteCommand(boolean cascade, Integer expectedVersion) {}
     public record CanvasSplitItem(String type, String title, String status, JsonNode detail,
             List<String> sourceRefs, boolean locked) {}
