@@ -1,8 +1,12 @@
 package com.jobproof.modules.aigateway.application;
 import com.fasterxml.jackson.databind.JsonNode; import com.fasterxml.jackson.databind.ObjectMapper; import com.jobproof.modules.aigateway.adapter.*; import com.jobproof.modules.aigateway.domain.AiGatewayModels.*; import com.jobproof.modules.aigateway.port.*; import com.jobproof.modules.aigateway.security.*; import java.time.Duration; import java.util.LinkedHashMap; import java.util.List; import java.util.Map; import java.util.concurrent.atomic.AtomicBoolean; import java.util.concurrent.atomic.AtomicLong; import java.util.concurrent.atomic.AtomicReference; import java.util.function.Consumer;
 public final class AiGatewayService {
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(AiGatewayService.class);
     private static final String REQUEST_TIMEOUT_OPTION = "_request_timeout_seconds";
     private static final Duration DEFAULT_REQUEST_TIMEOUT = Duration.ofSeconds(60);
+    /** Two tries per request: the next channel when there is one, otherwise the same one again after a pause. */
+    private static final int ATTEMPTS = 2;
+    private static final Duration SAME_CHANNEL_PAUSE = Duration.ofMillis(600);
     private final AiChannelPort channels;
     private final AiTransportPort transport;
     private final ApiKeyCipher cipher;
@@ -26,8 +30,9 @@ public final class AiGatewayService {
             throw new AiGatewayException("No eligible AI channel", false, false);
         }
         AiGatewayException last = null;
-        for (int attempt = 0; attempt < Math.min(2, ordered.size()); attempt++) {
-            Channel channel = ordered.get(attempt);
+        for (int attempt = 0; attempt < ATTEMPTS; attempt++) {
+            // A single channel's transient 429 / 5xx / timeout gets one more try instead of failing the user's request.
+            Channel channel = channelFor(ordered, attempt);
             long start = System.nanoTime();
             try {
                 ssrf.validate(channel.baseUri());
@@ -40,6 +45,9 @@ public final class AiGatewayService {
                 var response = transport.exchange(outgoing.uri(), "POST", outgoing.headers(), outgoing.body(), requestTimeout);
                 if (response.status() < 200 || response.status() >= 300) {
                     boolean retryable = response.status() == 408 || response.status() == 429 || response.status() >= 500;
+                    // The provider's error text says what it rejected (a parameter, a limit); it carries no key or prompt.
+                    log.warn("AI upstream HTTP {} channel={} model={} error={}", response.status(), channel.id(),
+                            providerRequest.model(), errorSnippet(response.body()));
                     throw new AiGatewayException("Upstream returned HTTP " + response.status(), retryable, false);
                 }
                 channels.recordSuccess(channel.id(), (System.nanoTime() - start) / 1_000_000);
@@ -66,8 +74,8 @@ public final class AiGatewayService {
         List<Channel> ordered = router.order(channels.findEligible(accountId, request.model()));
         if (ordered.isEmpty()) throw new AiGatewayException("No eligible AI channel", false, false);
         AiGatewayException last = null;
-        for (int attempt = 0; attempt < Math.min(2, ordered.size()); attempt++) {
-            Channel channel = ordered.get(attempt);
+        for (int attempt = 0; attempt < ATTEMPTS; attempt++) {
+            Channel channel = channelFor(ordered, attempt);
             AtomicBoolean outputStarted = new AtomicBoolean();
             AtomicBoolean done = new AtomicBoolean();
             AtomicReference<String> responseId = new AtomicReference<>();
@@ -131,6 +139,22 @@ public final class AiGatewayService {
             }
         }
         throw last == null ? new AiGatewayException("AI streaming request failed", false, false) : last;
+    }
+
+    private static Channel channelFor(List<Channel> ordered, int attempt) {
+        if (attempt < ordered.size()) return ordered.get(attempt);
+        try {
+            Thread.sleep(SAME_CHANNEL_PAUSE.toMillis());
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            throw new AiGatewayException("AI request interrupted", false, false);
+        }
+        return ordered.get(ordered.size() - 1);
+    }
+
+    private static String errorSnippet(JsonNode body) {
+        String text = String.valueOf(body).replaceAll("\\s+", " ").trim();
+        return text.length() <= 300 ? text : text.substring(0, 300) + "…";
     }
 
     private AiProtocolAdapter adapter(Channel channel) {

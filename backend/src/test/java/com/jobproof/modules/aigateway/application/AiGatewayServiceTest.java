@@ -117,6 +117,39 @@ class AiGatewayServiceTest {
         assertEquals("gpt-5.6-sol", response.model());
     }
 
+    @Test
+    void aSingleChannelGetsOneMoreTryAfterATransientFailureButNotAfterARejectedRequest() throws Exception {
+        ObjectMapper mapper = new ObjectMapper();
+        ApiKeyCipher cipher = new ApiKeyCipher(Base64.getEncoder().encodeToString(new byte[32]));
+        Channel only = new Channel("channel-1", AiProtocol.OPENAI_CHAT, URI.create("https://provider.example/v1"),
+                cipher.encrypt("test-key"), "gpt-6.1-sol", 0, 100, true);
+        JsonNode ok = mapper.readTree("""
+                {"id":"r","model":"gpt-6.1-sol","choices":[{"message":{"content":"OK"}}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}
+                """);
+        JsonNode busy = mapper.readTree("{\"error\":{\"message\":\"busy\"}}");
+        JsonNode badParam = mapper.readTree("{\"error\":{\"message\":\"bad param\"}}");
+        List<Integer> calls = new ArrayList<>();
+        AiTransportPort flaky = (uri, method, headers, body, timeout) -> {
+            calls.add(calls.size());
+            return calls.size() == 1
+                    ? new AiTransportPort.TransportResponse(503, Map.of(), busy)
+                    : new AiTransportPort.TransportResponse(200, Map.of(), ok);
+        };
+        Response response = service(only, flaky, cipher, mapper).execute("account-1",
+                new Request("gpt-6.1-sol", List.of(new Message("user", "hi")), false, Map.of()));
+        assertEquals("OK", response.text());
+        assertEquals(2, calls.size());
+
+        List<Integer> rejected = new ArrayList<>();
+        AiTransportPort badRequest = (uri, method, headers, body, timeout) -> {
+            rejected.add(rejected.size());
+            return new AiTransportPort.TransportResponse(400, Map.of(), badParam);
+        };
+        org.junit.jupiter.api.Assertions.assertThrows(AiGatewayException.class, () -> service(only, badRequest, cipher, mapper)
+                .execute("account-1", new Request("gpt-6.1-sol", List.of(new Message("user", "hi")), false, Map.of())));
+        assertEquals(1, rejected.size(), "a 400 will not pass on a second try");
+    }
+
     private static AiGatewayService service(Channel channel, AiTransportPort transport, ApiKeyCipher cipher,
             ObjectMapper mapper) throws Exception {
         AiChannelPort channels = new AiChannelPort() {
