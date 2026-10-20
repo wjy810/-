@@ -38,6 +38,17 @@ public final class ResumePdfRenderer {
                 MONO_ACCENT);
     }
 
+    /** A plain document of headed sections that is not a resume (for example a job-match report). */
+    public static byte[] renderSections(String title, String subtitle, String subject, List<PlainSection> sections) {
+        List<SectionBlock> blocks = sections.stream()
+                .map(section -> new SectionBlock(section.heading(), section.body() == null ? "" : section.body()))
+                .toList();
+        return buildPdf(safeTitle(title), subtitle, subject, blocks, MONO_ACCENT);
+    }
+
+    public record PlainSection(String heading, String body) {
+    }
+
     public static byte[] render(
             String title,
             ResumeDocumentModel document,
@@ -82,6 +93,10 @@ public final class ResumePdfRenderer {
     }
 
     private static byte[] buildPdf(String title, String subtitle, List<SectionBlock> blocks, Color accent) {
+        return buildPdf(title, subtitle, "Immutable structured resume snapshot", blocks, accent);
+    }
+
+    private static byte[] buildPdf(String title, String subtitle, String subject, List<SectionBlock> blocks, Color accent) {
         try (PDDocument document = new PDDocument();
                 InputStream fontInput = ResumePdfRenderer.class.getResourceAsStream(FONT_RESOURCE)) {
             if (fontInput == null) {
@@ -90,7 +105,7 @@ public final class ResumePdfRenderer {
             PDType0Font font = PDType0Font.load(document, fontInput, true);
             document.getDocumentInformation().setTitle(title);
             document.getDocumentInformation().setCreator("JobProof AI");
-            document.getDocumentInformation().setSubject("Immutable structured resume snapshot");
+            document.getDocumentInformation().setSubject(subject);
 
             try (Canvas canvas = new Canvas(document, font, title, accent)) {
                 canvas.start();

@@ -122,4 +122,63 @@ describe('job match creation', () => {
     await flushPromises()
     expect(api.authorizeEvidence).toHaveBeenCalledWith('match-2', expect.objectContaining({ mode: 'MANUAL', recordIds: [] }))
   })
+
+  it('reviews the parsed requirements: shows conflicts, adds, removes and recategorises before confirming', async () => {
+    const parsed = {
+      id: 'match-1', status: 'DRAFT', version: 2, progress: 20, checkpoint: 'JD_PARSED', title: '数据分析实习生', company: '合成科技',
+      parseConflicts: ['REQUIREMENTS_INCOMPLETE'], clarifications: [], createdAt: '2026-10-06T08:00:00Z', updatedAt: '2026-10-06T08:10:00Z',
+      requirements: [
+        { id: 'r1', sequence: 1, category: 'SKILL', text: '熟练使用 SQL', priority: 'MUST', hardGate: false, sourceLocator: 'line:3', sourceQuote: '熟练使用 SQL', confidence: 90, userCorrected: false },
+        { id: 'r2', sequence: 2, category: 'SKILL', text: '会用 Excel 做透视表', priority: 'IMPORTANT', hardGate: false, sourceLocator: 'line:4', sourceQuote: '会用 Excel', confidence: 84, userCorrected: false },
+      ],
+    }
+    route.query = { id: 'match-1' }
+    api.fetchMatchCapabilities.mockResolvedValue(capabilities())
+    api.fetchJobMatch.mockResolvedValue(parsed)
+    api.updateJdStructure.mockResolvedValue({ ...parsed, status: 'JD_PARSED', checkpoint: 'JD_CONFIRMED', version: 3, parseConflicts: [] })
+    api.fetchResumeOptions.mockResolvedValue([])
+    const wrapper = mount(JobMatchCreatePage, { global: { stubs: { UiIllustration: true, UiDrawer: true, Transition: false,
+      UiSelect: { props: ['modelValue'], emits: ['update:modelValue'], template: '<select :value="modelValue" @change="$emit(\'update:modelValue\', $event.target.value)"><slot /></select>' } } } })
+    await flushPromises()
+    expect(wrapper.get('[data-testid="parse-conflicts"]').text()).toContain('只识别出 2 条岗位要求')
+    const confirmButton = () => wrapper.findAll('.jm-wizard__footer button').find(button => button.text().includes('确认并选择简历'))!
+    expect(confirmButton().attributes('disabled')).toBeDefined()
+
+    await wrapper.get('[data-testid="add-requirement"]').trigger('click')
+    expect(wrapper.findAll('[data-testid="jd-requirement"]')).toHaveLength(3)
+    expect(wrapper.text()).toContain('第 3 条要求还没有填写')
+    await wrapper.findAll('[data-testid="jd-requirement"]')[2]!.get('input[type=text]').setValue('有一段数据分析实习经历')
+    await wrapper.findAll('[data-testid="jd-requirement"]')[2]!.get('select[aria-label="类别"]').setValue('EXPERIENCE')
+    await wrapper.get('[data-testid="add-requirement"]').trigger('click')
+    await wrapper.findAll('[data-testid="remove-requirement"]')[3]!.trigger('click')
+    expect(wrapper.findAll('[data-testid="jd-requirement"]')).toHaveLength(3)
+    expect(confirmButton().attributes('disabled')).toBeUndefined()
+
+    await confirmButton().trigger('click')
+    await flushPromises()
+    const sent = api.updateJdStructure.mock.calls[0]![1].requirements
+    expect(sent).toHaveLength(3)
+    expect(sent[2]).toMatchObject({ text: '有一段数据分析实习经历', category: 'EXPERIENCE', priority: 'IMPORTANT' })
+  })
+
+  it('reads the resume list again when going back to the resume step', async () => {
+    const atEvidence = {
+      id: 'match-1', status: 'RESUME_CONFIRMED', version: 5, progress: 40, checkpoint: 'RESUME_CONFIRMED', title: 'Java 后端工程师',
+      requirements: [], clarifications: [], createdAt: '2026-10-06T08:00:00Z', updatedAt: '2026-10-06T08:10:00Z',
+      resume: { masterId: 'm', branchId: 'b', revisionId: 'r', title: '我的简历', languageCode: 'zh-CN', contentHash: 'h', updatedAt: '2026-10-06T08:00:00Z' },
+    }
+    route.query = { id: 'match-1' }
+    api.fetchMatchCapabilities.mockResolvedValue(capabilities())
+    api.fetchJobMatch.mockResolvedValue(atEvidence)
+    api.fetchEvidenceRecommendations.mockResolvedValue([])
+    api.fetchResumeOptions.mockResolvedValue([{ masterId: 'm', branchId: 'b', revisionId: 'r', title: '我的简历', languageCode: 'zh-CN', contentHash: 'h', updatedAt: '2026-10-06T08:00:00Z' }])
+    const wrapper = mountPage()
+    await flushPromises()
+    expect(api.fetchResumeOptions).not.toHaveBeenCalled()
+    await wrapper.findAll('.jm-wizard__footer button').find(button => button.text() === '返回')!.trigger('click')
+    await flushPromises()
+    expect(api.fetchResumeOptions).toHaveBeenCalledWith('match-1')
+    expect(wrapper.text()).toContain('我的简历')
+    expect(wrapper.text()).not.toContain('还没有可用的正式简历')
+  })
 })

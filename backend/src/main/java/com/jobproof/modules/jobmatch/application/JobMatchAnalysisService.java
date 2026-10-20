@@ -293,7 +293,11 @@ public class JobMatchAnalysisService {
         if (reportId == null) reportId = Ids.newId();
         Map<String, Object> report = reportDocument(input, preview, null);
         Integer existing = jdbc.queryForObject("SELECT COUNT(*) FROM match_reports WHERE id=?", Integer.class, reportId);
-        if (existing != null && existing > 0) {
+        Integer finished = jdbc.queryForObject("SELECT COUNT(*) FROM job_match_report_versions WHERE report_id=?", Integer.class, reportId);
+        if (finished != null && finished > 0) {
+            // A re-analysis: the last AI report stays what lists and the report page show until a new one is
+            // finished, so a paused or cancelled run never leaves a rule preview's score in its place.
+        } else if (existing != null && existing > 0) {
             jdbc.update("UPDATE match_reports SET status='ANALYZING',total_score=?,hard_gate_score=?,skill_score=?,experience_score=?,constraint_score=?,weights_json=?,hard_gap_count=?,confidence=?,explanation_json=?,resume_analysis_json=?,recommendation_code=?,dimension_scores_json=? WHERE id=?",
                     preview.overall(), preview.hardGatePassed() ? 100 : 0, preview.dimensions().get("coreSkills"),
                     preview.dimensions().get("experience"), preview.dimensions().get("qualification"),
@@ -311,7 +315,9 @@ public class JobMatchAnalysisService {
                     "STRUCTURED", json(Map.of("rulePreview", preview.items())), row.id(), preview.recommendation(),
                     json(preview.dimensions()));
         }
-        replaceRequirementItems(row, reportId, preview, "rule-preview-v3 key terms against resume values and authorized evidence", now);
+        if (finished == null || finished == 0) {
+            replaceRequirementItems(row, reportId, preview, "rule-preview-v3 key terms against resume values and authorized evidence", now);
+        }
         jdbc.update("UPDATE job_match_tasks SET current_report_id=?,progress_percent=68,checkpoint_code='RULE_REPORT_READY',version_no=version_no+1,updated_at=? WHERE id=? AND status='ANALYZING'",
                 reportId, now, row.id());
         events.append(row.accountId(), row.id(), "rule-report.ready", Map.of("reportId", reportId,
@@ -622,10 +628,18 @@ public class JobMatchAnalysisService {
                 json(JobMatchScoring.PRIORITY_WEIGHTS), scored.hardGapCount(), scored.confidence(), recommendation,
                 json(scored.dimensions()), json(report), json(ai.path("resumeSuggestions")), reportId);
         replaceRequirementItems(row, reportId, scored, "ai-verdict-v3 cited resume fields, evidence or answers", now);
+        // A new version keeps what the user already said and did: a verdict on the same conclusion about the
+        // same requirement carries over, and learning tasks they started, finished or skipped stay as they are.
+        Map<String, String> feedback = new LinkedHashMap<>();
+        jdbc.query("SELECT requirement_id,conclusion_type,feedback_status FROM job_match_claims WHERE report_id=? AND feedback_status IS NOT NULL",
+                rs -> { feedback.put(claimKey(rs.getString("requirement_id"), rs.getString("conclusion_type")), rs.getString("feedback_status")); },
+                reportId);
         jdbc.update("DELETE FROM job_match_claims WHERE report_id=?", reportId);
-        persistClaims(row, reportId, report, now);
-        jdbc.update("DELETE FROM job_match_improvement_tasks WHERE report_id=?", reportId);
-        persistLearning(row, reportId, ai.path("learningPlan"), now);
+        persistClaims(row, reportId, report, now, feedback);
+        jdbc.update("DELETE FROM job_match_improvement_tasks WHERE report_id=? AND status IN ('PENDING','TODO')", reportId);
+        Set<String> keptTasks = new LinkedHashSet<>(jdbc.query("SELECT title FROM job_match_improvement_tasks WHERE report_id=?",
+                (rs, n) -> taskKey(rs.getString("title")), reportId));
+        persistLearning(row, reportId, ai.path("learningPlan"), now, keptTasks);
         jdbc.update("DELETE FROM job_match_clarifications WHERE match_id=? AND status='PENDING'", row.id());
         int clarifications = persistClarifications(row, ai.path("clarifications"), now);
         persistAdvice(row, reportId, runId, ai.path("resumeSuggestions"), now);
@@ -637,8 +651,17 @@ public class JobMatchAnalysisService {
     }
 
     /** One claim per strength and per gap, each carrying its requirement's verdict as its strength (0-100). */
+    private static String claimKey(String requirementId, String conclusionType) {
+        return blankTo(requirementId, "") + "|" + blankTo(conclusionType, "");
+    }
+
+    private static String taskKey(String title) {
+        return blankTo(title, "").replaceAll("\\s+", "").toLowerCase(Locale.ROOT);
+    }
+
     @SuppressWarnings("unchecked")
-    private void persistClaims(MatchRow row, String reportId, Map<String, Object> report, Instant now) {
+    private void persistClaims(MatchRow row, String reportId, Map<String, Object> report, Instant now,
+            Map<String, String> feedback) {
         Map<String, Integer> values = new LinkedHashMap<>();
         for (Map<String, Object> item : (List<Map<String, Object>>) report.get("requirements")) {
             values.put(String.valueOf(item.get("requirementId")), ((Number) item.get("value")).intValue());
@@ -650,18 +673,20 @@ public class JobMatchAnalysisService {
             int value = values.getOrDefault(requirementId, 0);
             String conclusion = item.containsKey("type") ? blankTo(String.valueOf(item.get("type")), "GAP") : "STRENGTH";
             Object explanation = item.containsKey("explanation") ? item.get("explanation") : item.get("impact");
-            jdbc.update("INSERT INTO job_match_claims(id,match_id,report_id,requirement_id,conclusion_type,score,confidence,evidence_ids_json,reasoning_summary,feedback_status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,NULL,?,?)",
-                    Ids.newId(), row.id(), reportId, requirementId, trim(conclusion, 40), value, value,
+            String type = trim(conclusion, 40);
+            jdbc.update("INSERT INTO job_match_claims(id,match_id,report_id,requirement_id,conclusion_type,score,confidence,evidence_ids_json,reasoning_summary,feedback_status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+                    Ids.newId(), row.id(), reportId, requirementId, type, value, value,
                     json(item.getOrDefault("evidenceIds", List.of())), trim(blankTo(String.valueOf(explanation), ""), 2048),
-                    now, now);
+                    feedback.get(claimKey(requirementId, type)), now, now);
         }
     }
 
-    private void persistLearning(MatchRow row, String reportId, JsonNode values, Instant now) {
+    /** {@code kept}: tasks the user already worked on; a plan item with the same title is not added twice. */
+    private void persistLearning(MatchRow row, String reportId, JsonNode values, Instant now, Set<String> kept) {
         if (!values.isArray()) return;
         for (JsonNode item : values) {
             String title = trim(item.path("title").asText(""), 255);
-            if (title.isBlank()) continue;
+            if (title.isBlank() || !kept.add(taskKey(title))) continue;
             jdbc.update("INSERT INTO job_match_improvement_tasks(id,match_id,report_id,account_id,gap_code,phase_code,title,task_text,expected_output,acceptance_criteria,estimated_hours,priority_code,status,version_no,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?, 'PENDING',0,?,?)",
                     Ids.newId(), row.id(), reportId, row.accountId(), trim(item.path("gapCode").asText("GENERAL"), 64),
                     trim(item.path("phase").asText("BEFORE_INTERVIEW"), 24), title,

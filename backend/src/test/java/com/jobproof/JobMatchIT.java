@@ -886,6 +886,187 @@ class JobMatchIT {
         assertThat(report.path("strengths").size()).isZero();
     }
 
+    @Test
+    void aReanalysisKeepsTheLastReportUntilItFinishesAndCarriesFeedbackAndProgress() throws Exception {
+        java.util.concurrent.atomic.AtomicBoolean providerDown = new java.util.concurrent.atomic.AtomicBoolean(false);
+        doAnswer(invocation -> {
+            if (providerDown.get()) throw new IllegalStateException("provider unavailable");
+            Request request = invocation.getArgument(1);
+            JsonNode input = mapper.readTree(request.messages().get(request.messages().size() - 1).content());
+            return new Response("job-match-ai", "system-channel", "qwen-plus", aiReportWithPlan(input), new Usage(420, 380, 800), null);
+        }).when(gateway).execute(anyString(), any());
+        MockCookie owner = registerAndLogin("match-rerun+" + System.nanoTime() + "@example.com");
+        createStructuredResume(owner);
+        JsonNode authorized = authorizedMatch(owner);
+        String matchId = authorized.path("id").asText();
+        analyze(owner, matchId, "analysis-" + UUID.randomUUID(), authorized.path("version").asInt());
+        awaitStatus(owner, matchId, "COMPLETED");
+
+        JsonNode first = data(mockMvc.perform(get("/api/v1/job-matches/{id}/report", matchId).cookie(owner))
+                .andExpect(status().isOk()).andReturn());
+        int score = first.path("report").path("score").asInt();
+        JsonNode claim = first.path("claims").get(0);
+        mockMvc.perform(post("/api/v1/job-matches/{id}/report/claims/{claimId}/feedback", matchId, claim.path("id").asText())
+                        .cookie(owner).contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(Map.of("feedback", "INACCURATE", "requestId", "fb-" + UUID.randomUUID(),
+                                "expectedVersion", claim.path("version").asInt()))))
+                .andExpect(status().isOk());
+        assertThat(first.path("learningPlan").size()).isEqualTo(2);
+        JsonNode task = first.path("learningPlan").get(0);
+        mockMvc.perform(patch("/api/v1/job-matches/{id}/learning-tasks/{taskId}", matchId, task.path("id").asText())
+                        .cookie(owner).contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(Map.of("status", "DONE", "requestId", "task-" + UUID.randomUUID(),
+                                "expectedVersion", task.path("version").asInt()))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("DONE"));
+
+        // The re-analysis fails: the list and the report keep showing the finished report, not a rule preview.
+        providerDown.set(true);
+        JsonNode completed = data(mockMvc.perform(get("/api/v1/job-matches/{id}", matchId).cookie(owner)).andReturn());
+        analyze(owner, matchId, "rerun-" + UUID.randomUUID(), completed.path("version").asInt());
+        awaitStatus(owner, matchId, "ANALYSIS_PAUSED");
+        mockMvc.perform(get("/api/v1/job-matches/{id}", matchId).cookie(owner))
+                .andExpect(jsonPath("$.data.reportVersions").value(1));
+        mockMvc.perform(get("/api/v1/job-matches/{id}/report", matchId).cookie(owner))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("ANALYSIS_PAUSED"))
+                .andExpect(jsonPath("$.data.report.preview").value(false))
+                .andExpect(jsonPath("$.data.report.score").value(score));
+        mockMvc.perform(get("/api/v1/job-matches/history").cookie(owner).param("page", "0").param("size", "10"))
+                .andExpect(jsonPath("$.data.items[0].reportVersions").value(1))
+                .andExpect(jsonPath("$.data.items[0].score").value(score));
+
+        // Retried successfully: a second version that keeps the verdict and the finished task.
+        providerDown.set(false);
+        JsonNode paused = data(mockMvc.perform(get("/api/v1/job-matches/{id}", matchId).cookie(owner)).andReturn());
+        mockMvc.perform(post("/api/v1/job-matches/{id}/resume-analysis", matchId).cookie(owner)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(Map.of("requestId", "resume-" + UUID.randomUUID(),
+                                "expectedVersion", paused.path("version").asInt()))))
+                .andExpect(status().isOk());
+        awaitStatus(owner, matchId, "COMPLETED");
+        JsonNode second = data(mockMvc.perform(get("/api/v1/job-matches/{id}/report", matchId).cookie(owner))
+                .andExpect(status().isOk()).andReturn());
+        mockMvc.perform(get("/api/v1/job-matches/{id}", matchId).cookie(owner))
+                .andExpect(jsonPath("$.data.reportVersions").value(2));
+        JsonNode carried = null;
+        for (JsonNode item : second.path("claims")) {
+            if (item.path("requirementId").asText().equals(claim.path("requirementId").asText())
+                    && item.path("conclusionType").asText().equals(claim.path("conclusionType").asText())) carried = item;
+        }
+        assertThat(carried).isNotNull();
+        assertThat(carried.path("id").asText()).isNotEqualTo(claim.path("id").asText());
+        assertThat(carried.path("feedback").asText()).isEqualTo("INACCURATE");
+        assertThat(second.path("learningPlan").size()).isEqualTo(2);
+        JsonNode kept = null;
+        for (JsonNode item : second.path("learningPlan")) {
+            if (item.path("title").asText().equals(task.path("title").asText())) kept = item;
+        }
+        assertThat(kept).isNotNull();
+        assertThat(kept.path("status").asText()).isEqualTo("DONE");
+
+        // A finished task can be reopened.
+        mockMvc.perform(patch("/api/v1/job-matches/{id}/learning-tasks/{taskId}", matchId, kept.path("id").asText())
+                        .cookie(owner).contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(Map.of("status", "TODO", "requestId", "task-" + UUID.randomUUID(),
+                                "expectedVersion", kept.path("version").asInt()))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("TODO"));
+    }
+
+    @Test
+    void anExpiredExportIsBuiltAgainAndTheWordFileCarriesTheWholeReport() throws Exception {
+        MockCookie owner = registerAndLogin("match-export+" + System.nanoTime() + "@example.com");
+        createStructuredResume(owner);
+        JsonNode authorized = authorizedMatch(owner);
+        String matchId = authorized.path("id").asText();
+        analyze(owner, matchId, "analysis-" + UUID.randomUUID(), authorized.path("version").asInt());
+        awaitStatus(owner, matchId, "COMPLETED");
+
+        String requestId = "export-docx-" + UUID.randomUUID();
+        String body = mapper.writeValueAsString(Map.of("format", "DOCX", "sections", List.of("ALL"), "redacted", true,
+                "language", "zh-CN", "requestId", requestId));
+        JsonNode first = data(mockMvc.perform(post("/api/v1/job-matches/{id}/exports", matchId).cookie(owner)
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("COMPLETED")).andReturn());
+        JsonNode replay = data(mockMvc.perform(post("/api/v1/job-matches/{id}/exports", matchId).cookie(owner)
+                        .contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isOk()).andReturn());
+        assertThat(replay.path("id").asText()).isEqualTo(first.path("id").asText());
+
+        jdbc.update("UPDATE job_match_exports SET expires_at=? WHERE id=?",
+                java.sql.Timestamp.from(java.time.Instant.now().minusSeconds(60)), first.path("id").asText());
+        mockMvc.perform(get("/api/v1/job-matches/exports/{id}/download", first.path("id").asText()).cookie(owner))
+                .andExpect(jsonPath("$.error.reason").value("JOB_MATCH_EXPORT_EXPIRED"));
+        JsonNode rebuilt = data(mockMvc.perform(post("/api/v1/job-matches/{id}/exports", matchId).cookie(owner)
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("COMPLETED")).andReturn());
+        assertThat(rebuilt.path("id").asText()).isNotEqualTo(first.path("id").asText());
+
+        byte[] file = mockMvc.perform(get("/api/v1/job-matches/exports/{id}/download", rebuilt.path("id").asText()).cookie(owner))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsByteArray();
+        String text;
+        try (org.apache.poi.xwpf.usermodel.XWPFDocument document =
+                     new org.apache.poi.xwpf.usermodel.XWPFDocument(new java.io.ByteArrayInputStream(file));
+             org.apache.poi.xwpf.extractor.XWPFWordExtractor extractor = new org.apache.poi.xwpf.extractor.XWPFWordExtractor(document)) {
+            text = extractor.getText();
+        }
+        assertThat(text).contains("投递建议", "准备后投递", "维度得分", "逐条判定", "判定：符合（100 分） · 依据：简历",
+                "简历修改建议", "个人简介");
+    }
+
+    @Test
+    void theRequirementReviewShowsParseConflictsAndAcceptsAddedRemovedAndRecategorisedRequirements() throws Exception {
+        MockCookie owner = registerAndLogin("match-review+" + System.nanoTime() + "@example.com");
+        JsonNode created = createMatch(owner, "create-" + UUID.randomUUID());
+        String matchId = created.path("id").asText();
+        jdbc.update("UPDATE job_versions SET candidate_json='{\"confidence\":60,\"conflicts\":[\"REQUIREMENTS_INCOMPLETE\"]}' WHERE id=?",
+                created.path("jobVersionId").asText());
+        JsonNode match = data(mockMvc.perform(get("/api/v1/job-matches/{id}", matchId).cookie(owner))
+                .andExpect(jsonPath("$.data.parseConflicts[0]").value("REQUIREMENTS_INCOMPLETE")).andReturn());
+
+        List<Map<String, Object>> requirements = new java.util.ArrayList<>();
+        JsonNode first = match.path("requirements").get(0);
+        requirements.add(Map.of("category", "EXPERIENCE", "text", first.path("text").asText(), "priority", "MUST", "hardGate", false));
+        requirements.add(Map.of("category", "SKILL", "text", "熟悉 Redis 缓存与消息队列", "priority", "IMPORTANT", "hardGate", false));
+        requirements.add(Map.of("category", "CONSTRAINT", "text", "能接受上海现场办公", "priority", "MUST", "hardGate", true));
+        Map<String, Object> command = new LinkedHashMap<>();
+        command.put("title", match.path("title").asText());
+        command.put("workMode", "ONSITE");
+        command.put("requirements", List.of(Map.of("category", "MAGIC", "text", "x x x x", "priority", "MUST", "hardGate", false),
+                requirements.get(1), requirements.get(2)));
+        command.put("expectedVersion", match.path("version").asInt());
+        mockMvc.perform(patch("/api/v1/job-matches/{id}/jd-structure", matchId).cookie(owner)
+                        .contentType(MediaType.APPLICATION_JSON).content(mapper.writeValueAsString(command)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.reason").value("JOB_MATCH_VALUE_INVALID"));
+
+        command.put("requirements", requirements);
+        mockMvc.perform(patch("/api/v1/job-matches/{id}/jd-structure", matchId).cookie(owner)
+                        .contentType(MediaType.APPLICATION_JSON).content(mapper.writeValueAsString(command)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("JD_PARSED"))
+                .andExpect(jsonPath("$.data.parseConflicts.length()").value(0))
+                .andExpect(jsonPath("$.data.requirements.length()").value(3))
+                .andExpect(jsonPath("$.data.requirements[0].category").value("EXPERIENCE"))
+                .andExpect(jsonPath("$.data.requirements[1].text").value("熟悉 Redis 缓存与消息队列"))
+                .andExpect(jsonPath("$.data.requirements[2].hardGate").value(true));
+    }
+
+    private void awaitStatus(Cookie owner, String matchId, String expected) {
+        await().atMost(Duration.ofSeconds(12)).untilAsserted(() ->
+                mockMvc.perform(get("/api/v1/job-matches/{id}", matchId).cookie(owner))
+                        .andExpect(status().isOk())
+                        .andExpect(jsonPath("$.data.status").value(expected)));
+    }
+
+    private static String aiReportWithPlan(JsonNode input) {
+        String plan = """
+                [{"gapCode":"GENERAL","phase":"BEFORE_INTERVIEW","title":"整理一个接口性能优化案例","task":"复盘一次接口优化并记录前后指标","expectedOutput":"一页案例说明","acceptanceCriteria":"能讲清楚优化前后的指标变化","estimatedHours":4,"priority":"P1"},
+                 {"gapCode":"GENERAL","phase":"BEFORE_INTERVIEW","title":"练习缓存一致性方案","task":"用一个小项目实现并对比两种缓存更新策略","expectedOutput":"可运行的示例与对比说明","acceptanceCriteria":"能说明每种策略的适用场景","estimatedHours":6,"priority":"P2"}]
+                """;
+        return validAiReport(input).replace("\"learningPlan\":[]", "\"learningPlan\":" + plan.trim());
+    }
+
     /** A match with JD confirmed, the first resume chosen and no extra evidence authorized. */
     private JsonNode authorizedMatch(Cookie owner) throws Exception {
         JsonNode created = createMatch(owner, "create-" + UUID.randomUUID());

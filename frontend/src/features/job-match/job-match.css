@@ -430,3 +430,16 @@ button.jm-list__row:hover { background: var(--surface-2); }
 .jm-task:hover{background:var(--surface-2)}
 .jm-task:focus-visible{outline:none;box-shadow:var(--focus-ring)}
 .jm-ai-notice{margin-bottom:16px}
+
+/* Requirement review: category, priority, hard gate and delete on one row; conflicts above. */
+.jm-requirement { grid-template-columns: auto minmax(0, 1fr) 112px 104px auto auto; }
+.jm-add-requirement { margin-top: 10px; }
+.jm-add-requirement:disabled { opacity: .5; cursor: not-allowed; }
+.jm-parse-conflicts { margin-top: 14px; padding: 11px 14px; display: flex; align-items: flex-start; gap: 10px; border: 1px solid color-mix(in srgb, var(--color-warning) 38%, var(--border-subtle)); border-radius: 7px; color: var(--color-warning-text); background: var(--color-warning-soft); font-size: 13px; line-height: 1.6; }
+.jm-parse-conflicts svg { flex: none; margin-top: 3px; }
+.jm-parse-conflicts ul { margin: 0; padding: 0; list-style: none; }
+@media (max-width: 640px) {
+  .jm-requirement { grid-template-columns: auto minmax(0, 1fr) auto; }
+  .jm-requirement .ui-select-trigger { grid-column: 2 / 3; }
+  .jm-requirement .jm-icon-btn { grid-column: 3; grid-row: 1; }
+}

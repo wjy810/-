@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Check, Eye, FileText, Globe2, LoaderCircle, ShieldCheck, TriangleAlert, Undo2, Upload, UserRoundCheck } from 'lucide-vue-next'
+import { Check, Eye, FileText, Globe2, LoaderCircle, Plus, ShieldCheck, Trash2, TriangleAlert, Undo2, Upload, UserRoundCheck } from 'lucide-vue-next'
 import PageState from '@/shared/ui/PageState.vue'
 import AiUnavailableNotice from '@/shared/ui/AiUnavailableNotice.vue'
 import UiSelect from '@/shared/ui/UiSelect.vue'
@@ -25,6 +25,14 @@ import { serverStage, stepNumber, type MatchRouteStage } from '../utils/stage'
 import { wizardTransitionName } from '../utils/uiPresentation'
 import '../job-match.css'
 
+const MIN_REQUIREMENTS = 3
+const MAX_REQUIREMENTS = 30
+/** Category decides which score dimension a requirement counts towards (docs/phase2/07). */
+const REQUIREMENT_CATEGORIES = [
+  { value: 'SKILL', label: '技能' }, { value: 'EXPERIENCE', label: '经验' }, { value: 'EDUCATION', label: '学历' },
+  { value: 'CONSTRAINT', label: '限制条件' }, { value: 'RESPONSIBILITY', label: '岗位职责' }, { value: 'BONUS', label: '加分项' },
+]
+
 const route = useRoute()
 const router = useRouter()
 const capabilities = ref<MatchCapabilities | null>(null)
@@ -43,6 +51,7 @@ const jdWorkMode = ref('ONSITE')
 const requirements = ref<MatchRequirement[]>([])
 const resumeSource = ref<'SITE' | 'UPLOAD'>('SITE')
 const resumes = ref<ResumeOption[]>([])
+const resumesState = ref<'idle' | 'loading' | 'loaded' | 'error'>('idle')
 const selectedResumeId = ref('')
 
 /** What the evidence row says under its title: the record's own text, or the file's category. */
@@ -54,7 +63,21 @@ function evidenceNote(item: EvidenceCandidate): string {
 /** With a single resume there is nothing to choose: select it so the step can go on. */
 function setResumeOptions(options: ResumeOption[]): void {
   resumes.value = options
+  resumesState.value = 'loaded'
+  if (selectedResumeId.value && !options.some(item => item.revisionId === selectedResumeId.value)) selectedResumeId.value = ''
   if (!selectedResumeId.value && options.length === 1) selectedResumeId.value = options[0]!.revisionId
+}
+
+/** Read every time the resume step opens, so going back to it never shows a stale or empty list. */
+async function loadResumeOptions() {
+  if (!match.value) return
+  resumesState.value = 'loading'
+  try {
+    setResumeOptions(await fetchResumeOptions(match.value.id))
+  } catch (reason) {
+    resumesState.value = 'error'
+    pageError.value = errorMessage(reason, '简历列表读取失败')
+  }
 }
 const selectedResumeFile = ref<File | null>(null)
 const resumeImport = ref<ResumeImportSession | null>(null)
@@ -87,9 +110,31 @@ const jdBlockedReason = computed(() => {
 })
 const structureBlockedReason = computed(() => {
   if (!jdTitle.value.trim()) return '请填写岗位名称'
-  if (requirements.value.length < 3) return `至少需要 3 条岗位要求，当前 ${requirements.value.length} 条`
+  const empty = requirements.value.findIndex(item => !item.text.trim())
+  if (empty >= 0) return `第 ${empty + 1} 条要求还没有填写，或删掉它`
+  if (requirements.value.length < MIN_REQUIREMENTS) return `至少需要 ${MIN_REQUIREMENTS} 条岗位要求，当前 ${requirements.value.length} 条，可以点“添加要求”补充`
+  if (requirements.value.length > MAX_REQUIREMENTS) return `岗位要求最多 ${MAX_REQUIREMENTS} 条，请合并相近的要求`
   return ''
 })
+/** Parser conflicts still open: the confirmed structure replaces them. */
+const parseConflictNotes = computed(() => (match.value?.parseConflicts ?? []).map(code => code === 'JOB_TITLE_MISSING'
+  ? '没有识别出岗位名称，请在下面填写。'
+  : code === 'REQUIREMENTS_INCOMPLETE'
+    ? `只识别出 ${match.value?.requirements.length ?? 0} 条岗位要求，请补充到至少 ${MIN_REQUIREMENTS} 条。`
+    : '解析结果有需要核对的地方，请逐条检查。'))
+
+function addRequirement() {
+  if (requirements.value.length >= MAX_REQUIREMENTS) return
+  requirements.value.push({
+    id: `new-${Date.now()}-${requirements.value.length}`, sequence: requirements.value.length + 1, category: 'SKILL', text: '',
+    priority: 'IMPORTANT', hardGate: false, sourceLocator: '', sourceQuote: '', confidence: 100, userCorrected: true,
+  })
+  void nextTick(() => document.querySelector<HTMLInputElement>('.jm-requirement:last-child input[type=text]')?.focus())
+}
+
+function removeRequirement(index: number) {
+  requirements.value.splice(index, 1)
+}
 const analyzeBlockedReason = computed(() => {
   if ((capabilities.value?.quota.remainingUnits ?? 0) < 1) return 'AI 分析额度已用完'
   if (!consent.value) return '请先勾选上方的确认'
@@ -120,7 +165,7 @@ const { error: loadError, loading, loaded, load } = useLoadState(async () => {
 
 async function loadStageData() {
   if (!match.value) return
-  if (stage.value === 'resume') setResumeOptions(await fetchResumeOptions(match.value.id))
+  if (stage.value === 'resume') await loadResumeOptions()
   if (stage.value === 'evidence' || stage.value === 'confirm') {
     evidence.value = await fetchEvidenceRecommendations(match.value.id)
     if (match.value.evidenceMode === 'NONE') evidenceMode.value = 'NONE'
@@ -180,7 +225,7 @@ async function confirmJd() {
       expectedVersion: match.value.version,
       requestId: `job-match:jd-structure:${match.value.id}:${match.value.version}`,
     })
-    syncFromMatch(updated); stage.value = 'resume'; setResumeOptions(await fetchResumeOptions(updated.id))
+    syncFromMatch(updated); stage.value = 'resume'; await loadResumeOptions()
   } catch (reason) { pageError.value = errorMessage(reason, '岗位结构确认失败') }
   finally { pending.value = false }
 }
@@ -295,7 +340,7 @@ async function analyze() {
 
 function goBack() {
   if (stage.value === 'resume') stage.value = 'jd'
-  else if (stage.value === 'evidence') stage.value = 'resume'
+  else if (stage.value === 'evidence') { stage.value = 'resume'; void loadResumeOptions() }
   else if (stage.value === 'confirm') stage.value = 'evidence'
   else void router.push({ name: 'job-match-home' })
 }
@@ -359,9 +404,11 @@ onMounted(load)
           </footer>
         </template>
         <template v-else-if="stage === 'jd' && match">
-          <div class="jm-wizard__body"><header><h2>确认岗位解析结果</h2><p>请逐条校正岗位信息和要求。冲突、误分类或缺失项处理后才能继续。</p></header>
+          <div class="jm-wizard__body"><header><h2>确认岗位解析结果</h2><p>可以修改、删除或添加要求，并调整类别和优先级；类别决定这条要求计入哪个评分维度。</p></header>
+            <div v-if="parseConflictNotes.length" class="jm-parse-conflicts" role="status" data-testid="parse-conflicts"><TriangleAlert :size="17" aria-hidden="true" /><ul><li v-for="note in parseConflictNotes" :key="note">{{ note }}</li></ul></div>
             <div class="jm-form-grid"><label class="jm-field"><span>岗位名称</span><input v-model="jdTitle"></label><label class="jm-field"><span>公司名称</span><input v-model="jdCompany" placeholder="可选"></label><label class="jm-field"><span>工作地点</span><input v-model="jdLocation" placeholder="可选"></label><label class="jm-field"><span>办公方式</span><UiSelect v-model="jdWorkMode" aria-label="办公方式"><option value="ONSITE">现场办公</option><option value="HYBRID">混合办公</option><option value="REMOTE">远程办公</option></UiSelect></label></div>
-            <div class="jm-requirements"><article v-for="(item,index) in requirements" :key="item.id" class="jm-requirement"><span class="jm-requirement__num">{{ index+1 }}</span><input v-model="item.text" type="text"><UiSelect v-model="item.priority" aria-label="优先级"><option value="MUST">必须</option><option value="IMPORTANT">重要</option><option value="BONUS">加分</option></UiSelect><label class="jm-check"><input v-model="item.hardGate" type="checkbox">硬性</label></article></div>
+            <div class="jm-requirements"><article v-for="(item,index) in requirements" :key="item.id" class="jm-requirement" data-testid="jd-requirement"><span class="jm-requirement__num">{{ index+1 }}</span><input v-model="item.text" type="text" maxlength="500" :aria-label="`第 ${index + 1} 条岗位要求`" placeholder="写一条岗位要求，例如：熟悉 MySQL 索引优化"><UiSelect v-model="item.category" aria-label="类别"><option v-for="option in REQUIREMENT_CATEGORIES" :key="option.value" :value="option.value">{{ option.label }}</option></UiSelect><UiSelect v-model="item.priority" aria-label="优先级"><option value="MUST">必须</option><option value="IMPORTANT">重要</option><option value="BONUS">加分</option></UiSelect><label class="jm-check"><input v-model="item.hardGate" type="checkbox">硬性</label><button class="jm-icon-btn" type="button" :aria-label="`删除第 ${index + 1} 条要求`" data-testid="remove-requirement" @click="removeRequirement(index)"><Trash2 :size="15" /></button></article></div>
+            <button class="jm-text-btn jm-add-requirement" type="button" :disabled="requirements.length >= MAX_REQUIREMENTS" data-testid="add-requirement" @click="addRequirement"><Plus :size="15" />添加要求</button>
           </div><footer class="jm-wizard__footer">
             <button class="jm-secondary" type="button" @click="goBack">返回</button>
             <span v-if="structureBlockedReason" id="jm-structure-hint" class="jm-field-hint is-short" aria-live="polite">{{ structureBlockedReason }}</span>
@@ -373,11 +420,11 @@ onMounted(load)
             <div class="jm-select-card-grid"><button class="jm-select-card" :class="{ 'is-selected':resumeSource==='SITE' }" type="button" :aria-pressed="resumeSource==='SITE'" @click="resumeSource='SITE'"><span><UserRoundCheck :size="22" /></span><p><strong>选择站内简历</strong><small>使用简历工作台中的正式修订，匹配后可直接应用优化建议。</small></p></button><button class="jm-select-card" :class="{ 'is-selected':resumeSource==='UPLOAD' }" type="button" :aria-pressed="resumeSource==='UPLOAD'" @click="resumeSource='UPLOAD'"><span><Upload :size="22" /></span><p><strong>上传本地简历</strong><small>支持文本型 PDF 和 DOCX；扫描件首版不支持。</small></p></button></div>
             <Transition name="jm-switch" mode="out-in">
               <div :key="resumeSource" class="jm-resume-source-panel">
-                <div v-if="resumeSource==='SITE'" class="jm-resume-list"><label v-for="item in resumes" :key="item.revisionId" class="jm-resume-option" :class="{ 'is-selected':selectedResumeId===item.revisionId }"><input v-model="selectedResumeId" type="radio" :value="item.revisionId"><p><strong>{{ item.title }}</strong><small>{{ languageLabel(item.languageCode) }} · 更新于 {{ new Date(item.updatedAt).toLocaleString('zh-CN') }}</small></p><Check v-if="selectedResumeId===item.revisionId" :size="18" /></label><p v-if="!resumes.length" class="jm-error">还没有可用的正式简历，请先在简历工作台创建一份，或上传本地简历。</p></div>
+                <div v-if="resumeSource==='SITE'" class="jm-resume-list"><p v-if="resumesState==='loading' && !resumes.length" class="jm-privacy"><LoaderCircle class="jm-spin" :size="17" /><span>正在读取你的简历</span></p><p v-else-if="resumesState==='error'" class="jm-error" role="alert">简历列表没有读取成功。<button class="jm-text-btn" type="button" @click="loadResumeOptions">重试</button></p><label v-for="item in resumes" :key="item.revisionId" class="jm-resume-option" :class="{ 'is-selected':selectedResumeId===item.revisionId }"><input v-model="selectedResumeId" type="radio" :value="item.revisionId"><p><strong>{{ item.title }}</strong><small>{{ languageLabel(item.languageCode) }} · 更新于 {{ new Date(item.updatedAt).toLocaleString('zh-CN') }}</small></p><Check v-if="selectedResumeId===item.revisionId" :size="18" /></label><p v-if="resumesState==='loaded' && !resumes.length" class="jm-error">还没有可用的正式简历，请先在简历工作台创建一份，或上传本地简历。</p></div>
                 <div v-else><label class="jm-dropzone"><input hidden type="file" accept=".pdf,.docx" @change="selectedResumeFile=($event.target as HTMLInputElement).files?.[0] || null; resumeImport=null"><div><span><FileText :size="26" /></span><strong>{{ selectedResumeFile?.name || '选择文本型 PDF 或 DOCX' }}</strong><small>上传后执行安全扫描、文本提取和结构化解析</small><em class="jm-secondary">浏览简历</em></div></label><p v-if="importStatus" class="jm-privacy"><LoaderCircle v-if="pending" class="jm-spin" :size="17" /><ShieldCheck v-else :size="17" /><span>{{ importStatus }}</span></p><section v-if="resumeImport?.structuredDraft" class="jm-confirm-list" style="margin-top:14px"><div><span>解析状态</span><strong>结构化简历可确认</strong><em>已转为结构化简历</em></div><div><span>教育经历</span><strong>{{ Array.isArray(resumeImport.structuredDraft.education) ? resumeImport.structuredDraft.education.length : 0 }} 项</strong><em>已提取</em></div><div><span>工作与项目</span><strong>{{ (Array.isArray(resumeImport.structuredDraft.experiences) ? resumeImport.structuredDraft.experiences.length : 0) + (Array.isArray(resumeImport.structuredDraft.projects) ? resumeImport.structuredDraft.projects.length : 0) }} 项</strong><em>可继续编辑</em></div></section></div>
               </div>
             </Transition>
-          </div><footer class="jm-wizard__footer"><button class="jm-secondary" type="button" @click="goBack">返回</button><button v-if="resumeSource==='SITE'" class="jm-primary" type="button" :disabled="pending || !selectedResumeId" @click="confirmSiteResume">确认使用此简历</button><button v-else-if="!resumeImport?.structuredDraft" class="jm-primary" type="button" :disabled="pending || !selectedResumeFile" @click="processResumeFile"><LoaderCircle v-if="pending" class="jm-spin" :size="16" />上传并解析</button><button v-else class="jm-primary" type="button" :disabled="pending" @click="confirmImportedResume">确认并创建站内简历</button></footer>
+          </div><footer class="jm-wizard__footer"><button class="jm-secondary" type="button" @click="goBack">返回</button><button v-if="resumeSource==='SITE'" class="jm-primary" type="button" :disabled="pending || !selectedResumeId || resumesState!=='loaded'" @click="confirmSiteResume">确认使用此简历</button><button v-else-if="!resumeImport?.structuredDraft" class="jm-primary" type="button" :disabled="pending || !selectedResumeFile" @click="processResumeFile"><LoaderCircle v-if="pending" class="jm-spin" :size="16" />上传并解析</button><button v-else class="jm-primary" type="button" :disabled="pending" @click="confirmImportedResume">确认并创建站内简历</button></footer>
         </template>
         <template v-else-if="stage === 'evidence'">
           <div class="jm-wizard__body"><header><h2>补充求职资料证据</h2><p>资料库默认不授权。你可以自动选择相关项、手动选择，或完全不使用。</p></header>

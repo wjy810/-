@@ -55,12 +55,16 @@ export type JobMatch = {
   location?: string | null
   workMode?: string | null
   requirements: MatchRequirement[]
+  /** What the JD parser could not settle until the structure is confirmed. */
+  parseConflicts?: string[]
   resume?: ResumeOption | null
   resumeImportId?: string | null
   evidenceMode?: string | null
   authorizationId?: string | null
   reportId?: string | null
   analysisTaskId?: string | null
+  /** Finished AI reports; a paused or cancelled re-analysis still has these to show. */
+  reportVersions?: number
   clarifications: Clarification[]
   createdAt: string
   updatedAt: string
@@ -75,6 +79,7 @@ export type JobMatchSummary = {
   score?: number | null
   confidence?: string | null
   progress: number
+  reportVersions?: number
   updatedAt: string
 }
 

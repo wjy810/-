@@ -29,6 +29,28 @@ class JobMatchTextServiceTest {
             "missing-tesseract", "missing-tessdata", "chi_sim+eng", 10, 20, 24_000_000, 2);
 
     @Test
+    void aJobPageKeepsItsLinesSoListItemsBecomeRequirements() {
+        String html = """
+                <html><head><title>招聘</title><style>.x{color:red}</style></head><body>
+                <h1>岗位名称：Java 后端工程师</h1><div>公司名称：合成科技有限公司</div>
+                <p>任职要求：</p>
+                <ul><li>熟悉 Spring Boot、MySQL 与 Redis 的工程实践</li><li>2. 至少两年 Java 开发经验</li>
+                <li>具备清晰沟通和跨团队协作能力</li></ul>
+                <p>工作地点：上海<br>支持混合办公</p><script>var tracking = 1;</script>
+                </body></html>
+                """;
+        String text = JobMatchTextService.readableText(html, "https://jobs.example.test/1");
+        assertThat(text.split("\n")).containsExactly(
+                "岗位名称：Java 后端工程师", "公司名称：合成科技有限公司", "任职要求：",
+                "- 熟悉 Spring Boot、MySQL 与 Redis 的工程实践", "2. 至少两年 Java 开发经验",
+                "- 具备清晰沟通和跨团队协作能力", "工作地点：上海", "支持混合办公");
+        var parsed = service.parse(text);
+        assertThat(parsed.title()).isEqualTo("Java 后端工程师");
+        assertThat(parsed.requirements()).extracting(RequirementDraft::text)
+                .contains("熟悉 Spring Boot、MySQL 与 Redis 的工程实践", "至少两年 Java 开发经验", "具备清晰沟通和跨团队协作能力");
+    }
+
+    @Test
     void structuredChineseJdKeepsRequiredAndBonusRequirementsSeparate() {
         var parsed = service.parse(jd());
 

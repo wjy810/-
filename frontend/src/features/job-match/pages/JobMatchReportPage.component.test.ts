@@ -13,23 +13,27 @@ const api = vi.hoisted(() => ({
   downloadReportExport: vi.fn(),
   updateImprovement: vi.fn(),
   sendClaimFeedback: vi.fn(),
+  resumeAnalysis: vi.fn(),
+  cancelAnalysis: vi.fn(),
 }))
+const router = vi.hoisted(() => ({ replace: vi.fn(), push: vi.fn() }))
 const route = vi.hoisted(() => ({ params: { id: 'match-1' }, query: {} as Record<string, string> }))
 vi.mock('../services/jobMatchApi', () => api)
 vi.mock('vue-router', () => ({
   useRoute: () => route,
-  useRouter: () => ({ replace: vi.fn(), push: vi.fn() }),
+  useRouter: () => router,
 }))
 import JobMatchReportPage from './JobMatchReportPage.vue'
 
 const RECORD_ID = '7f3c2a10-1111-2222-3333-444455556666'
 
-function match(): JobMatch {
+function match(overrides: Partial<JobMatch> = {}): JobMatch {
   return {
     id: 'match-1', status: 'COMPLETED', version: 5, progress: 100, checkpoint: 'REPORT_READY',
     jobId: 'job-1', jobVersionId: 'jv-1', title: 'Java 后端工程师', company: '合成科技',
     requirements: [{ id: 'req-1', sequence: 2, category: 'SKILL', text: '熟悉 Spring Boot', priority: 'MUST', hardGate: false, sourceLocator: 'L4', sourceQuote: '熟悉 Spring Boot、MySQL', confidence: 90, userCorrected: false }],
     clarifications: [], createdAt: '2026-10-06T08:00:00Z', updatedAt: '2026-10-06T08:10:00Z',
+    ...overrides,
   }
 }
 
@@ -61,6 +65,7 @@ describe('job match report', () => {
   beforeEach(() => {
     Object.values(api).forEach(mock => mock.mockReset())
     route.query = {}
+    router.push.mockReset()
     api.fetchJobMatch.mockResolvedValue(match())
     api.fetchMatchReportVersions.mockResolvedValue([])
   })
@@ -133,5 +138,50 @@ describe('job match report', () => {
     await flushPromises()
     expect(api.sendClaimFeedback).toHaveBeenLastCalledWith('match-1', 'claim-1', 'IGNORE', 1)
     expect(inaccurate().attributes('aria-pressed')).toBe('false')
+  })
+
+  it('says a re-analysis paused, keeps the earlier report, and retries or cancels it from there', async () => {
+    api.fetchJobMatch.mockResolvedValue(match({ status: 'ANALYSIS_PAUSED', errorCode: 'JOB_MATCH_AI_TIMEOUT', reportVersions: 1 }))
+    api.fetchMatchReport.mockResolvedValue(report())
+    api.resumeAnalysis.mockResolvedValue(match({ status: 'ANALYZING', version: 6 }))
+    const wrapper = mountPage()
+    await flushPromises()
+    const notice = wrapper.get('[data-testid="run-notice"]').text()
+    expect(notice).toContain('AI 服务响应超时')
+    expect(notice).toContain('下面仍是上一版报告')
+    expect(wrapper.text()).toContain('68')
+    await wrapper.get('[data-testid="run-retry"]').trigger('click')
+    await flushPromises()
+    expect(api.resumeAnalysis).toHaveBeenCalledWith('match-1', 5)
+    expect(router.push).toHaveBeenCalledWith({ name: 'job-match-analyzing', params: { id: 'match-1' } })
+  })
+
+  it('cancels a paused re-analysis and keeps showing the report', async () => {
+    api.fetchJobMatch.mockResolvedValue(match({ status: 'ANALYSIS_PAUSED', reportVersions: 1 }))
+    api.fetchMatchReport.mockResolvedValue(report())
+    api.cancelAnalysis.mockResolvedValue(match({ status: 'CANCELLED', version: 6, reportVersions: 1 }))
+    const wrapper = mountPage()
+    await flushPromises()
+    await wrapper.get('[data-testid="run-cancel"]').trigger('click')
+    await flushPromises()
+    expect(api.cancelAnalysis).toHaveBeenCalledWith('match-1', 5)
+    expect(wrapper.get('[data-testid="run-notice"]').text()).toContain('最近一次分析已取消')
+    expect(wrapper.find('[data-testid="run-retry"]').exists()).toBe(false)
+  })
+
+  it('lets a finished learning task be reopened', async () => {
+    route.query = { tab: 'plan' }
+    const task = { id: 'task-1', gapCode: 'GENERAL', phase: 'BEFORE_INTERVIEW', title: '整理一个性能优化案例', task: '复盘一次接口优化',
+      expectedOutput: '一页案例', acceptanceCriteria: '讲清前后指标', estimatedHours: 4, priority: 'P1', status: 'DONE', version: 2 }
+    api.fetchMatchReport.mockResolvedValue(report({}, { learningPlan: [task] }))
+    api.updateImprovement.mockResolvedValue({ ...task, status: 'TODO', version: 3 })
+    const wrapper = mountPage()
+    await flushPromises()
+    expect(wrapper.text()).toContain('已完成')
+    await wrapper.get('[data-testid="undo-task"]').trigger('click')
+    await flushPromises()
+    expect(api.updateImprovement).toHaveBeenCalledWith('match-1', 'task-1', 'TODO', 2)
+    expect(wrapper.find('[data-testid="undo-task"]').exists()).toBe(false)
+    expect(wrapper.findAll('button').some(button => button.text() === '完成')).toBe(true)
   })
 })

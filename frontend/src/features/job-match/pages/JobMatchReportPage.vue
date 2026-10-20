@@ -3,7 +3,7 @@ import { computed, nextTick, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { AlertTriangle, ArrowRight, BookOpenCheck, Check, CheckCircle2, ChevronRight, Download, FilePenLine, FileSearch, GitCompareArrows, GraduationCap, History, LoaderCircle, MessageCircle, RefreshCw, Send, ShieldCheck, Target, ThumbsDown, ThumbsUp, TriangleAlert } from 'lucide-vue-next'
 import PageState from '@/shared/ui/PageState.vue'
-import UiBadge from '@/shared/ui/UiBadge.vue'
+import UiBadge, { type BadgeTone } from '@/shared/ui/UiBadge.vue'
 import UiBanner from '@/shared/ui/UiBanner.vue'
 import UiDialog from '@/shared/ui/UiDialog.vue'
 import UiDrawer from '@/shared/ui/UiDrawer.vue'
@@ -12,10 +12,12 @@ import UiSelect from '@/shared/ui/UiSelect.vue'
 import { useLoadState } from '@/shared/lib/useLoadState'
 import { toast, useToastFeedback } from '@/shared/ui/toast'
 import { errorMessage } from '@/shared/api/types'
-import { compareMatchReportVersions, createReportExport, createResumeOptimization, downloadReportExport, fetchJobMatch, fetchMatchReport, fetchMatchReportVersions, sendClaimFeedback, updateImprovement } from '../services/jobMatchApi'
+import { cancelAnalysis, compareMatchReportVersions, createReportExport, createResumeOptimization, downloadReportExport, fetchJobMatch, fetchMatchReport, fetchMatchReportVersions, resumeAnalysis, sendClaimFeedback, updateImprovement } from '../services/jobMatchApi'
 import type { ClaimFeedback, ImprovementTask, JobMatch, JobMatchClaim, JobMatchReport, JobMatchReportComparison, JobMatchReportVersion } from '../types'
 import { confidencePresentation, displayJobMatchText, evidenceSourceLabel, jobMatchDisplayLabels, jobMatchStatusTone, recommendationLabel } from '../utils/reportPresentation'
 import { clampMatchScore, JOB_MATCH_REPORT_TABS, reportTabFromQuery, type JobMatchReportTab } from '../utils/uiPresentation'
+import { pauseReasonText } from '../utils/analysisProgress'
+import { latestRunNotice, type RunAction } from '../utils/stage'
 import '../job-match.css'
 
 type Item = Record<string, unknown>
@@ -54,6 +56,40 @@ const { error: loadError, loading, loaded, load } = useLoadState(async () => {
 })
 
 const doc = computed(() => report.value?.report)
+const runNotice = computed(() => match.value
+  ? latestRunNotice(match.value.status, pauseReasonText(match.value.errorCode), Boolean(doc.value?.preview))
+  : null)
+const STATUS_BADGES: Partial<Record<string, { tone: BadgeTone; label: string }>> = {
+  COMPLETED: { tone: 'success', label: '分析完成' },
+  ANALYZING: { tone: 'primary', label: '正在重新分析' },
+  NEEDS_CLARIFICATION: { tone: 'ai', label: '等待确认' },
+  ANALYSIS_PAUSED: { tone: 'warning', label: '最近一次分析未完成' },
+  CANCELLED: { tone: 'neutral', label: '最近一次分析已取消' },
+}
+const statusBadge = computed(() => STATUS_BADGES[match.value?.status ?? ''] ?? { tone: 'accent' as BadgeTone, label: '历史报告可用' })
+const RUN_ACTION_LABELS: Record<RunAction, string> = { RETRY: '重试分析', CANCEL: '取消这次分析', PROGRESS: '查看进度', CLARIFY: '去确认' }
+
+async function runAction(action: RunAction) {
+  const current = match.value
+  if (!current || pending.value) return
+  if (action === 'PROGRESS') return void router.push({ name: 'job-match-analyzing', params: { id: current.id } })
+  if (action === 'CLARIFY') return void router.push({ name: 'job-match-clarifications', params: { id: current.id } })
+  pending.value = true
+  actionError.value = ''
+  try {
+    if (action === 'RETRY') {
+      await resumeAnalysis(current.id, current.version)
+      await router.push({ name: 'job-match-analyzing', params: { id: current.id } })
+    } else {
+      match.value = await cancelAnalysis(current.id, current.version)
+      toast.success('已取消这次分析，报告保持不变')
+    }
+  } catch (reason) {
+    actionError.value = errorMessage(reason, action === 'RETRY' ? '重试分析失败' : '取消分析失败')
+  } finally {
+    pending.value = false
+  }
+}
 const hasScore = computed(() => typeof doc.value?.score === 'number')
 const matchScore = computed(() => clampMatchScore(doc.value?.score))
 const confidence = computed(() => confidencePresentation(doc.value?.confidence))
@@ -322,7 +358,7 @@ onMounted(() => {
           <h1>岗位匹配报告</h1>
           <p>
             <strong>{{ match?.title }}<template v-if="match?.company"> · {{ match.company }}</template></strong>
-            <UiBadge :tone="match?.status === 'COMPLETED' ? 'success' : 'accent'">{{ match?.status === 'COMPLETED' ? '分析完成' : '历史报告可用' }}</UiBadge>
+            <UiBadge :tone="statusBadge.tone">{{ statusBadge.label }}</UiBadge>
             <UiBadge v-if="confidence" :tone="confidence.tone" :title="confidence.hint">{{ confidence.label }}</UiBadge>
             <UiBadge v-if="doc?.preview" tone="warning">规则预估</UiBadge>
             <UiBadge v-if="report?.updatedAt" tone="neutral">{{ new Date(report.updatedAt).toLocaleDateString('zh-CN') }}</UiBadge>
@@ -336,7 +372,21 @@ onMounted(() => {
           <button class="jm-primary" type="button" :disabled="pending" @click="optimize"><FilePenLine :size="16" />优化简历</button>
         </div>
       </div>
-      <UiBanner v-if="doc?.preview" tone="warning" class="jm-report-banner">
+      <UiBanner v-if="runNotice" :tone="runNotice.tone" class="jm-report-banner" data-testid="run-notice">
+        {{ runNotice.text }}
+        <template v-if="runNotice.actions.length" #actions>
+          <button
+            v-for="action in runNotice.actions"
+            :key="action"
+            :class="action === 'CANCEL' ? 'jm-secondary' : 'jm-primary'"
+            type="button"
+            :disabled="pending"
+            :data-testid="`run-${action.toLowerCase()}`"
+            @click="runAction(action)"
+          >{{ RUN_ACTION_LABELS[action] }}</button>
+        </template>
+      </UiBanner>
+      <UiBanner v-else-if="doc?.preview" tone="warning" class="jm-report-banner">
         AI 分析还没有完成，下面是按关键词得到的规则预估，结论仅供参考。AI 可用后点“重新分析”即可得到逐条判断的报告。
       </UiBanner>
       <UiBanner v-else-if="doc?.resumeChanged" tone="info" class="jm-report-banner">
@@ -532,7 +582,10 @@ onMounted(() => {
               </div>
               <aside>
                 <button v-if="task.status !== 'DONE'" class="jm-secondary" type="button" @click="setTask(task, 'DONE')"><Check :size="15" />完成</button>
-                <UiBadge v-else tone="success">已完成</UiBadge>
+                <template v-else>
+                  <UiBadge tone="success">已完成</UiBadge>
+                  <button class="jm-text-btn" type="button" data-testid="undo-task" @click="setTask(task, 'TODO')">撤销</button>
+                </template>
               </aside>
             </article>
             <div v-if="!report?.learningPlan.length" class="jm-empty">

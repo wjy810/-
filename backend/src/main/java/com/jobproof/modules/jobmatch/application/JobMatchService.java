@@ -190,12 +190,26 @@ public class JobMatchService {
                 state, now, matchId);
     }
 
+    private List<String> parseConflicts(String candidateJson) {
+        List<String> conflicts = new ArrayList<>();
+        for (Object value : readList(String.valueOf(readNode(candidateJson).path("conflicts")))) {
+            if (value instanceof String code && !code.isBlank()) conflicts.add(code);
+        }
+        return conflicts;
+    }
+
+    static final Set<String> REQUIREMENT_CATEGORIES = Set.of("SKILL", "EXPERIENCE", "EDUCATION", "CONSTRAINT", "RESPONSIBILITY", "BONUS");
+    static final int MAX_REQUIREMENTS = 30;
+
     @Transactional
     public MatchView updateJd(CurrentAccount current, String matchId, JdStructureCommand command) {
         MatchRow row = owned(current, matchId, true);
         Versions.assertExpected(command.expectedVersion(), row.version());
         if (command.requirements() == null || command.requirements().size() < 3) {
             throw AppException.user("JD_REQUIREMENTS_INCOMPLETE", "请至少保留 3 条岗位要求");
+        }
+        if (command.requirements().size() > MAX_REQUIREMENTS) {
+            throw AppException.user("JD_REQUIREMENTS_TOO_MANY", "岗位要求最多 " + MAX_REQUIREMENTS + " 条，请合并相近的要求");
         }
         Instant now = clock.now();
         jdbc.update("UPDATE jobs SET title=?,company_name=?,updated_at=? WHERE id=? AND account_id=?",
@@ -208,10 +222,11 @@ public class JobMatchService {
         int sequence = 0;
         for (RequirementWrite requirement : command.requirements()) {
             String value = required(requirement.text(), "JD_REQUIREMENT_REQUIRED", "岗位要求不能为空");
+            if (value.length() > 500) throw AppException.user("JD_REQUIREMENT_TOO_LONG", "单条岗位要求不能超过 500 字");
             jdbc.update("INSERT INTO job_requirements(id,match_id,account_id,sequence_no,category,requirement_text,priority_code,hard_gate,source_locator,source_quote,confidence,user_corrected,version_no,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,1,0,?,?)",
                     Ids.newId(), matchId, current.accountId(), ++sequence,
-                    blankTo(requirement.category(), "SKILL"), value,
-                    blankTo(requirement.priority(), "IMPORTANT"), requirement.hardGate(),
+                    enumValue(requirement.category(), REQUIREMENT_CATEGORIES, "SKILL"), value,
+                    enumValue(requirement.priority(), Set.of("MUST", "IMPORTANT", "BONUS"), "IMPORTANT"), requirement.hardGate(),
                     blankTo(requirement.sourceLocator(), "user-corrected:" + sequence),
                     blankTo(requirement.sourceQuote(), value), 100, now, now);
         }
@@ -684,6 +699,8 @@ public class JobMatchService {
         assertUser(current);
         List<MatchSummary> items = jdbc.query("""
                 SELECT t.*,j.title,j.company_name,m.title resume_title,r.total_score,r.confidence
+                """ + REPORT_VERSIONS_COLUMN + """
+
                   FROM job_match_tasks t JOIN jobs j ON j.id=t.job_id
                   LEFT JOIN resume_masters m ON m.id=t.resume_master_id
                   LEFT JOIN match_reports r ON r.id=t.current_report_id
@@ -710,6 +727,8 @@ public class JobMatchService {
         assertUser(current);
         StringBuilder sql = new StringBuilder("""
                 SELECT t.*,j.title,j.company_name,m.title resume_title,r.total_score,r.confidence
+                """ + REPORT_VERSIONS_COLUMN + """
+
                   FROM job_match_tasks t JOIN jobs j ON j.id=t.job_id
                   LEFT JOIN resume_masters m ON m.id=t.resume_master_id
                   LEFT JOIN match_reports r ON r.id=t.current_report_id WHERE t.account_id=?
@@ -746,7 +765,7 @@ public class JobMatchService {
         pageArgs.add(safeSize);
         pageArgs.add(safePage * safeSize);
         List<MatchSummary> items = jdbc.query("SELECT t.*,j.title,j.company_name,m.title resume_title,r.total_score,r.confidence"
-                + joins + where + " ORDER BY t.updated_at DESC LIMIT ? OFFSET ?", this::summary, pageArgs.toArray());
+                + REPORT_VERSIONS_COLUMN + joins + where + " ORDER BY t.updated_at DESC LIMIT ? OFFSET ?", this::summary, pageArgs.toArray());
         return new HistoryPage(items, safePage, safeSize, total, (int) Math.ceil(total / (double) safeSize));
     }
 
@@ -770,8 +789,10 @@ public class JobMatchService {
         return new MatchView(row.id(), row.status(), row.version(), row.progress(), row.checkpoint(), row.errorCode(),
                 row.jobId(), row.jobVersionId(), blank(String.valueOf(job.get("title"))), blank(String.valueOf(job.get("company_name"))),
                 blank(String.valueOf(version.get("location"))), blank(String.valueOf(version.get("work_mode"))),
-                requirements, selectedResume, row.resumeImportId(), row.evidenceMode(), row.authorizationId(),
-                row.currentReportId(), row.analysisTaskId(), clarifications, row.createdAt(), row.updatedAt());
+                requirements, parseConflicts((String) version.get("candidate_json")), selectedResume, row.resumeImportId(), row.evidenceMode(), row.authorizationId(),
+                row.currentReportId(), row.analysisTaskId(),
+                jdbc.queryForObject("SELECT COUNT(*) FROM job_match_report_versions WHERE match_id=?", Integer.class, matchId),
+                clarifications, row.createdAt(), row.updatedAt());
     }
 
     @Transactional(readOnly = true)
@@ -914,7 +935,9 @@ public class JobMatchService {
     private ClaimView claim(ResultSet rs, int n) throws SQLException { return new ClaimView(rs.getString("id"), rs.getString("requirement_id"), rs.getString("conclusion_type"), (Integer) rs.getObject("score"), rs.getInt("confidence"), readList(rs.getString("evidence_ids_json")), rs.getString("reasoning_summary"), rs.getString("feedback_status"), rs.getString("feedback_request_id"), rs.getInt("version_no")); }
     private ClaimView claim(String matchId, String claimId) { return jdbc.query("SELECT * FROM job_match_claims WHERE id=? AND match_id=?", this::claim, claimId, matchId).stream().findFirst().orElseThrow(() -> AppException.user("JOB_MATCH_CLAIM_NOT_FOUND", "报告结论不存在")); }
     private ImprovementView improvement(ResultSet rs, int n) throws SQLException { return new ImprovementView(rs.getString("id"), rs.getString("gap_code"), rs.getString("phase_code"), rs.getString("title"), rs.getString("task_text"), rs.getString("expected_output"), rs.getString("acceptance_criteria"), rs.getInt("estimated_hours"), rs.getString("priority_code"), rs.getString("status"), rs.getInt("version_no")); }
-    private MatchSummary summary(ResultSet rs, int n) throws SQLException { return new MatchSummary(rs.getString("id"), rs.getString("title"), rs.getString("company_name"), rs.getString("resume_title"), rs.getString("status"), (Integer) rs.getObject("total_score"), rs.getString("confidence"), rs.getInt("progress_percent"), rs.getTimestamp("updated_at").toInstant()); }
+    private MatchSummary summary(ResultSet rs, int n) throws SQLException { return new MatchSummary(rs.getString("id"), rs.getString("title"), rs.getString("company_name"), rs.getString("resume_title"), rs.getString("status"), (Integer) rs.getObject("total_score"), rs.getString("confidence"), rs.getInt("progress_percent"), rs.getInt("report_versions"), rs.getTimestamp("updated_at").toInstant()); }
+
+    private static final String REPORT_VERSIONS_COLUMN = ",(SELECT COUNT(*) FROM job_match_report_versions v WHERE v.match_id=t.id) report_versions";
 
     private Set<String> requirementTerms(String matchId) {
         Set<String> result = new LinkedHashSet<>();
@@ -958,14 +981,16 @@ public class JobMatchService {
     public record ResumeOption(String masterId, String branchId, String revisionId, String title, String languageCode, String contentHash, Instant updatedAt) {}
     public record RequirementView(String id, int sequence, String category, String text, String priority, boolean hardGate, String sourceLocator, String sourceQuote, int confidence, boolean userCorrected) {}
     public record ClarificationView(String id, String requirementId, int sequence, String question, List<Object> options, Map<String, Object> evidenceContext, String answerCode, String answerNote, String status, int version) {}
-    public record MatchView(String id, String status, int version, int progress, String checkpoint, String errorCode, String jobId, String jobVersionId, String title, String company, String location, String workMode, List<RequirementView> requirements, ResumeOption resume, String resumeImportId, String evidenceMode, String authorizationId, String reportId, String analysisTaskId, List<ClarificationView> clarifications, Instant createdAt, Instant updatedAt) {}
+    /** reportVersions: finished AI reports; a paused or cancelled re-analysis still has the earlier ones to show. */
+    /** parseConflicts: what the JD parser could not settle (JOB_TITLE_MISSING, REQUIREMENTS_INCOMPLETE) until the user confirms the structure. */
+    public record MatchView(String id, String status, int version, int progress, String checkpoint, String errorCode, String jobId, String jobVersionId, String title, String company, String location, String workMode, List<RequirementView> requirements, List<String> parseConflicts, ResumeOption resume, String resumeImportId, String evidenceMode, String authorizationId, String reportId, String analysisTaskId, int reportVersions, List<ClarificationView> clarifications, Instant createdAt, Instant updatedAt) {}
     public record AnalysisStart(MatchView match, TaskView task, AiQuotaService.QuotaView quota) {}
     public record RedactionPreview(String matchId, String resumeRevisionId, List<Map<String, Object>> includedSources, List<String> excludedFields, String notice) {}
     public record ClaimView(String id, String requirementId, String conclusionType, Integer score, int confidence, List<Object> evidenceIds, String reasoning, String feedback, String feedbackRequestId, int version) {}
     public record ImprovementView(String id, String gapCode, String phase, String title, String task, String expectedOutput, String acceptanceCriteria, int estimatedHours, String priority, String status, int version) {}
     /** evidenceSources names the authorized items that claims and evidenceIds refer to. */
     public record ReportView(String id, String matchId, Map<String, Object> report, List<ClaimView> claims, List<ImprovementView> learningPlan, List<EvidenceSourceView> evidenceSources, String status, Instant updatedAt) {}
-    public record MatchSummary(String id, String title, String company, String resumeTitle, String status, Integer score, String confidence, int progress, Instant updatedAt) {}
+    public record MatchSummary(String id, String title, String company, String resumeTitle, String status, Integer score, String confidence, int progress, int reportVersions, Instant updatedAt) {}
     /** averageScore is null until a report has a score; pending counts matches still in progress. */
     public record DashboardView(int total, int completed, int pending, Integer averageScore, int optimized, List<MatchSummary> recent) {}
     public record HistoryPage(List<MatchSummary> items, int page, int size, long total, int totalPages) {}

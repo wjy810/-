@@ -30,6 +30,12 @@ import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.rendering.ImageType;
 import org.apache.pdfbox.rendering.PDFRenderer;
 import org.jsoup.Jsoup;
+import org.jsoup.nodes.Document;
+import org.jsoup.nodes.Element;
+import org.jsoup.nodes.Node;
+import org.jsoup.nodes.TextNode;
+import org.jsoup.select.NodeFilter;
+import org.jsoup.select.NodeTraversor;
 import org.apache.hc.client5.http.classic.methods.HttpGet;
 import org.apache.hc.client5.http.config.RequestConfig;
 import org.apache.hc.client5.http.DnsResolver;
@@ -236,7 +242,8 @@ public class JobMatchTextService {
                 if (body.length > MAX_FETCH_BYTES) throw AppException.user("JD_URL_TOO_LARGE", "岗位网页内容过大");
                 String charset = fetched.charset();
                 String html = new String(body, charset == null ? StandardCharsets.UTF_8 : java.nio.charset.Charset.forName(charset));
-                return Jsoup.parse(html, uri.toString()).text();
+                if (contentType != null && contentType.startsWith("text/plain")) return html;
+                return readableText(html, uri.toString());
                 }
             }
             throw AppException.user("JD_URL_REDIRECT_LIMIT", "岗位网页重定向次数过多");
@@ -245,6 +252,55 @@ public class JobMatchTextService {
         } catch (Exception exception) {
             throw AppException.dependency("JD_URL_FETCH_FAILED", "岗位网页暂时无法读取，请改用粘贴或文件导入");
         }
+    }
+
+    /**
+     * The page as lines a reader would see: paragraphs, headings, table rows and line breaks each start a
+     * new line, and a list item becomes a "- " line so the requirement parser picks it up. Jsoup's own
+     * {@code text()} joins all of it into one line, which left nothing to split into requirements.
+     */
+    static String readableText(String html, String baseUri) {
+        Document document = Jsoup.parse(html, baseUri);
+        document.select("script,style,noscript,template,svg,iframe,head").remove();
+        StringBuilder out = new StringBuilder();
+        NodeTraversor.filter(new NodeFilter() {
+            @Override
+            public FilterResult head(Node node, int depth) {
+                if (node instanceof TextNode text) {
+                    out.append(text.text());
+                } else if (node instanceof Element element) {
+                    if ("br".equals(element.normalName())) {
+                        out.append('\n');
+                    } else if ("li".equals(element.normalName())) {
+                        newLine(out);
+                        String item = element.text().trim();
+                        if (!item.isEmpty()) out.append(REQUIREMENT_LINE.matcher(item).matches() ? "" : "- ").append(item);
+                        newLine(out);
+                        return FilterResult.SKIP_CHILDREN;
+                    } else if (element.isBlock()) {
+                        newLine(out);
+                    }
+                }
+                return FilterResult.CONTINUE;
+            }
+
+            @Override
+            public FilterResult tail(Node node, int depth) {
+                if (node instanceof Element element && element.isBlock()) newLine(out);
+                return FilterResult.CONTINUE;
+            }
+        }, document.body());
+        StringBuilder text = new StringBuilder();
+        for (String raw : out.toString().split("\n")) {
+            // Whitespace between tags leaves empty lines; the parser reads line by line and needs none of them.
+            String line = raw.replaceAll("[ \t\u00a0\u3000]+", " ").trim();
+            if (!line.isEmpty()) text.append(line).append('\n');
+        }
+        return text.toString().trim();
+    }
+
+    private static void newLine(StringBuilder out) {
+        if (out.length() > 0 && out.charAt(out.length() - 1) != '\n') out.append('\n');
     }
 
     private CloseableHttpClient pinnedClient(String host, InetAddress[] pinned) {

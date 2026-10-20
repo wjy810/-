@@ -10,9 +10,10 @@ const api = vi.hoisted(() => ({
   cancelAnalysis: vi.fn(),
 }))
 vi.mock('../services/jobMatchApi', () => api)
+const router = vi.hoisted(() => ({ replace: vi.fn(), push: vi.fn() }))
 vi.mock('vue-router', () => ({
   useRoute: () => ({ params: { id: 'match-1' }, query: {} }),
-  useRouter: () => ({ replace: vi.fn(), push: vi.fn() }),
+  useRouter: () => router,
 }))
 import JobMatchAnalyzingPage from './JobMatchAnalyzingPage.vue'
 
@@ -40,6 +41,7 @@ describe('analysis progress', () => {
     vi.useFakeTimers()
     vi.stubGlobal('EventSource', FakeEventSource)
     Object.values(api).forEach(mock => mock.mockReset())
+    router.push.mockReset()
     api.fetchMatchCapabilities.mockResolvedValue({ quota: { remainingUnits: 3 } })
   })
   afterEach(() => {
@@ -105,5 +107,28 @@ describe('analysis progress', () => {
     await wrapper.get('.ui-error button').trigger('click')
     await flushPromises()
     expect(wrapper.get('[role="progressbar"]').attributes('aria-valuenow')).toBe('72')
+  })
+
+  it('offers retry, cancel and the earlier report when a run is paused', async () => {
+    api.fetchJobMatch.mockResolvedValue(match({ status: 'ANALYSIS_PAUSED', checkpoint: 'ANALYSIS_PAUSED', reportId: 'report-1', reportVersions: 2 }))
+    api.cancelAnalysis.mockResolvedValue(match({ status: 'CANCELLED', version: 4, reportId: 'report-1', reportVersions: 2 }))
+    const wrapper = mountPage()
+    await flushPromises()
+    expect(wrapper.get('[data-testid="retry-analysis"]').text()).toContain('重试分析')
+    await wrapper.findAll('button').find(button => button.text() === '查看上一版报告')!.trigger('click')
+    expect(router.push).toHaveBeenCalledWith({ name: 'job-match-report', params: { id: 'match-1' } })
+    await wrapper.get('[data-testid="cancel-paused"]').trigger('click')
+    await flushPromises()
+    expect(api.cancelAnalysis).toHaveBeenCalledWith('match-1', 3)
+    await wrapper.get('[data-testid="reanalyze"]').trigger('click')
+    expect(router.push).toHaveBeenLastCalledWith({ name: 'job-match-new', query: { id: 'match-1' } })
+  })
+
+  it('points a first run that paused to its rule preview', async () => {
+    api.fetchJobMatch.mockResolvedValue(match({ status: 'ANALYSIS_PAUSED', checkpoint: 'ANALYSIS_PAUSED', reportId: 'report-1', reportVersions: 0 }))
+    const wrapper = mountPage()
+    await flushPromises()
+    expect(wrapper.text()).toContain('已有按关键词得到的规则预估')
+    expect(wrapper.findAll('button').some(button => button.text() === '查看规则预估')).toBe(true)
   })
 })

@@ -62,6 +62,7 @@ const statusText = computed(() => (match.value ? analysisStatusText(match.value.
 const isRunning = computed(() => match.value?.status === 'ANALYZING')
 const updatedAt = computed(() => formatTime(match.value?.updatedAt))
 const pendingClarifications = computed(() => match.value?.clarifications.filter(item => item.status === 'PENDING').length ?? 0)
+const hasEarlierReport = computed(() => (match.value?.reportVersions ?? 0) > 0)
 const evidenceLabel = computed(() => {
   const mode = match.value?.evidenceMode
   if (mode === 'AUTO') return '自动选择'
@@ -172,6 +173,15 @@ async function cancel() {
   }
 }
 
+function openReport() {
+  void router.push({ name: 'job-match-report', params: { id: id.value } })
+}
+
+/** The confirm step: same job, latest resume revision, the evidence scope to re-check. */
+function reanalyze() {
+  void router.push({ name: 'job-match-new', query: { id: id.value } })
+}
+
 async function start() {
   const value = await load()
   if (!value) return
@@ -241,9 +251,11 @@ onBeforeUnmount(stopLive)
               </li>
             </ol>
             <div v-else class="jm-analysis-stopped">
-              <p v-if="match.status === 'ANALYSIS_PAUSED'">分析在后台停止了，可以从原任务恢复。</p>
-              <p v-else-if="match.status === 'CANCELLED'">这次分析已取消，没有生成新报告。</p>
+              <p v-if="match.status === 'ANALYSIS_PAUSED'">分析在后台停止了。可以用同一份输入重试，或取消这次分析。</p>
+              <p v-else-if="match.status === 'CANCELLED'">这次分析已取消，没有生成新报告。可以确认输入后重新分析。</p>
               <p v-else>当前没有正在运行的分析。</p>
+              <p v-if="hasEarlierReport">上一版报告仍可查看。</p>
+              <p v-else-if="match.reportId">已有按关键词得到的规则预估，可以先看看。</p>
             </div>
 
             <aside class="jm-discovery">
@@ -281,11 +293,19 @@ onBeforeUnmount(stopLive)
             <p><strong>可以离开此页</strong><span>分析在后台进行，回到此页会读取服务端的最新状态。</span></p>
           </div>
           <div class="jm-analysis-actions">
-            <button v-if="match.status === 'ANALYSIS_PAUSED'" class="jm-primary" type="button" :disabled="pending" @click="resume">
-              <LoaderCircle v-if="pending" class="jm-spin" :size="16" />恢复原分析
-            </button>
+            <template v-if="match.status === 'ANALYSIS_PAUSED'">
+              <button class="jm-secondary" type="button" :disabled="pending" data-testid="cancel-paused" @click="cancel">取消这次分析</button>
+              <button v-if="match.reportId" class="jm-secondary" type="button" @click="openReport">{{ hasEarlierReport ? '查看上一版报告' : '查看规则预估' }}</button>
+              <button class="jm-primary" type="button" :disabled="pending" data-testid="retry-analysis" @click="resume">
+                <LoaderCircle v-if="pending" class="jm-spin" :size="16" />重试分析
+              </button>
+            </template>
             <button v-else-if="isRunning" class="jm-secondary" type="button" :disabled="pending" @click="cancel">取消分析</button>
-            <button v-else class="jm-secondary" type="button" @click="router.push({ name: 'job-match-home' })">返回岗位匹配</button>
+            <template v-else>
+              <button class="jm-secondary" type="button" @click="router.push({ name: 'job-match-home' })">返回岗位匹配</button>
+              <button v-if="match.reportId" class="jm-secondary" type="button" @click="openReport">{{ hasEarlierReport ? '查看上一版报告' : '查看规则预估' }}</button>
+              <button v-if="match.status === 'CANCELLED'" class="jm-primary" type="button" data-testid="reanalyze" @click="reanalyze">重新分析</button>
+            </template>
           </div>
         </div>
         <JobMatchContext :match="match" :capabilities="capabilities" :capabilities-failed="capabilitiesFailed" />
