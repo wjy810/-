@@ -110,6 +110,90 @@ class MockInterviewEvaluationIT {
                 .andExpect(jsonPath("$.data.averageScore").value(74));
     }
 
+    @Test
+    void aSuggestedFollowUpIsAskedLiveOncePerQuestionAndARetryAsksTheOriginalsAgain() throws Exception {
+        when(ai.generateQuestions(anyString(), anyString(), nullable(String.class), anyString(), anyString(), anyInt(), anyMap(), anyMap()))
+                .thenThrow(new AiGatewayException("down", true, false));
+        Map<String, Object> feedback = new LinkedHashMap<>();
+        feedback.put("generationMode", "AI_MODEL");
+        feedback.put("strengths", List.of("结论有数据支撑"));
+        feedback.put("improvements", List.of("补充样本是怎么选出来的"));
+        feedback.put("suggestedFollowUp", "你提到的样本是怎么选出来的？对照组如何设置？");
+        doReturn(new MockInterviewAiService.Evaluation(
+                        Map.of("structure", 70, "relevance", 70, "evidence", 70, "expression", 70, "professional", 70, "overall", 70),
+                        feedback, "test-model", "channel", 10, 10))
+                .when(ai).evaluateAnswer(anyString(), anyString(), any(), anyString(), anyBoolean(), anyMap(), anyMap());
+        MockCookie owner = registerAndLogin("mock-follow+" + System.nanoTime() + "@example.com");
+
+        JsonNode session = start(owner, true);
+        String sessionId = session.path("session").path("id").asText();
+        String firstQuestion = session.path("currentQuestion").path("id").asText();
+        session = answer(owner, sessionId, session);
+        JsonNode followUp = session.path("currentQuestion");
+        org.assertj.core.api.Assertions.assertThat(followUp.path("questionType").asText()).isEqualTo("FOLLOW_UP");
+        org.assertj.core.api.Assertions.assertThat(followUp.path("parentQuestionId").asText()).isEqualTo(firstQuestion);
+        org.assertj.core.api.Assertions.assertThat(followUp.path("prompt").asText()).contains("样本是怎么选出来的");
+        org.assertj.core.api.Assertions.assertThat(session.path("session").path("questionCount").asInt()).isEqualTo(6);
+
+        // The follow-up's own suggestion is not asked: one follow-up per original question in a 综合面试.
+        session = answer(owner, sessionId, session);
+        org.assertj.core.api.Assertions.assertThat(session.path("currentQuestion").path("parentQuestionId").isNull()
+                || session.path("currentQuestion").path("parentQuestionId").isMissingNode()).isTrue();
+        int answered = 2;
+        while (!"COMPLETED".equals(session.path("session").path("status").asText())) {
+            session = answer(owner, sessionId, session);
+            answered++;
+        }
+        org.assertj.core.api.Assertions.assertThat(answered).as("five questions, five follow-ups").isEqualTo(10);
+
+        // A retry asks the five original questions again.
+        JsonNode retry = data(mockMvc.perform(post("/api/v1/mock-interviews/sessions/{id}/retry", sessionId).cookie(owner))
+                .andExpect(status().isOk()).andReturn());
+        org.assertj.core.api.Assertions.assertThat(retry.path("questions").size()).isEqualTo(5);
+        org.assertj.core.api.Assertions.assertThat(retry.path("session").path("questionCount").asInt()).isEqualTo(5);
+
+        // Follow-ups off: nothing is inserted, and the report compares with the earlier interview.
+        JsonNode plain = start(owner, false);
+        String plainId = plain.path("session").path("id").asText();
+        for (int index = 0; index < 5; index++) plain = answer(owner, plainId, plain);
+        org.assertj.core.api.Assertions.assertThat(plain.path("session").path("status").asText()).isEqualTo("COMPLETED");
+        mockMvc.perform(get("/api/v1/mock-interviews/reports/{id}", plainId).cookie(owner))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.previous.sessionId").value(sessionId))
+                .andExpect(jsonPath("$.data.previous.overallScore").value(70));
+    }
+
+    private JsonNode start(MockCookie owner, boolean followUps) throws Exception {
+        String resumeId = data(mockMvc.perform(post("/api/v1/resumes").cookie(owner)
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"mode\":\"BLANK\",\"title\":\"追问验收\"}"))
+                .andExpect(status().isOk()).andReturn()).path("id").asText();
+        Map<String, Object> command = new LinkedHashMap<>();
+        command.put("resumeId", resumeId);
+        command.put("careerRecordIds", List.of());
+        command.put("careerFileIds", List.of());
+        command.put("positionName", "数据分析师");
+        command.put("mode", "TEXT");
+        command.put("interviewType", "COMPREHENSIVE");
+        command.put("difficulty", "STANDARD");
+        command.put("durationMinutes", 20);
+        command.put("questionCount", 5);
+        command.put("languageCode", "zh-CN");
+        command.put("feedbackMode", "AFTER_SESSION");
+        command.put("followUpEnabled", followUps);
+        command.put("consentConfirmed", true);
+        return data(mockMvc.perform(post("/api/v1/mock-interviews/sessions").cookie(owner)
+                        .contentType(MediaType.APPLICATION_JSON).content(mapper.writeValueAsString(command)))
+                .andExpect(status().isOk()).andReturn());
+    }
+
+    private JsonNode answer(MockCookie owner, String sessionId, JsonNode session) throws Exception {
+        String questionId = session.path("currentQuestion").path("id").asText();
+        return data(mockMvc.perform(post("/api/v1/mock-interviews/sessions/{id}/answers/{q}", sessionId, questionId)
+                        .cookie(owner).contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(Map.of("answer", "我用 A/B 实验验证了留存提升，样本 3,600 人。"))))
+                .andExpect(status().isOk()).andReturn());
+    }
+
     private MockCookie registerAndLogin(String email) throws Exception {
         String body = "{\"email\":\"" + email + "\",\"password\":\"Passw0rd!\"}";
         mockMvc.perform(post("/api/v1/auth/register").contentType(MediaType.APPLICATION_JSON).content(body))

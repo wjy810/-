@@ -213,4 +213,16 @@ describe('interview draft persistence', () => {
     expect(wrapper.get('.mi-drawer').text()).toContain('AI 通道暂不可用')
     expect(wrapper.find('.mi-drawer__score').exists()).toBe(false)
   })
+
+  it('labels a follow-up asked live as 追问 instead of a new numbered question', async () => {
+    const data = session()
+    const followUp = { id: 'question-2', orderNo: 2, questionType: 'FOLLOW_UP', prompt: '你提到的样本是怎么选出来的？', sourceRefs: ['ANSWER'], status: 'PENDING', parentQuestionId: 'question-1' }
+    api.fetchMockInterview.mockResolvedValue({ ...data, currentQuestion: followUp, questions: [...data.questions, followUp], answers: [] })
+    const wrapper = mountSession()
+    await flushPromises()
+    expect(wrapper.get('.mi-question__no').text()).toBe('追问')
+    expect(wrapper.get('.mi-question__source').text()).toContain('针对你刚才的回答')
+    expect(wrapper.text()).toContain('你提到的样本是怎么选出来的')
+    wrapper.unmount()
+  })
 })

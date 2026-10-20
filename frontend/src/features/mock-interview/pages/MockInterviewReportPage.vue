@@ -5,7 +5,7 @@
  */
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { AlertTriangle, ArrowLeft, CheckCircle2, ChevronRight, Hourglass, Link2, MessageCircle, Printer, RefreshCw, ShieldCheck } from 'lucide-vue-next'
+import { AlertTriangle, ArrowLeft, CheckCircle2, ChevronRight, Hourglass, Lightbulb, Link2, MessageCircle, Printer, RefreshCw, ShieldCheck } from 'lucide-vue-next'
 import { formatWhen } from '@/shared/lib/datetime'
 import { errorMessage } from '@/shared/api/types'
 import { toast } from '@/shared/ui/toast'
@@ -50,6 +50,28 @@ const risks = computed(() => list(report.value?.summary.risks))
 const answeredTotal = computed(() => (report.value?.evaluatedCount ?? 0) + (report.value?.pendingCount ?? 0))
 // The API omits null fields, so an unscored report has no overallScore at all.
 const hasOverall = computed(() => typeof report.value?.overallScore === 'number')
+/** Follow-ups asked live sit under the question they followed up on, labelled by that question's number. */
+const questionLabels = computed(() => {
+  const labels = new Map<string, string>()
+  let number = 0
+  for (const item of report.value?.questions ?? []) {
+    if (!item.question.parentQuestionId) labels.set(item.question.id, `Q${++number}`)
+  }
+  for (const item of report.value?.questions ?? []) {
+    if (item.question.parentQuestionId) labels.set(item.question.id, `${labels.get(item.question.parentQuestionId) ?? 'Q'} 追问`)
+  }
+  return labels
+})
+const previous = computed(() => report.value?.previous ?? null)
+/** Against the last interview of the same type for the same position: only scores both sides have. */
+const overallDelta = computed(() => hasOverall.value && typeof previous.value?.overallScore === 'number'
+  ? report.value!.overallScore! - previous.value.overallScore : null)
+function dimensionDelta(key: string): number | null {
+  const now = report.value?.dimensions[key]
+  const before = previous.value?.dimensions?.[key]
+  return typeof now === 'number' && typeof before === 'number' ? now - before : null
+}
+function signed(value: number): string { return value > 0 ? `+${value}` : String(value) }
 const elapsedMinutes = computed(() => {
   const seconds = report.value?.session.elapsedSeconds ?? 0
   return seconds < 60 ? '<1' : String(Math.round(seconds / 60))
@@ -169,6 +191,7 @@ onMounted(load)
             <strong v-if="hasOverall">{{ report.overallScore }}<em>/ 100</em></strong>
             <strong v-else class="is-pending">待评估</strong>
             <p>{{ hasOverall ? `基于 ${report.evaluatedCount} 道已评估的回答` : '还没有回答被 AI 评估' }}</p>
+            <p v-if="overallDelta !== null" class="mi-report__delta" :class="overallDelta > 0 ? 'is-up' : overallDelta < 0 ? 'is-down' : ''">比上次同类面试 {{ overallDelta === 0 ? '持平' : signed(overallDelta) }}</p>
           </article>
           <article class="mi-card">
             <small>已评估</small>
@@ -201,6 +224,11 @@ onMounted(load)
               </svg>
             </template>
             <p v-else class="mi-report__empty"><Hourglass :size="18" />AI 评估后显示各维度得分</p>
+            <ul v-if="previous && evaluatedDimensions.some(item => dimensionDelta(item.key) !== null)" class="mi-report__deltas" aria-label="与上次同类面试相比">
+              <li v-for="item in evaluatedDimensions.filter(dimension => dimensionDelta(dimension.key) !== null)" :key="item.key" :class="dimensionDelta(item.key)! > 0 ? 'is-up' : dimensionDelta(item.key)! < 0 ? 'is-down' : ''">
+                {{ item.label }} <strong>{{ dimensionDelta(item.key) === 0 ? '持平' : signed(dimensionDelta(item.key)!) }}</strong>
+              </li>
+            </ul>
           </article>
 
           <article class="mi-card mi-report__summary">
@@ -223,9 +251,9 @@ onMounted(load)
           <article class="mi-card mi-report__questions">
             <h2>逐题复盘</h2>
             <ol>
-              <li v-for="item in report.questions" :key="item.question.id">
+              <li v-for="item in report.questions" :key="item.question.id" :class="{ 'is-follow-up': item.question.parentQuestionId }">
                 <button type="button" @click="openReview(item)">
-                  <span class="mi-report__qno">Q{{ item.question.orderNo }}</span>
+                  <span class="mi-report__qno">{{ questionLabels.get(item.question.id) }}</span>
                   <span class="mi-report__prompt">{{ item.question.prompt }}</span>
                   <span v-if="!item.answer" class="mi-report__score is-muted">未作答</span>
                   <span v-else-if="isEvaluated(item)" class="mi-report__score" :class="scoreTone(item.scores.overall)">{{ item.scores.overall }}</span>
@@ -248,11 +276,11 @@ onMounted(load)
       </template>
 
       <template v-else>
-        <nav class="mi-report__crumbs" aria-label="面包屑"><RouterLink to="/mock-interviews">模拟面试</RouterLink><span>/</span><button type="button" @click="closeReview">面试报告</button><span>/</span><strong>Q{{ selectedReview.question.orderNo }}</strong></nav>
+        <nav class="mi-report__crumbs" aria-label="面包屑"><RouterLink to="/mock-interviews">模拟面试</RouterLink><span>/</span><button type="button" @click="closeReview">面试报告</button><span>/</span><strong>{{ questionLabels.get(selectedReview.question.id) }}</strong></nav>
         <header class="mi-report__head">
           <div class="mi-report__review-title">
             <UiButton variant="ghost" size="sm" :icon="ArrowLeft" @click="closeReview">返回报告</UiButton>
-            <h1>Q{{ selectedReview.question.orderNo }} 逐题复盘</h1>
+            <h1>{{ questionLabels.get(selectedReview.question.id) }} 逐题复盘</h1>
             <span class="mi-tag mi-tag--gray">{{ selectedReview.answer?.mode === 'VOICE' ? '语音回答（浏览器转写）' : '文字回答' }}</span>
           </div>
         </header>
@@ -289,7 +317,11 @@ onMounted(load)
               <h3><AlertTriangle :size="16" />需要加强</h3>
               <ul><li v-for="item in list(selectedReview.feedback.improvements)" :key="item">{{ item }}</li></ul>
             </section>
-            <section v-if="selectedReview.feedback.suggestedFollowUp">
+            <section v-if="selectedReview.feedback.answerDirection">
+              <h3><Lightbulb :size="16" />回答思路</h3>
+              <p>{{ String(selectedReview.feedback.answerDirection) }}</p>
+            </section>
+            <section v-if="selectedReview.feedback.suggestedFollowUp && !selectedReview.feedback.followUpAsked">
               <h3><MessageCircle :size="16" />可能的追问</h3>
               <p>{{ String(selectedReview.feedback.suggestedFollowUp) }}</p>
             </section>

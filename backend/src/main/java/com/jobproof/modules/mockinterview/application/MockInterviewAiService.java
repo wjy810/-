@@ -44,7 +44,11 @@ public class MockInterviewAiService {
             只评价本题回答的表达结构、岗位相关性、证据质量、表达清晰度和专业深度，不评价受保护特征，不根据口音评分。
             不给录用概率、招聘决定或是否进入下一轮的结论。没有资料支持的数字和事实不得补写；只能指出缺口并建议用户补充确认。
             每项分数为 0 至 100 的整数。strengths 与 improvements 各 1 至 3 条，每条 6 至 120 个字符。
-            仅返回 JSON：{"scores":{"structure":70,"relevance":70,"evidence":70,"expression":70,"professional":70},"feedback":{"headline":"简短结论","strengths":["优点"],"improvements":["改进点"],"suggestedFollowUp":"可选追问"}}
+            suggestedFollowUp：followUpEnabled 为 true 时，针对回答里含糊、缺少证据或值得深挖的一点，用面试官的口吻提一个具体追问，
+            不超过 80 字；回答已经完整、没有可追问之处时返回空字符串。followUpEnabled 为 false 时返回空字符串。
+            answerDirection：40 至 160 字，说明这道题更好的回答思路（先讲什么、用哪段经历、补什么证据）。只能提到 resumeSnapshot、
+            jdSnapshot 或回答里已经出现的经历和名称，不得编造公司、项目或数字。
+            仅返回 JSON：{"scores":{"structure":70,"relevance":70,"evidence":70,"expression":70,"professional":70},"feedback":{"headline":"简短结论","strengths":["优点"],"improvements":["改进点"],"suggestedFollowUp":"","answerDirection":"回答思路"}}
             """;
 
     private final AiGatewayService gateway;
@@ -149,11 +153,29 @@ public class MockInterviewAiService {
         } else {
             feedback.put("suggestedFollowUp", null);
         }
+        String direction = answerDirection(feedbackNode.path("answerDirection").asText(""), answer, resume, jd);
+        if (direction != null) feedback.put("answerDirection", direction);
         feedback.put("evidenceNotice", "反馈只引用本题回答与本次授权资料，不代表真实招聘结果");
         feedback.put("generationMode", "AI_MODEL");
         feedback.put("model", model(response));
         return new Evaluation(Map.copyOf(scores), Collections.unmodifiableMap(new LinkedHashMap<>(feedback)), model(response), response.channelId(),
                 inputTokens(response), outputTokens(response));
+    }
+
+    /**
+     * The suggested way to answer, kept only if it stays within what the user gave: every number it mentions
+     * must appear in the answer, the resume or the JD. A made-up "提升 30%" drops the suggestion, not the evaluation.
+     */
+    String answerDirection(String value, String answer, Map<String, Object> resume, Map<String, Object> jd) {
+        String clean = value == null ? "" : value.trim();
+        int size = visibleCharacters(clean);
+        if (size < 10 || size > 240 || forbidden(clean)) return null;
+        String sources = (answer == null ? "" : answer) + boundedJson(resume, 50_000) + boundedJson(jd, 50_000);
+        java.util.regex.Matcher numbers = java.util.regex.Pattern.compile("\\d+(?:\\.\\d+)?").matcher(clean);
+        while (numbers.find()) {
+            if (!sources.contains(numbers.group())) return null;
+        }
+        return clean;
     }
 
     private JsonNode jsonRoot(Response response) {

@@ -671,11 +671,11 @@ onBeforeUnmount(() => {
         <p v-if="!usesAiQuestions" class="mi-notice"><AlertTriangle :size="14" />{{ String(data.settingsSnapshot.aiNotice || 'AI 通道暂不可用，本次题目来自通用题库。') }}</p>
 
         <article v-if="mode === 'TEXT'" class="mi-question">
-          <header><span class="mi-question__no">Q{{ current.orderNo }}</span><span class="mi-question__source">来源：{{ current.sourceLabel || '岗位能力模型' }}</span></header>
+          <header><span class="mi-question__no" :class="{ 'is-follow-up': current.parentQuestionId }">{{ current.parentQuestionId ? '追问' : `Q${current.orderNo}` }}</span><span class="mi-question__source">{{ current.parentQuestionId ? '面试官针对你刚才的回答继续问' : `来源：${current.sourceLabel || '岗位能力模型'}` }}</span></header>
           <h1>{{ current.prompt }}</h1>
         </article>
         <article v-else class="mi-question mi-question--voice" :class="{ 'is-speaking': questionSpeechState === 'speaking' }">
-          <header><span class="mi-question__no">Q{{ current.orderNo }}</span><span class="mi-question__source">{{ interviewerLabel }}</span></header>
+          <header><span class="mi-question__no" :class="{ 'is-follow-up': current.parentQuestionId }">{{ current.parentQuestionId ? '追问' : `Q${current.orderNo}` }}</span><span class="mi-question__source">{{ interviewerLabel }}</span></header>
           <div class="mi-question__voice">
             <span class="mi-question__orb"><Volume2 :size="24" /></span>
             <div><h1>{{ questionSpeechLabel }}</h1><p>听完题目后点击麦克风作答</p></div>
@@ -775,7 +775,9 @@ onBeforeUnmount(() => {
       </div>
       <section v-if="list(feedback.strengths).length"><h3>做得好的</h3><ul><li v-for="item in list(feedback.strengths)" :key="item"><CheckCircle2 :size="14" />{{ item }}</li></ul></section>
       <section v-if="list(feedback.improvements).length"><h3>可以加强</h3><ul><li v-for="item in list(feedback.improvements)" :key="item"><AlertTriangle :size="14" />{{ item }}</li></ul></section>
-      <section v-if="feedback.suggestedFollowUp"><h3>可能的追问</h3><p>{{ String(feedback.suggestedFollowUp) }}</p></section>
+      <section v-if="feedback.answerDirection"><h3>回答思路</h3><p>{{ String(feedback.answerDirection) }}</p></section>
+      <section v-if="feedback.suggestedFollowUp && !feedback.followUpAsked"><h3>可能的追问</h3><p>{{ String(feedback.suggestedFollowUp) }}</p></section>
+      <p v-else-if="feedback.followUpAsked" class="mi-drawer__follow"><MessageCircle :size="14" />面试官接下来会就这一点追问你。</p>
       <footer>
         <button v-if="status !== 'COMPLETED'" class="mi-btn mi-btn--ghost" type="button" @click="editFeedbackAnswer">修改并重答</button>
         <button class="mi-btn mi-btn--primary" type="button" @click="continueAfterFeedback">{{ status === 'COMPLETED' ? '查看报告' : '继续下一题' }}</button>

@@ -50,6 +50,8 @@ export type MockInterviewQuestion = {
   sourceLabel?: string | null
   sourceRefs: string[]
   status: string
+  /** Set on a follow-up asked live: the original question it follows up on. */
+  parentQuestionId?: string | null
 }
 
 export type MockInterviewAnswer = {
@@ -119,6 +121,8 @@ export type MockInterviewReport = {
   generatedAt: string
   evaluatedCount: number
   pendingCount: number
+  /** The last completed interview of the same type for the same position, to compare with. */
+  previous?: { sessionId: string; completedAt: string; overallScore: number | null; dimensions: Record<string, number> } | null
 }
 
 export type MockInterviewEvaluation = {

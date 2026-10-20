@@ -56,3 +56,14 @@
   .mi-primary:hover { transform: none; }
 }
 .mi-ai-notice{margin:12px 16px 0}
+
+/* 动态追问与进步对比 */
+.mi-question__no.is-follow-up { color: var(--color-warning-text); background: var(--color-warning-soft); }
+.mi-drawer__follow { display: flex; align-items: center; gap: 6px; margin: 0; color: var(--color-warning-text); font-size: 13px; }
+.mi-report__delta { margin-top: 4px; font-size: 13px; font-weight: 600; color: var(--text-secondary); }
+.mi-report__delta.is-up, .mi-report__deltas .is-up strong { color: var(--color-success-text); }
+.mi-report__delta.is-down, .mi-report__deltas .is-down strong { color: var(--color-danger-text); }
+.mi-report__deltas { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 10px 0 0; padding: 0; list-style: none; color: var(--text-secondary); font-size: 13px; }
+.mi-report__deltas strong { margin-left: 2px; color: var(--text-primary); }
+li.is-follow-up > button { padding-left: 28px; }
+li.is-follow-up .mi-report__qno { color: var(--color-warning-text); }

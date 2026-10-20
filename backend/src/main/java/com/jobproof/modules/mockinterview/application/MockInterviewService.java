@@ -280,16 +280,48 @@ public class MockInterviewService {
             scores = Map.of();
             feedback = pendingFeedback();
         }
-        upsertAnswer(row, question, row.mode(), text, "SUBMITTED", command.expectedVersion(), scores, feedback);
         Instant now = clock.now();
+        boolean askedFollowUp = askFollowUp(row, question, feedback, now);
+        if (askedFollowUp) {
+            feedback = new LinkedHashMap<>(feedback);
+            feedback.put("followUpAsked", true);
+        }
+        upsertAnswer(row, question, row.mode(), text, "SUBMITTED", command.expectedVersion(), scores, feedback);
         jdbc.update("UPDATE mock_interview_questions SET status='COMPLETED' WHERE id=? AND session_id=?", questionId, sessionId);
         int next = Math.max(row.currentQuestionIndex(), question.orderNo());
-        boolean complete = next >= row.questionCount();
+        boolean complete = next >= row.questionCount() + (askedFollowUp ? 1 : 0);
         jdbc.update("UPDATE mock_interview_sessions SET current_question_index=?,status=?,version_no=version_no+1,updated_at=?,completed_at=? WHERE id=? AND account_id=?",
                 next, complete ? "COMPLETED" : "IN_PROGRESS", now, complete ? now : null, sessionId, current.accountId());
         if (complete) stopClock(row, now);
         if (complete) generateReport(current.accountId(), sessionId);
         return session(current, sessionId);
+    }
+
+    /**
+     * 动态追问: when follow-ups are on and the evaluation suggests one, it becomes the next question, asked now
+     * rather than listed in the report. Each original question gets at most {@link #followUpBudget} of them;
+     * a follow-up's own follow-up counts against the same original.
+     */
+    private boolean askFollowUp(SessionRow row, QuestionView question, Map<String, Object> feedback, Instant now) {
+        if (!row.followUpEnabled() || !(feedback.get("suggestedFollowUp") instanceof String prompt) || prompt.isBlank()) return false;
+        String root = question.parentQuestionId() == null ? question.id() : question.parentQuestionId();
+        if (count("SELECT COUNT(*) FROM mock_interview_questions WHERE session_id=? AND parent_question_id=?", row.id(), root)
+                >= followUpBudget(row.interviewType())) {
+            return false;
+        }
+        // Make room right after this question. Two steps, so (session_id, order_no) stays unique throughout.
+        jdbc.update("UPDATE mock_interview_questions SET order_no=-(order_no+1) WHERE session_id=? AND order_no>?", row.id(), question.orderNo());
+        jdbc.update("UPDATE mock_interview_questions SET order_no=-order_no WHERE session_id=? AND order_no<0", row.id());
+        jdbc.update("INSERT INTO mock_interview_questions(id,session_id,order_no,question_type,prompt_text,source_label,source_refs_json,status,created_at,parent_question_id) VALUES(?,?,?,?,?,?,?,'PENDING',?,?)",
+                Ids.newId(), row.id(), question.orderNo() + 1, "FOLLOW_UP", prompt.trim(), "追问 · 针对你刚才的回答",
+                json(List.of("ANSWER")), now, root);
+        jdbc.update("UPDATE mock_interview_sessions SET question_count=question_count+1 WHERE id=?", row.id());
+        return true;
+    }
+
+    /** 压力面试 digs deeper: two follow-ups per question; other interviews one. */
+    static int followUpBudget(String interviewType) {
+        return "PRESSURE".equalsIgnoreCase(interviewType) ? 2 : 1;
     }
 
     @Transactional
@@ -406,7 +438,19 @@ public class MockInterviewService {
                 row.get("overall_score") == null ? null : number(row.get("overall_score")),
                 intMap(String.valueOf(row.get("dimensions_json"))), map(String.valueOf(row.get("summary_json"))),
                 stringList(String.valueOf(row.get("recommendations_json"))), reviews,
-                instant(row.get("generated_at")), evaluated, Math.max(0, answered - evaluated));
+                instant(row.get("generated_at")), evaluated, Math.max(0, answered - evaluated), previous(session));
+    }
+
+    /** The last completed, scored interview of the same type for the same position, to show what moved. */
+    private PreviousSession previous(SessionRow session) {
+        if (session.completedAt() == null) return null;
+        return jdbc.query("SELECT s.id,s.completed_at,r.overall_score,r.dimensions_json FROM mock_interview_sessions s JOIN mock_interview_reports r ON r.session_id=s.id "
+                        + "WHERE s.account_id=? AND s.id<>? AND s.status='COMPLETED' AND s.interview_type=? AND s.position_name=? "
+                        + "AND s.completed_at<? AND r.overall_score IS NOT NULL ORDER BY s.completed_at DESC LIMIT 1",
+                (rs, n) -> new PreviousSession(rs.getString("id"), instant(rs.getTimestamp("completed_at")),
+                        rs.getInt("overall_score"), intMap(rs.getString("dimensions_json"))),
+                session.accountId(), session.id(), session.interviewType(), session.positionName(),
+                java.sql.Timestamp.from(session.completedAt())).stream().findFirst().orElse(null);
     }
 
     @Transactional
@@ -416,11 +460,14 @@ public class MockInterviewService {
         String id = Ids.newId();
         jdbc.update("INSERT INTO mock_interview_sessions(id,account_id,draft_id,title,position_name,company_name,mode,interview_type,difficulty,duration_minutes,question_count,language_code,feedback_mode,follow_up_enabled,status,current_question_index,elapsed_seconds,resume_snapshot_json,jd_snapshot_json,materials_snapshot_json,settings_snapshot_json,version_no,created_at,updated_at,started_at,resumed_at,paused_at,completed_at) SELECT ?,account_id,NULL,title,position_name,company_name,mode,interview_type,difficulty,duration_minutes,question_count,language_code,feedback_mode,follow_up_enabled,'IN_PROGRESS',0,0,resume_snapshot_json,jd_snapshot_json,materials_snapshot_json,settings_snapshot_json,0,?,?,?,?,NULL,NULL FROM mock_interview_sessions WHERE id=? AND account_id=?",
                 id, now, now, now, now, sessionId, current.accountId());
-        List<QuestionView> sourceQuestions = questionList(sessionId);
+        // Follow-ups answered the old answers; the retry asks the original questions and lets new follow-ups come.
+        List<QuestionView> sourceQuestions = questionList(sessionId).stream().filter(item -> item.parentQuestionId() == null).toList();
+        int order = 0;
         for (QuestionView question : sourceQuestions) {
             jdbc.update("INSERT INTO mock_interview_questions(id,session_id,order_no,question_type,prompt_text,source_label,source_refs_json,status,created_at) VALUES(?,?,?,?,?,?,?,'PENDING',?)",
-                    Ids.newId(), id, question.orderNo(), question.questionType(), question.prompt(), question.sourceLabel(), json(question.sourceRefs()), now);
+                    Ids.newId(), id, ++order, question.questionType(), question.prompt(), question.sourceLabel(), json(question.sourceRefs()), now);
         }
+        jdbc.update("UPDATE mock_interview_sessions SET question_count=? WHERE id=?", order, id);
         return session(current, id);
     }
 
@@ -479,7 +526,8 @@ public class MockInterviewService {
         try {
             return jdbc.queryForObject("SELECT * FROM mock_interview_questions WHERE id=? AND session_id=?", (rs, rowNum) -> new QuestionView(
                     rs.getString("id"), rs.getInt("order_no"), rs.getString("question_type"), rs.getString("prompt_text"),
-                    rs.getString("source_label"), stringList(rs.getString("source_refs_json")), rs.getString("status")), questionId, sessionId);
+                    rs.getString("source_label"), stringList(rs.getString("source_refs_json")), rs.getString("status"),
+                    rs.getString("parent_question_id")), questionId, sessionId);
         } catch (EmptyResultDataAccessException exception) {
             throw AppException.user("MOCK_INTERVIEW_QUESTION_NOT_FOUND", "面试题不存在");
         }
@@ -488,7 +536,8 @@ public class MockInterviewService {
     private List<QuestionView> questionList(String sessionId) {
         return jdbc.query("SELECT * FROM mock_interview_questions WHERE session_id=? ORDER BY order_no", (rs, rowNum) -> new QuestionView(
                 rs.getString("id"), rs.getInt("order_no"), rs.getString("question_type"), rs.getString("prompt_text"),
-                rs.getString("source_label"), stringList(rs.getString("source_refs_json")), rs.getString("status")), sessionId);
+                rs.getString("source_label"), stringList(rs.getString("source_refs_json")), rs.getString("status"),
+                rs.getString("parent_question_id")), sessionId);
     }
 
     private List<AnswerView> answerList(String sessionId) {
@@ -589,8 +638,8 @@ public class MockInterviewService {
     }
 
     private List<ReviewRow> questionsWithAnswers(String sessionId) {
-        return jdbc.query("SELECT q.id,q.order_no,q.question_type,q.prompt_text,q.source_label,q.source_refs_json,q.status AS question_status,a.id AS answer_id,a.answer_mode,a.answer_text,a.transcript_text,a.status AS answer_status,a.score_json,a.feedback_json,a.version_no,a.updated_at,a.submitted_at FROM mock_interview_questions q LEFT JOIN mock_interview_answers a ON a.question_id=q.id AND a.session_id=q.session_id WHERE q.session_id=? ORDER BY q.order_no", (rs, rowNum) -> {
-            QuestionView question = new QuestionView(rs.getString("id"), rs.getInt("order_no"), rs.getString("question_type"), rs.getString("prompt_text"), rs.getString("source_label"), stringList(rs.getString("source_refs_json")), rs.getString("question_status"));
+        return jdbc.query("SELECT q.id,q.order_no,q.question_type,q.prompt_text,q.source_label,q.source_refs_json,q.status AS question_status,q.parent_question_id,a.id AS answer_id,a.answer_mode,a.answer_text,a.transcript_text,a.status AS answer_status,a.score_json,a.feedback_json,a.version_no,a.updated_at,a.submitted_at FROM mock_interview_questions q LEFT JOIN mock_interview_answers a ON a.question_id=q.id AND a.session_id=q.session_id WHERE q.session_id=? ORDER BY q.order_no", (rs, rowNum) -> {
+            QuestionView question = new QuestionView(rs.getString("id"), rs.getInt("order_no"), rs.getString("question_type"), rs.getString("prompt_text"), rs.getString("source_label"), stringList(rs.getString("source_refs_json")), rs.getString("question_status"), rs.getString("parent_question_id"));
             AnswerView answer = rs.getString("answer_id") == null ? null : new AnswerView(rs.getString("answer_id"), rs.getString("id"), rs.getString("answer_mode"), rs.getString("answer_text"), rs.getString("transcript_text"), rs.getString("answer_status"), intMap(rs.getString("score_json")), map(rs.getString("feedback_json")), rs.getInt("version_no"), instant(rs.getTimestamp("updated_at")), instant(rs.getTimestamp("submitted_at")));
             return new ReviewRow(question, answer, answer == null ? Map.of() : answer.feedback(), answer == null ? Map.of() : answer.scores());
         }, sessionId);
@@ -687,8 +736,9 @@ public class MockInterviewService {
     public record SessionSummary(String id, String title, String positionName, String companyName, String mode,
             String interviewType, String difficulty, String status, int answeredCount, int questionCount,
             Integer score, Instant updatedAt, Instant completedAt, Integer elapsedSeconds, Integer durationMinutes) {}
+    /** {@code parentQuestionId}: set on a follow-up asked live, naming the original question it follows up on. */
     public record QuestionView(String id, int orderNo, String questionType, String prompt, String sourceLabel,
-            List<String> sourceRefs, String status) {}
+            List<String> sourceRefs, String status, String parentQuestionId) {}
     public record AnswerView(String id, String questionId, String mode, String answer, String transcript, String status,
             Map<String, Integer> scores, Map<String, Object> feedback, int version, Instant updatedAt, Instant submittedAt) {}
     public record SessionView(SessionSummary session, QuestionView currentQuestion, List<QuestionView> questions,
@@ -702,7 +752,9 @@ public class MockInterviewService {
      */
     public record ReportView(String id, SessionSummary session, Integer overallScore, Map<String, Integer> dimensions,
             Map<String, Object> summary, List<String> recommendations, List<QuestionReview> questions, Instant generatedAt,
-            int evaluatedCount, int pendingCount) {}
+            int evaluatedCount, int pendingCount, PreviousSession previous) {}
+    /** The interview to compare with: same type, same position, completed before this one. */
+    public record PreviousSession(String sessionId, Instant completedAt, Integer overallScore, Map<String, Integer> dimensions) {}
     public record EvaluationResult(int evaluated, int pending, boolean aiAvailable) {}
 
     private record SessionRow(String id, String accountId, String title, String positionName, String companyName,
