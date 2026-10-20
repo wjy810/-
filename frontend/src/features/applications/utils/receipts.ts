@@ -31,7 +31,10 @@ export function receiptOf(link: ResumeLink | null | undefined, now: Date = new D
       detail: `最近 ${formatRelative(lastViewedAt, now)} · 累计阅读 ${readTime(totals?.readSeconds ?? link.readSeconds)}${earlier}`,
     }
   }
-  if (link.status !== 'ACTIVE') return { tone: 'off', label: link.status === 'EXPIRED' ? '链接已过期' : '链接已撤回', detail: '对方无法再打开这份简历' }
+  if (link.status !== 'ACTIVE') {
+    const label = link.status === 'EXPIRED' ? '链接已过期' : link.status === 'SUSPENDED' ? '链接已停用' : '链接已撤回'
+    return { tone: 'off', label, detail: '对方无法再打开这份简历' }
+  }
   return { tone: 'waiting', label: '还没有被打开', detail: `链接生成于 ${formatRelative(link.createdAt, now)}` }
 }
 

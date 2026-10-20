@@ -318,8 +318,9 @@ public class IdentityService implements SessionAuthenticator {
         auditService.append(account.getId(), "PASSWORD_RESET_REQUESTED", "ACCOUNT", account.getId(), "已发送邮箱验证码");
     }
 
+    /** @return the account whose password was reset; every session of it has ended. */
     @Transactional(noRollbackFor = AppException.class)
-    public void confirmPasswordReset(String rawEmail, String code, String newPassword) {
+    public String confirmPasswordReset(String rawEmail, String code, String newPassword) {
         String email = AccountRules.normalizeEmail(rawEmail);
         AccountRules.validatePassword(newPassword, email);
         AccountEntity account = accounts.findByEmail(email).orElseThrow(PasswordResetPolicy::invalid);
@@ -343,10 +344,12 @@ public class IdentityService implements SessionAuthenticator {
         resets.consumeAllOpenByAccountId(account.getId(), now);
         replacePasswordAndRevokeSessions(account, newPassword, now);
         auditService.append(account.getId(), "PASSWORD_RESET_CONFIRMED", "ACCOUNT", account.getId(), "验证码改密，全部会话已失效");
+        return account.getId();
     }
 
+    /** @return the account whose password was reset, or null when no account has that contact. */
     @Transactional
-    public void confirmPasswordReset(
+    public String confirmPasswordReset(
             VerificationChannel channel,
             String destination,
             String verificationToken,
@@ -359,12 +362,13 @@ public class IdentityService implements SessionAuthenticator {
         AccountRules.validatePassword(newPassword, verified.destination());
         AccountEntity account = findByContact(channel, verified.destination()).orElse(null);
         if (account == null) {
-            return;
+            return null;
         }
         Instant now = clock.now();
         replacePasswordAndRevokeSessions(account, newPassword, now);
         auditService.append(account.getId(), "PASSWORD_RESET_CONFIRMED", "ACCOUNT", account.getId(),
                 "验证凭据改密，全部会话已失效");
+        return account.getId();
     }
 
     @Transactional(readOnly = true)

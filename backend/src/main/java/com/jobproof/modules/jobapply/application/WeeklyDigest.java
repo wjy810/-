@@ -79,10 +79,13 @@ public class WeeklyDigest {
         int applied = count("SELECT COUNT(*) FROM job_applications WHERE account_id=? AND archived_at IS NULL AND furthest_stage<>'WISHLIST' "
                 + "AND applied_on>=? AND applied_on<?", accountId,
                 java.sql.Date.valueOf(from.atZone(ZONE).toLocalDate()), java.sql.Date.valueOf(to.atZone(ZONE).toLocalDate()));
+        // Archived applications are out of the digest, the openings of their links too.
         int opens = count("SELECT COUNT(*) FROM resume_share_views v JOIN resume_share_links l ON l.id=v.link_id "
-                + "WHERE l.account_id=? AND v.started_at>=? AND v.started_at<?", accountId, start, end);
+                + "LEFT JOIN job_applications a ON a.id=l.application_id "
+                + "WHERE l.account_id=? AND (l.application_id IS NULL OR a.archived_at IS NULL) AND v.started_at>=? AND v.started_at<?",
+                accountId, start, end);
         List<String> openedBy = jdbc.queryForList("SELECT DISTINCT a.company FROM resume_share_views v JOIN resume_share_links l ON l.id=v.link_id "
-                + "JOIN job_applications a ON a.id=l.application_id WHERE l.account_id=? AND v.started_at>=? AND v.started_at<? ORDER BY a.company",
+                + "JOIN job_applications a ON a.id=l.application_id WHERE l.account_id=? AND a.archived_at IS NULL AND v.started_at>=? AND v.started_at<? ORDER BY a.company",
                 String.class, accountId, start, end);
         // 进入下一轮: applications that moved forward into a test, an interview or an offer, each counted once.
         java.util.Set<String> advancedIds = new java.util.HashSet<>();

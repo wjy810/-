@@ -3,7 +3,8 @@
 export type ApplicationStage = 'WISHLIST' | 'APPLIED' | 'ASSESSMENT' | 'INTERVIEW' | 'OFFER' | 'CLOSED'
 export type ApplicationOutcome = 'ACCEPTED' | 'DECLINED' | 'REJECTED' | 'WITHDRAWN' | 'NO_RESPONSE'
 export type ApplicationChannel = 'OFFICIAL_SITE' | 'JOB_BOARD' | 'REFERRAL' | 'CAMPUS' | 'EMAIL' | 'HEADHUNTER' | 'OTHER'
-export type LinkStatus = 'ACTIVE' | 'EXPIRED' | 'REVOKED'
+/** SUSPENDED: its application is archived, so the link is off until the application comes back. */
+export type LinkStatus = 'ACTIVE' | 'EXPIRED' | 'REVOKED' | 'SUSPENDED'
 
 export type ResumeLink = {
   id: string
@@ -16,6 +17,7 @@ export type ResumeLink = {
   hideContact: boolean
   expiresAt?: string | null
   revokedAt?: string | null
+  suspendedAt?: string | null
   status: LinkStatus
   viewCount: number
   visitorCount: number

@@ -30,8 +30,12 @@ export const fetchResumeLinks = () => api<ResumeLink[]>(LINKS)
 export const createResumeLink = (command: { resumeVersionId: string; applicationId?: string | null; label?: string | null; hideContact?: boolean; expiresInDays?: number | null }) =>
   api<ResumeLink>(LINKS, { method: 'POST', ...json(command) })
 export const revokeResumeLink = (id: string) => api<ResumeLink>(`${LINKS}/${encoded(id)}/revoke`, { method: 'POST' })
-/** Changes expiry or contact visibility in place; the address and receipts stay. */
-export const updateResumeLink = (id: string, patch: { expiresInDays?: number; neverExpires?: boolean; hideContact?: boolean }) =>
+export type LinkPatch = { expiresInDays?: number; neverExpires?: boolean; hideContact?: boolean; label?: string; reactivate?: boolean }
+/**
+ * Changes a link in place — expiry, contact visibility, name — or turns a suspended one back on (reactivate);
+ * the address and receipts stay.
+ */
+export const updateResumeLink = (id: string, patch: LinkPatch) =>
   api<ResumeLink>(`${LINKS}/${encoded(id)}`, { method: 'PATCH', ...json(patch) })
 /** 这是我自己打开的: removes that reader's visits and leaves them out from now on. */
 export const markOwnView = (linkId: string, viewId: string) =>

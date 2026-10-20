@@ -8,6 +8,8 @@ const api = vi.hoisted(() => ({
   fetchShareableVersions: vi.fn(),
   createResumeLink: vi.fn(),
   revokeResumeLink: vi.fn(),
+  updateResumeLink: vi.fn(),
+  markOwnView: vi.fn(),
 }))
 vi.mock('../services/applicationsApi', () => api)
 const dialogs = vi.hoisted(() => ({ confirm: vi.fn() }))
@@ -88,5 +90,69 @@ describe('resume links panel', () => {
     expect(api.revokeResumeLink).toHaveBeenCalledWith('l1')
     expect(wrapper.get('.link-row').classes()).toContain('is-off')
     expect(wrapper.findAll('button').some(button => button.text() === '复制')).toBe(false)
+  })
+
+  it('lets a general link be renamed, hidden and renewed in place, and previews only links that open', async () => {
+    const general = link({ id: 'g1', label: '双选会', applicationId: null })
+    const expired = link({ id: 'e1', label: '旧群', applicationId: null, status: 'EXPIRED', viewCount: 0, lastViewedAt: null })
+    api.fetchResumeLinks.mockResolvedValue([general, expired])
+    api.updateResumeLink.mockImplementation(async (id: string, patch: Record<string, unknown>) =>
+      id === 'g1' ? { ...general, label: String(patch.label ?? general.label), hideContact: Boolean(patch.hideContact) } : { ...expired, status: 'ACTIVE' })
+    const wrapper = mountPanel()
+    await flushPromises()
+    const rows = wrapper.findAll('.link-row')
+    expect(rows[0]!.text()).toContain('预览')
+    expect(rows[1]!.text()).not.toContain('预览')
+    expect(rows[1]!.text()).not.toContain('复制')
+    expect(rows[1]!.get('[data-testid="link-off-reason"]').text()).toContain('重新设置有效期即可启用')
+
+    await rows[0]!.get('[data-testid="link-settings"]').trigger('click')
+    await wrapper.get('#link-settings-form input').setValue('秋招双选会')
+    await wrapper.get('#link-settings-form .ui-checkbox__box').trigger('click')
+    await wrapper.get('#link-settings-form').trigger('submit')
+    await flushPromises()
+    expect(api.updateResumeLink).toHaveBeenCalledWith('g1', { label: '秋招双选会', hideContact: true })
+    expect(wrapper.findAll('.link-row')[0]!.find('strong').text()).toBe('秋招双选会')
+
+    const renew = wrapper.findAll('.link-row')[1]!.get('[data-testid="link-settings"]')
+    expect(renew.text()).toBe('重新启用')
+    await renew.trigger('click')
+    expect(wrapper.get('[role="dialog"] h2').text()).toBe('重新启用链接')
+    await wrapper.get('#link-settings-form').trigger('submit')
+    await flushPromises()
+    expect(api.updateResumeLink).toHaveBeenLastCalledWith('e1', { expiresInDays: 60 })
+  })
+
+  it('takes the owner\'s own opening out of a general link\'s receipts', async () => {
+    const general = link({ id: 'g1', label: '个人主页', applicationId: null, viewCount: 2, visitorCount: 2 })
+    api.fetchResumeLinks.mockResolvedValue([general])
+    api.fetchLinkViews
+      .mockResolvedValueOnce([{ id: 'w1', linkId: 'g1', device: 'MOBILE', client: 'WECHAT', referrerHost: null, startedAt: '2026-10-19T03:30:00Z', readSeconds: 20 }])
+      .mockResolvedValueOnce([])
+    api.markOwnView.mockResolvedValue({ ...general, viewCount: 1, visitorCount: 1 })
+    dialogs.confirm.mockResolvedValue(true)
+    const wrapper = mountPanel()
+    await flushPromises()
+    await wrapper.findAll('button').find(button => button.text() === '打开记录')!.trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-testid="mark-own"]').trigger('click')
+    await flushPromises()
+    expect(api.markOwnView).toHaveBeenCalledWith('g1', 'w1')
+    expect(wrapper.get('.link-row').text()).toContain('打开 1 次 · 1 位读者')
+  })
+
+  it('turns a link left off after its application came back on again', async () => {
+    const waiting = link({ id: 's1', status: 'SUSPENDED' })
+    api.fetchResumeLinks.mockResolvedValue([waiting])
+    api.updateResumeLink.mockResolvedValue({ ...waiting, status: 'ACTIVE' })
+    const wrapper = mountPanel()
+    await flushPromises()
+    expect(wrapper.get('.link-row').text()).toContain('已停用')
+    expect(wrapper.get('[data-testid="link-off-reason"]').text()).toContain('投递已归档')
+    expect(wrapper.get('.link-row').text()).not.toContain('预览')
+    await wrapper.get('[data-testid="reactivate-link"]').trigger('click')
+    await flushPromises()
+    expect(api.updateResumeLink).toHaveBeenCalledWith('s1', { reactivate: true })
+    expect(wrapper.get('.link-row').text()).toContain('复制')
   })
 })

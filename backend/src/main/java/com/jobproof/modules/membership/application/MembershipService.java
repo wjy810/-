@@ -216,7 +216,7 @@ public class MembershipService implements DeletionModuleHandler, AccountExportCo
         Instant now = clock.now();
         Optional<Instant> expires = proExpiry(accountId);
         boolean active = expires.isPresent() && expires.get().isAfter(now);
-        Integer links = jdbc.queryForObject("SELECT COUNT(*) FROM resume_share_links WHERE account_id=? AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at>?)",
+        Integer links = jdbc.queryForObject("SELECT COUNT(*) FROM resume_share_links WHERE account_id=? AND revoked_at IS NULL AND suspended_at IS NULL AND (expires_at IS NULL OR expires_at>?)",
                 Integer.class, accountId, now);
         List<EventView> events = jdbc.query("SELECT * FROM membership_events WHERE account_id=? ORDER BY created_at DESC LIMIT 20",
                 (rs, n) -> new EventView(rs.getString("id"), rs.getString("event_type"), rs.getString("plan"),

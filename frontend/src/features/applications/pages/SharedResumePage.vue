@@ -53,6 +53,7 @@ const ownerName = computed(() => {
 function describe(reason: unknown): { title: string; description: string } {
   const code = isApiClientError(reason) ? reason.reason : ''
   if (code === 'RESUME_LINK_REVOKED') return { title: '求职者已撤回这个链接', description: '如果还需要这份简历，请直接联系对方获取新的链接。' }
+  if (code === 'RESUME_LINK_SUSPENDED') return { title: '求职者已停用这个链接', description: '如果还需要这份简历，请直接联系对方。' }
   if (code === 'RESUME_LINK_EXPIRED') return { title: '这个简历链接已过期', description: '链接设置了有效期。请联系求职者获取新的链接。' }
   if (code === 'RESUME_LINK_CONTENT_GONE') return { title: '分享的简历版本已不可用', description: '求职者可能已删除或归档了这个版本。' }
   if (code === 'RESUME_LINK_NOT_FOUND') return { title: '找不到这个简历链接', description: '请检查链接是否完整复制，或联系求职者重新发送。' }

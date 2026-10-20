@@ -107,8 +107,9 @@ public class JobApplicationService implements DeletionModuleHandler, AccountExpo
         Fields fields = fields(current.accountId(), write);
         ApplicationStage stage = write.stage() == null ? ApplicationStage.APPLIED : ApplicationStage.parse(write.stage());
         String outcome = outcome(stage, write.outcome(), stage.open() ? stage : ApplicationStage.APPLIED);
-        LocalDate appliedOn = fields.appliedOn() != null || stage == ApplicationStage.WISHLIST ? fields.appliedOn()
-                : LocalDate.now(java.time.ZoneId.of("Asia/Shanghai"));
+        // 想投 has not gone out: no applied date (it is set when it does) and no link taking a place in the limit.
+        boolean wishlist = stage == ApplicationStage.WISHLIST;
+        LocalDate appliedOn = wishlist ? null : fields.appliedOn() != null ? fields.appliedOn() : today();
         Instant now = clock.now();
         String id = Ids.newId();
         jdbc.update("INSERT INTO job_applications(id,account_id,company,position_title,location,channel,job_url,stage,furthest_stage,outcome,salary_text,resume_version_id,job_match_id,applied_on,next_step,next_step_at,notes,version_no,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,?,?)",
@@ -117,7 +118,7 @@ public class JobApplicationService implements DeletionModuleHandler, AccountExpo
                 fields.salary(), fields.versionId(), fields.matchId(), appliedOn, fields.nextStep(), fields.nextStepAt(),
                 fields.notes(), now, now);
         timeline.record(current.accountId(), id, ApplicationTimeline.CREATED, null, stage.name(), null, now);
-        if (Boolean.TRUE.equals(write.createLink()) && fields.versionId() != null) {
+        if (!wishlist && Boolean.TRUE.equals(write.createLink()) && fields.versionId() != null) {
             links.createFor(current.accountId(), fields.versionId(), fields.company() + " · " + fields.position(), id,
                     Boolean.TRUE.equals(write.hideContact()), ResumeLinkService.DEFAULT_EXPIRY_DAYS);
         }
@@ -131,9 +132,10 @@ public class JobApplicationService implements DeletionModuleHandler, AccountExpo
         ApplicationView existing = require(current.accountId(), id);
         Versions.assertExpected(write.expectedVersion(), existing.version());
         Fields fields = fields(current.accountId(), write);
+        LocalDate appliedOn = ApplicationStage.WISHLIST.name().equals(existing.furthestStage()) ? null : fields.appliedOn();
         int changed = jdbc.update("UPDATE job_applications SET company=?,position_title=?,location=?,channel=?,job_url=?,salary_text=?,resume_version_id=?,job_match_id=?,applied_on=?,next_step=?,next_step_at=?,notes=?,version_no=version_no+1,updated_at=? WHERE id=? AND account_id=? AND version_no=?",
                 fields.company(), fields.position(), fields.location(), fields.channel(), fields.jobUrl(), fields.salary(),
-                fields.versionId(), fields.matchId(), fields.appliedOn(), fields.nextStep(), fields.nextStepAt(),
+                fields.versionId(), fields.matchId(), appliedOn, fields.nextStep(), fields.nextStepAt(),
                 fields.notes(), clock.now(), id, current.accountId(), existing.version());
         if (changed == 0) throw AppException.conflict("VERSION_CONFLICT", "投递记录刚在别处更新过，请刷新后重试");
         return require(current.accountId(), id);
@@ -151,8 +153,9 @@ public class JobApplicationService implements DeletionModuleHandler, AccountExpo
         if (previous == next && java.util.Objects.equals(outcome, existing.outcome())) return existing;
         ApplicationStage furthest = ApplicationStage.furthest(ApplicationStage.parse(existing.furthestStage()), next);
         Instant now = clock.now();
+        // 想投 carries no applied date, so going out (leaving 想投, or recorded without a date) dates it today.
         LocalDate appliedOn = existing.appliedOn() == null && next.open() && next.rank() >= ApplicationStage.APPLIED.rank()
-                ? LocalDate.now(java.time.ZoneId.of("Asia/Shanghai")) : existing.appliedOn();
+                ? today() : existing.appliedOn();
         int changed = jdbc.update("UPDATE job_applications SET stage=?,furthest_stage=?,outcome=?,applied_on=?,version_no=version_no+1,updated_at=? WHERE id=? AND account_id=? AND version_no=?",
                 next.name(), furthest.name(), outcome, appliedOn, now, id, current.accountId(), existing.version());
         if (changed == 0) throw AppException.conflict("VERSION_CONFLICT", "投递记录刚在别处更新过，请刷新后重试");
@@ -181,7 +184,10 @@ public class JobApplicationService implements DeletionModuleHandler, AccountExpo
         return require(current.accountId(), id);
     }
 
-    /** 删除 moves an application to the archive: off the board and out of reminders, until restored. */
+    /**
+     * 删除 moves an application to the archive: off the board, out of reminders and the weekly digest, and its
+     * links suspended, until restored.
+     */
     @Transactional
     public ApplicationView archive(CurrentAccount current, String id, boolean archived) {
         assertSeeker(current);
@@ -194,6 +200,8 @@ public class JobApplicationService implements DeletionModuleHandler, AccountExpo
         if (changed > 0) {
             timeline.record(current.accountId(), id, archived ? ApplicationTimeline.ARCHIVED : ApplicationTimeline.RESTORED,
                     null, null, archived ? "移入归档" : "从归档恢复", now);
+            if (archived) links.suspendForArchive(current.accountId(), id, now);
+            else links.resumeAfterRestore(current.accountId(), id, now);
         }
         return require(current.accountId(), id);
     }
@@ -244,7 +252,7 @@ public class JobApplicationService implements DeletionModuleHandler, AccountExpo
     @Override
     public Map<String, Object> contribute(String accountId) {
         Map<String, Object> result = new LinkedHashMap<>();
-        result.put("applications", jdbc.queryForList("SELECT id,company,position_title,location,channel,job_url,stage,furthest_stage,outcome,salary_text,resume_version_id,job_match_id,applied_on,next_step,next_step_at,notes,created_at,updated_at FROM job_applications WHERE account_id=? ORDER BY created_at", accountId));
+        result.put("applications", jdbc.queryForList("SELECT id,company,position_title,location,channel,job_url,stage,furthest_stage,outcome,salary_text,resume_version_id,job_match_id,applied_on,next_step,next_step_at,notes,created_at,updated_at,archived_at FROM job_applications WHERE account_id=? ORDER BY created_at", accountId));
         result.put("events", jdbc.queryForList("SELECT application_id,event_type,from_stage,to_stage,detail,created_at FROM job_application_events WHERE account_id=? ORDER BY created_at", accountId));
         result.putAll(links.exportFor(accountId));
         return result;
@@ -377,6 +385,10 @@ public class JobApplicationService implements DeletionModuleHandler, AccountExpo
                 applied == null ? null : applied.toLocalDate(), rs.getString("next_step"), instant(rs, "next_step_at"),
                 rs.getString("notes"), rs.getInt("version_no"), instant(rs, "created_at"), instant(rs, "updated_at"),
                 instant(rs, "archived_at"), currentLinks.get(rs.getString("id")), receipts.get(rs.getString("id")));
+    }
+
+    private static LocalDate today() {
+        return LocalDate.now(java.time.ZoneId.of("Asia/Shanghai"));
     }
 
     private static Instant instant(ResultSet rs, String column) throws SQLException {

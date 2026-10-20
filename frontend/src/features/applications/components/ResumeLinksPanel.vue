@@ -4,7 +4,7 @@
  * for a job fair, a referral group or a personal page. Each keeps its own receipts.
  */
 import { computed, onMounted, ref, shallowRef } from 'vue'
-import { ChevronDown, Copy, ExternalLink, Link2, Link2Off, Monitor, Plus, Send, Smartphone, Tablet } from 'lucide-vue-next'
+import { ChevronDown, Copy, ExternalLink, Link2, Link2Off, Monitor, Plus, RefreshCw, Send, Settings2, Smartphone, Tablet, UserCheck } from 'lucide-vue-next'
 import UiBadge from '@/shared/ui/UiBadge.vue'
 import UiButton from '@/shared/ui/UiButton.vue'
 import UiCheckbox from '@/shared/ui/UiCheckbox.vue'
@@ -22,9 +22,12 @@ import { errorMessage } from '@/shared/api/types'
 import { copyText } from '@/shared/lib/clipboard'
 import { formatRelative, formatWhen } from '@/shared/lib/datetime'
 import { useLoadState } from '@/shared/lib/useLoadState'
-import { createResumeLink, fetchLinkViews, fetchResumeLinks, fetchShareableVersions, revokeResumeLink } from '../services/applicationsApi'
+import {
+  createResumeLink, fetchLinkViews, fetchResumeLinks, fetchShareableVersions, markOwnView, revokeResumeLink, updateResumeLink,
+  type LinkPatch,
+} from '../services/applicationsApi'
 import { clientLabel, deviceLabel, readTime } from '../labels'
-import { filterLinks, isGeneral, linkState, linkTitle, sortLinks, type LinkFilter } from '../utils/links'
+import { canAdjust, filterLinks, isGeneral, linkState, linkTitle, offReason, opens, sortLinks, type LinkFilter } from '../utils/links'
 import type { LinkViewRecord, ResumeLink, ShareableVersion } from '../types'
 
 const props = withDefaults(defineProps<{ now?: Date; createOnMount?: boolean }>(), { now: () => new Date(), createOnMount: false })
@@ -68,6 +71,17 @@ const expiryOptions: SelectOption[] = [
 ]
 const labelError = computed(() => (touched.value && !form.value.label.trim() ? '写一下这条链接发到哪里，方便以后区分' : null))
 
+/** Settings of one link, changed in place: same address, same receipts. */
+const adjusting = ref<ResumeLink | null>(null)
+const settings = ref({ label: '', expiry: 'keep', hideContact: false })
+const settingsPending = ref(false)
+const renewing = computed(() => adjusting.value?.status === 'EXPIRED')
+const settingsExpiryOptions = computed<SelectOption[]>(() => [
+  ...(renewing.value ? [] : [{ value: 'keep', label: '有效期不变' }]),
+  ...expiryOptions.map(item => ({ ...item, label: item.value === 'none' ? (renewing.value ? '长期有效' : '改为长期有效') : `从今天起 ${item.label}` })),
+])
+const settingsLabelError = computed(() => (adjusting.value && !settings.value.label.trim() ? '链接名称不能为空' : null))
+
 const url = (link: ResumeLink) => `${window.location.origin}${link.path}`
 
 function deviceIcon(device: string) {
@@ -105,12 +119,80 @@ async function revoke(link: ResumeLink): Promise<void> {
   }))) return
   pending.value = `revoke-${link.id}`
   try {
-    const updated = await revokeResumeLink(link.id)
-    page.data.value = (page.data.value ?? []).map(item => (item.id === updated.id ? updated : item))
+    replaceLink(await revokeResumeLink(link.id))
     emit('changed')
     toast.success('链接已撤回')
   } catch (reason) {
     toast.error(errorMessage(reason, '撤回失败'))
+  } finally {
+    pending.value = ''
+  }
+}
+
+function replaceLink(updated: ResumeLink): void {
+  page.data.value = (page.data.value ?? []).map(item => (item.id === updated.id ? updated : item))
+}
+
+function openSettings(link: ResumeLink): void {
+  adjusting.value = link
+  settings.value = { label: linkTitle(link), expiry: link.status === 'EXPIRED' ? '60' : 'keep', hideContact: link.hideContact }
+}
+
+async function saveSettings(): Promise<void> {
+  const target = adjusting.value
+  if (!target || settingsLabelError.value || settingsPending.value) return
+  const patch: LinkPatch = {}
+  const label = settings.value.label.trim()
+  if (label !== linkTitle(target)) patch.label = label
+  if (settings.value.expiry === 'none') patch.neverExpires = true
+  else if (settings.value.expiry !== 'keep') patch.expiresInDays = Number(settings.value.expiry)
+  if (settings.value.hideContact !== target.hideContact) patch.hideContact = settings.value.hideContact
+  if (!Object.keys(patch).length) {
+    adjusting.value = null
+    toast.info('设置没有变化')
+    return
+  }
+  settingsPending.value = true
+  try {
+    const updated = await updateResumeLink(target.id, patch)
+    replaceLink(updated)
+    adjusting.value = null
+    emit('changed')
+    toast.success(target.status === 'EXPIRED' && updated.status === 'ACTIVE' ? '链接已重新启用，地址不变' : '链接设置已更新，地址不变')
+  } catch (reason) {
+    toast.error(errorMessage(reason, '链接设置更新失败'))
+  } finally {
+    settingsPending.value = false
+  }
+}
+
+/** A link left off when its application came back from the archive with no room in the plan. */
+async function reactivate(link: ResumeLink): Promise<void> {
+  pending.value = `reactivate-${link.id}`
+  try {
+    replaceLink(await updateResumeLink(link.id, { reactivate: true }))
+    emit('changed')
+    toast.success('链接已重新启用，地址不变')
+  } catch (reason) {
+    toast.error(errorMessage(reason, '重新启用失败'))
+  } finally {
+    pending.value = ''
+  }
+}
+
+async function markOwn(link: ResumeLink, view: LinkViewRecord): Promise<void> {
+  if (!(await confirm({
+    title: '这次是你自己打开的？',
+    message: '这位读者的打开记录会从回执里去掉，之后同一个浏览器再打开也不会计入。',
+    confirmText: '是我自己',
+  }))) return
+  pending.value = `own-${view.id}`
+  try {
+    replaceLink(await markOwnView(link.id, view.id))
+    views.value = { ...views.value, [link.id]: await fetchLinkViews(link.id) }
+    toast.success('回执已更正')
+  } catch (reason) {
+    toast.error(errorMessage(reason, '标记失败'))
   } finally {
     pending.value = ''
   }
@@ -203,8 +285,25 @@ defineExpose({ openCreate, reload: () => { freshId.value = null; return page.loa
             </p>
           </div>
           <div class="link-row__actions">
-            <UiButton v-if="link.status === 'ACTIVE'" size="sm" variant="secondary" :icon="Copy" @click="copy(link)">复制</UiButton>
-            <UiButton size="sm" variant="ghost" :icon="ExternalLink" :href="link.path" target="_blank" :aria-label="`预览「${linkTitle(link)}」`">预览</UiButton>
+            <UiButton v-if="opens(link)" size="sm" variant="secondary" :icon="Copy" @click="copy(link)">复制</UiButton>
+            <UiButton v-if="opens(link)" size="sm" variant="ghost" :icon="ExternalLink" :href="link.path" target="_blank" :aria-label="`预览「${linkTitle(link)}」`">预览</UiButton>
+            <UiButton
+              v-if="link.status === 'SUSPENDED'"
+              size="sm"
+              variant="secondary"
+              :icon="RefreshCw"
+              :pending="pending === `reactivate-${link.id}`"
+              data-testid="reactivate-link"
+              @click="reactivate(link)"
+            >重新启用</UiButton>
+            <UiButton
+              v-else-if="canAdjust(link)"
+              size="sm"
+              :variant="link.status === 'EXPIRED' ? 'secondary' : 'ghost'"
+              :icon="link.status === 'EXPIRED' ? RefreshCw : Settings2"
+              data-testid="link-settings"
+              @click="openSettings(link)"
+            >{{ link.status === 'EXPIRED' ? '重新启用' : '设置' }}</UiButton>
             <UiButton v-if="link.applicationId" size="sm" variant="ghost" @click="emit('open-application', link.applicationId)">投递详情</UiButton>
             <UiButton
               v-if="link.viewCount"
@@ -217,7 +316,7 @@ defineExpose({ openCreate, reload: () => { freshId.value = null; return page.loa
               @click="toggleViews(link)"
             >打开记录</UiButton>
             <UiButton
-              v-if="link.status === 'ACTIVE'"
+              v-if="link.status === 'ACTIVE' || link.status === 'SUSPENDED'"
               size="sm"
               variant="ghost"
               :icon="Link2Off"
@@ -225,6 +324,7 @@ defineExpose({ openCreate, reload: () => { freshId.value = null; return page.loa
               @click="revoke(link)"
             >撤回</UiButton>
           </div>
+          <p v-if="offReason(link)" class="link-row__off" data-testid="link-off-reason">{{ offReason(link) }}</p>
           <ul v-if="expanded === link.id" class="link-row__views" aria-label="打开记录">
             <li v-if="!views[link.id]" class="is-loading"><UiSkeleton height="14px" width="60%" /></li>
             <li v-for="view in views[link.id] ?? []" :key="view.id">
@@ -232,7 +332,17 @@ defineExpose({ openCreate, reload: () => { freshId.value = null; return page.loa
               <span>{{ deviceLabel(view.device) }} · {{ clientLabel(view.client) }}<small v-if="view.referrerHost"> · 来自 {{ view.referrerHost }}</small></span>
               <em>{{ view.readSeconds ? `读了 ${readTime(view.readSeconds)}` : '刚打开' }}</em>
               <time :datetime="view.startedAt" :title="formatWhen(view.startedAt)">{{ formatRelative(view.startedAt, now) }}</time>
+              <button
+                type="button"
+                class="link-row__own"
+                :disabled="Boolean(pending)"
+                :aria-label="`${formatRelative(view.startedAt, now)}这次是我自己打开的`"
+                title="这是我自己打开的"
+                data-testid="mark-own"
+                @click="markOwn(link, view)"
+              ><UserCheck :size="13" />是我</button>
             </li>
+            <li v-if="views[link.id]?.length" class="link-row__views-note">自己点开检查过链接？点“是我”把那次从回执里去掉。</li>
           </ul>
         </li>
       </ul>
@@ -248,6 +358,29 @@ defineExpose({ openCreate, reload: () => { freshId.value = null; return page.loa
         <UiButton :icon="Plus" @click="openCreate">新建通用链接</UiButton>
       </UiEmptyState>
     </template>
+
+    <UiDialog
+      :open="Boolean(adjusting)"
+      :title="renewing ? '重新启用链接' : '链接设置'"
+      :description="renewing ? '设置新的有效期后，原来的地址重新可以打开，打开记录保留。' : '修改后地址不变，已经发出去的链接继续可用。'"
+      width="md"
+      :dismissible="!settingsPending"
+      @close="adjusting = null"
+    >
+      <form id="link-settings-form" class="link-form" novalidate @submit.prevent="saveSettings">
+        <UiField v-slot="{ id }" label="链接名称" required :error="settingsLabelError">
+          <UiInput :id="id" v-model="settings.label" maxlength="80" placeholder="例如：秋招双选会" />
+        </UiField>
+        <UiField v-slot="{ id }" :label="renewing ? '新的有效期' : '有效期'">
+          <UiSelect :id="id" v-model="settings.expiry" :options="settingsExpiryOptions" aria-label="有效期" />
+        </UiField>
+        <UiCheckbox v-model="settings.hideContact" label="隐藏手机号、邮箱和照片" />
+      </form>
+      <template #footer>
+        <UiButton variant="secondary" :disabled="settingsPending" @click="adjusting = null">取消</UiButton>
+        <UiButton type="submit" form="link-settings-form" :pending="settingsPending">{{ renewing ? '重新启用' : '保存设置' }}</UiButton>
+      </template>
+    </UiDialog>
 
     <UiDialog
       :open="creating"
@@ -419,7 +552,7 @@ defineExpose({ openCreate, reload: () => { freshId.value = null; return page.loa
 
 .link-row__views li {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  grid-template-columns: auto minmax(0, 1fr) auto auto auto;
   align-items: center;
   gap: var(--space-2);
   color: var(--text-secondary);
@@ -443,6 +576,41 @@ defineExpose({ openCreate, reload: () => { freshId.value = null; return page.loa
   min-width: 64px;
   color: var(--text-tertiary);
   text-align: right;
+}
+
+.link-row__off {
+  grid-column: 2 / -1;
+  color: var(--text-tertiary);
+  font-size: var(--fs-xs);
+  line-height: 1.6;
+}
+
+.link-row__views li.link-row__views-note {
+  display: block;
+  color: var(--text-tertiary);
+}
+
+.link-row__own {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 6px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  background: var(--surface-1);
+  font-size: var(--fs-xs);
+  cursor: pointer;
+}
+
+.link-row__own:hover:not(:disabled) {
+  color: var(--color-primary-text);
+  border-color: var(--color-primary-border);
+}
+
+.link-row__own:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 .links__none {
@@ -473,7 +641,8 @@ defineExpose({ openCreate, reload: () => { freshId.value = null; return page.loa
     justify-content: flex-start;
   }
 
-  .link-row__views {
+  .link-row__views,
+  .link-row__off {
     grid-column: 1 / -1;
   }
 }

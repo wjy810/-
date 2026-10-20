@@ -3,7 +3,7 @@
 import { computed, ref, shallowRef, watch } from 'vue'
 import {
   Archive, ArrowRight, ArrowUpRight, BellRing, Check, CheckCircle2, Copy, ExternalLink, Eye, FileText, Flag, Link2, Link2Off,
-  Mic, Monitor, Pencil, RefreshCw, Settings2, Smartphone, Tablet, Target, UserCheck, X,
+  ArchiveRestore, Mic, Monitor, Pencil, RefreshCw, Settings2, Smartphone, Tablet, Target, UserCheck, X,
 } from 'lucide-vue-next'
 import UiBadge from '@/shared/ui/UiBadge.vue'
 import UiButton from '@/shared/ui/UiButton.vue'
@@ -21,7 +21,7 @@ import { copyText } from '@/shared/lib/clipboard'
 import { formatRelative, formatWhen } from '@/shared/lib/datetime'
 import {
   archiveApplication, completeNextStep, createResumeLink, fetchApplication, fetchShareableVersions, markOwnView,
-  moveApplication, revokeResumeLink, updateResumeLink,
+  moveApplication, restoreApplication, revokeResumeLink, updateResumeLink,
 } from '../services/applicationsApi'
 import { OUTCOMES, STAGES, channelLabel, clientLabel, deviceLabel, outcomeLabel, readTime, stageLabel } from '../labels'
 import type {
@@ -31,7 +31,10 @@ import { receiptOf } from '../utils/receipts'
 import { interviewPrep } from '../utils/prep'
 
 const props = defineProps<{ open: boolean; applicationId: string | null }>()
-const emit = defineEmits<{ close: []; changed: [application: JobApplication]; archived: [application: JobApplication]; edit: [application: JobApplication] }>()
+const emit = defineEmits<{
+  close: []; changed: [application: JobApplication]; archived: [application: JobApplication]
+  restored: [application: JobApplication]; edit: [application: JobApplication]
+}>()
 
 const detail = shallowRef<ApplicationDetail | null>(null)
 const loading = ref(false)
@@ -54,6 +57,10 @@ const application = computed(() => detail.value?.application ?? null)
 const prep = computed(() => (application.value ? interviewPrep(application.value) : null))
 const link = computed(() => detail.value?.links.find(item => item.status === 'ACTIVE') ?? detail.value?.links[0] ?? null)
 const activeLink = computed(() => (link.value?.status === 'ACTIVE' ? link.value : null))
+/** Archived: off the board, its link off with it. Opened from the archive or a notification. */
+const archivedApplication = computed(() => Boolean(application.value?.archivedAt))
+/** Restored while the plan's links were all taken: the link is still off and can be turned back on here. */
+const waitingLink = computed(() => (!archivedApplication.value && link.value?.status === 'SUSPENDED' ? link.value : null))
 const receipt = computed(() => receiptOf(link.value, new Date(), application.value?.receipts))
 const totals = computed(() => application.value?.receipts ?? null)
 const linkUrl = computed(() => (activeLink.value ? `${window.location.origin}${activeLink.value.path}` : ''))
@@ -216,6 +223,27 @@ async function copyLink(): Promise<void> {
   window.setTimeout(() => { copied.value = false }, 2000)
 }
 
+async function reactivateLink(): Promise<void> {
+  const target = waitingLink.value
+  if (!target) return
+  await run('reactivate', async () => {
+    await updateResumeLink(target.id, { reactivate: true })
+    await load()
+    if (detail.value) emit('changed', detail.value.application)
+    toast.success('专属链接已重新启用，地址不变')
+  }, '重新启用失败')
+}
+
+async function restore(): Promise<void> {
+  const current = application.value
+  if (!current) return
+  await run('restore', async () => {
+    const restored = await restoreApplication(current.id)
+    await load()
+    emit('restored', restored)
+  }, '恢复失败')
+}
+
 /** Moves the application to the archive; it can be restored from there, or deleted for good. */
 async function archive(): Promise<void> {
   const current = application.value
@@ -336,14 +364,22 @@ watch(() => [props.open, props.applicationId] as const, ([open, id]) => {
             <button type="button" class="receipt__own" :disabled="Boolean(pending)" :aria-label="`${formatRelative(view.startedAt)}这次是我自己打开的`" title="这是我自己打开的" @click="markOwn(view)"><UserCheck :size="14" />是我</button>
           </li>
         </ul>
-        <p v-if="detail.views.length" class="receipt__note">自己点开检查过链接？点“是我”把那次从回执里去掉。在打开过投递追踪的浏览器上，你自己打开不会被计入。</p>
+        <p v-if="detail.views.length" class="receipt__note">自己点开检查过链接？点“是我”把那次从回执里去掉。30 天内打开过投递追踪、且没有退出登录的浏览器上，你自己打开不会被计入。</p>
 
         <div v-if="activeLink" class="receipt__actions">
           <UiButton size="sm" variant="secondary" :icon="ExternalLink" :href="activeLink.path" target="_blank">预览对方看到的页面</UiButton>
           <UiButton size="sm" variant="ghost" :icon="Link2Off" :pending="pending === 'revoke'" @click="revoke">撤回</UiButton>
         </div>
 
-        <div class="receipt__create" :class="{ 'is-secondary': activeLink }">
+        <p v-if="archivedApplication" class="receipt__off" data-testid="archived-link-note">
+          这条投递在归档里：专属链接已停用，对方打开会看到“链接已停用”，也不占有效链接名额。恢复投递后会自动重新启用。
+        </p>
+        <div v-else-if="waitingLink" class="receipt__off" data-testid="waiting-link">
+          <p>有效链接名额已满，这条投递的专属链接还停用着。撤回不再使用的链接后，就可以重新启用，地址不变。</p>
+          <UiButton size="sm" variant="secondary" :icon="RefreshCw" :pending="pending === 'reactivate'" @click="reactivateLink">重新启用</UiButton>
+        </div>
+
+        <div v-if="!archivedApplication" class="receipt__create" :class="{ 'is-secondary': activeLink }">
           <div v-if="!activeLink" class="receipt__intro">
             <UiIllustration name="resume-shared" :size="72" />
             <p class="receipt__pitch"><BellRing :size="14" />给这家公司一条专属链接：对方打开时提醒你，还能看到阅读时长。</p>
@@ -404,7 +440,8 @@ watch(() => [props.open, props.applicationId] as const, ([open, id]) => {
     </div>
 
     <template v-if="application" #footer>
-      <UiButton variant="ghost" :icon="Archive" :pending="pending === 'archive'" @click="archive">移入归档</UiButton>
+      <UiButton v-if="archivedApplication" variant="ghost" :icon="ArchiveRestore" :pending="pending === 'restore'" @click="restore">从归档恢复</UiButton>
+      <UiButton v-else variant="ghost" :icon="Archive" :pending="pending === 'archive'" @click="archive">移入归档</UiButton>
       <UiButton variant="secondary" :icon="Pencil" @click="emit('edit', application)">编辑信息</UiButton>
     </template>
   </UiDrawer>
@@ -754,6 +791,18 @@ watch(() => [props.open, props.applicationId] as const, ([open, id]) => {
 .receipt__note {
   color: var(--text-tertiary);
   font-size: var(--fs-xs);
+}
+
+.receipt__off {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px dashed var(--border-subtle);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  font-size: var(--fs-xs);
+  line-height: 1.6;
 }
 
 .receipt__form {

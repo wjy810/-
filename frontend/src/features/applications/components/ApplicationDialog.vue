@@ -68,6 +68,11 @@ const matchOptions = computed<SelectOption[]>(() => [{ value: NO_MATCH, label: '
 const stageOptions = STAGES.filter(stage => stage.value !== 'CLOSED').map(stage => ({ value: stage.value, label: stage.label }))
 const channelOptions = CHANNELS.map(channel => ({ value: channel.value, label: channel.label }))
 const hasVersion = computed(() => form.resumeVersionId !== NO_VERSION)
+/**
+ * 想投 has not gone out yet: it gets no applied date (that is set the day it moves on) and no link, which would
+ * take one of the plan's active-link places for a company that has not seen anything.
+ */
+const notSentYet = computed(() => (editing.value ? props.application?.furthestStage : form.stage) === 'WISHLIST')
 const urlInvalid = computed(() => Boolean(form.jobUrl.trim()) && !/^https?:\/\/\S+$/i.test(form.jobUrl.trim()))
 const missing = computed(() => {
   if (!form.company.trim()) return '请填写公司名称'
@@ -157,7 +162,7 @@ async function submit(): Promise<void> {
     salaryText: form.salaryText.trim() || null,
     resumeVersionId: hasVersion.value ? form.resumeVersionId : null,
     jobMatchId: form.jobMatchId === NO_MATCH ? null : form.jobMatchId,
-    appliedOn: form.appliedOn || null,
+    appliedOn: notSentYet.value ? null : form.appliedOn || null,
     nextStep: form.nextStep.trim() || null,
     nextStepAt: form.nextStepAt ? new Date(form.nextStepAt).toISOString() : null,
     notes: form.notes.trim() || null,
@@ -165,7 +170,7 @@ async function submit(): Promise<void> {
   try {
     const saved = props.application
       ? await updateApplication(props.application.id, { ...write, expectedVersion: props.application.version })
-      : await createApplication({ ...write, stage: form.stage, createLink: hasVersion.value && form.createLink, hideContact: form.hideContact })
+      : await createApplication({ ...write, stage: form.stage, createLink: hasVersion.value && form.createLink && !notSentYet.value, hideContact: form.hideContact })
     emit('saved', saved)
   } catch (reason) {
     linkLimited.value = isApiClientError(reason) && reason.reason === 'RESUME_LINK_LIMIT'
@@ -179,6 +184,13 @@ function recordWithoutLink(): void {
   form.createLink = false
   void submit()
 }
+
+// The date goes with the stage: none while 想投, today again when switched back to a stage that has gone out.
+watch(() => form.stage, (stage, previous) => {
+  if (editing.value) return
+  if (stage === 'WISHLIST') form.appliedOn = ''
+  else if (previous === 'WISHLIST' && !form.appliedOn) form.appliedOn = today()
+})
 
 watch(() => props.open, open => {
   if (!open) return
@@ -210,7 +222,7 @@ watch(() => props.open, open => {
         <UiField v-if="!editing" v-slot="{ id }" label="当前阶段">
           <UiSelect :id="id" v-model="form.stage" :options="stageOptions" aria-label="当前阶段" />
         </UiField>
-        <UiField v-slot="{ id }" label="投递日期" optional>
+        <UiField v-if="!notSentYet" v-slot="{ id }" label="投递日期" optional>
           <AppDatePicker :id="id" v-model="form.appliedOn" mode="date" label="投递日期" placeholder="选择投递日期" />
         </UiField>
         <UiField v-slot="{ id }" label="工作城市" optional>
@@ -218,11 +230,12 @@ watch(() => props.open, open => {
         </UiField>
       </div>
 
-      <section v-if="!editing" class="app-form__link" :class="{ 'is-on': hasVersion && form.createLink }">
-        <UiField v-slot="{ id }" label="投出的简历">
-          <UiSelect :id="id" v-model="form.resumeVersionId" :options="versionOptions" aria-label="投出的简历版本" />
+      <section v-if="!editing" class="app-form__link" :class="{ 'is-on': hasVersion && form.createLink && !notSentYet }">
+        <UiField v-slot="{ id }" :label="notSentYet ? '打算投的简历' : '投出的简历'">
+          <UiSelect :id="id" v-model="form.resumeVersionId" :options="versionOptions" :aria-label="notSentYet ? '打算投的简历版本' : '投出的简历版本'" />
         </UiField>
         <p v-if="!versions.length" class="app-form__note">还没有冻结的简历版本。在简历工作台导出一次 PDF，或在“版本与导出”里冻结一个版本后就能附上。</p>
+        <p v-else-if="notSentYet" class="app-form__note" data-testid="wishlist-note">还没投出去，先不生成专属链接，也不记投递日期：链接会占用有效链接名额。改成“已投递”时会记下当天，并提醒你生成链接。</p>
         <template v-else-if="hasVersion">
           <UiCheckbox v-model="form.createLink" label="生成这家公司的专属简历链接，对方打开时提醒我" />
           <UiCheckbox v-if="form.createLink" v-model="form.hideContact" label="链接里隐藏手机号、邮箱和照片" />

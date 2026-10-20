@@ -416,6 +416,190 @@ class JobApplicationIT {
         assertThat(body).contains("周报科技打开了你的简历").contains("本周安排").contains("周报科技 终面");
     }
 
+    @Test
+    void archivingAnApplicationTakesItsLinkOfflineAndRestoringBringsItBackWhenThereIsRoom() throws Exception {
+        Session owner = seeker();
+        String versionId = frozenVersion(owner);
+        JsonNode first = application(owner, "归档科技", versionId);
+        application(owner, "第二家", versionId);
+        JsonNode third = application(owner, "第三家", versionId);
+        String token = first.path("link").path("token").asText();
+        String linkId = first.path("link").path("id").asText();
+        String id = first.path("id").asText();
+
+        mockMvc.perform(post("/api/v1/job-applications/{id}/archive", id).cookie(owner.cookie())).andExpect(status().isOk());
+        JsonNode archived = data(mockMvc.perform(get("/api/v1/job-applications/{id}", id).cookie(owner.cookie())).andReturn());
+        assertThat(archived.path("links").get(0).path("status").asText()).isEqualTo("SUSPENDED");
+        assertThat(archived.path("events").findValuesAsText("detail")).anyMatch(text -> text.contains("专属链接已停用"));
+        // The share page is off: nothing to read, nothing counted, nobody told.
+        mockMvc.perform(get("/api/v1/public/resume-links/{token}", token))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.reason").value("RESUME_LINK_SUSPENDED"));
+        mockMvc.perform(post("/api/v1/public/resume-links/{token}/views", token).contentType(MediaType.APPLICATION_JSON)
+                        .content("{}").header("User-Agent", DESKTOP).cookie(new Cookie("jp_reader", "reader-archived-hr-0000000000")))
+                .andExpect(status().isBadRequest());
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM notifications WHERE account_id=? AND type='APPLICATION_ACTIVITY'",
+                Integer.class, owner.accountId())).isZero();
+        mockMvc.perform(post("/api/v1/resume-links").cookie(owner.cookie()).contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(Map.of("resumeVersionId", versionId, "applicationId", id))))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.reason").value("APPLICATION_ARCHIVED"));
+
+        // Its place in the free plan's three is free again.
+        JsonNode fourth = application(owner, "第四家", versionId);
+        assertThat(fourth.path("link").path("status").asText()).isEqualTo("ACTIVE");
+
+        // Restored while the plan is full: the link waits, and says why.
+        mockMvc.perform(post("/api/v1/job-applications/{id}/restore", id).cookie(owner.cookie())).andExpect(status().isOk());
+        JsonNode restored = data(mockMvc.perform(get("/api/v1/job-applications/{id}", id).cookie(owner.cookie())).andReturn());
+        assertThat(restored.path("links").get(0).path("status").asText()).isEqualTo("SUSPENDED");
+        assertThat(restored.path("events").findValuesAsText("detail")).anyMatch(text -> text.contains("仍停用"));
+        mockMvc.perform(patch("/api/v1/resume-links/{id}", linkId).cookie(owner.cookie()).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reactivate\":true}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.reason").value("RESUME_LINK_LIMIT"));
+        mockMvc.perform(post("/api/v1/resume-links/{id}/revoke", third.path("link").path("id").asText()).cookie(owner.cookie()))
+                .andExpect(status().isOk());
+        mockMvc.perform(patch("/api/v1/resume-links/{id}", linkId).cookie(owner.cookie()).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reactivate\":true}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("ACTIVE"))
+                .andExpect(jsonPath("$.data.token").value(token));
+        mockMvc.perform(get("/api/v1/public/resume-links/{token}", token)).andExpect(status().isOk());
+
+        // With room, restoring brings the link straight back.
+        mockMvc.perform(post("/api/v1/job-applications/{id}/archive", id).cookie(owner.cookie())).andExpect(status().isOk());
+        mockMvc.perform(patch("/api/v1/resume-links/{id}", linkId).cookie(owner.cookie()).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reactivate\":true}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.reason").value("APPLICATION_ARCHIVED"));
+        mockMvc.perform(post("/api/v1/job-applications/{id}/restore", id).cookie(owner.cookie()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.link.status").value("ACTIVE"));
+    }
+
+    @Test
+    void aWishlistEntryGetsNoLinkOrAppliedDateUntilItGoesOut() throws Exception {
+        Session owner = seeker();
+        String versionId = frozenVersion(owner);
+        JsonNode wish = data(mockMvc.perform(post("/api/v1/job-applications").cookie(owner.cookie())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(Map.of("company", "心愿公司", "positionTitle", "产品经理", "stage", "WISHLIST",
+                                "resumeVersionId", versionId, "createLink", true, "appliedOn", "2026-01-05"))))
+                .andExpect(status().isOk()).andReturn());
+        String id = wish.path("id").asText();
+        assertThat(wish.path("link").isMissingNode() || wish.path("link").isNull()).isTrue();
+        assertThat(wish.path("appliedOn").isMissingNode() || wish.path("appliedOn").isNull()).isTrue();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM resume_share_links WHERE application_id=?", Integer.class, id)).isZero();
+
+        JsonNode edited = data(mockMvc.perform(put("/api/v1/job-applications/{id}", id).cookie(owner.cookie())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(Map.of("company", "心愿公司", "positionTitle", "产品经理",
+                                "appliedOn", "2026-01-05", "expectedVersion", wish.path("version").asInt()))))
+                .andExpect(status().isOk()).andReturn());
+        assertThat(edited.path("appliedOn").isMissingNode() || edited.path("appliedOn").isNull()).isTrue();
+
+        JsonNode sent = stage(owner, id, Map.of("stage", "APPLIED", "expectedVersion", edited.path("version").asInt()));
+        assertThat(sent.path("appliedOn").asText()).isEqualTo(java.time.LocalDate.now(ZoneId.of("Asia/Shanghai")).toString());
+    }
+
+    @Test
+    void aGeneralLinkCanBeRenamedCorrectedAndRenewedLikeAnApplicationLink() throws Exception {
+        Session owner = seeker();
+        String versionId = frozenVersion(owner);
+        JsonNode link = data(mockMvc.perform(post("/api/v1/resume-links").cookie(owner.cookie()).contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(Map.of("resumeVersionId", versionId, "label", "双选会", "expiresInDays", 7))))
+                .andExpect(status().isOk()).andReturn());
+        String linkId = link.path("id").asText();
+        String token = link.path("token").asText();
+        view(token, null, "fair-hr", DESKTOP);
+        view(token, null, "me-checking", WECHAT_PHONE);
+        String mine = null;
+        for (JsonNode item : data(mockMvc.perform(get("/api/v1/resume-links/{id}/views", linkId).cookie(owner.cookie())).andReturn())) {
+            if ("WECHAT".equals(item.path("client").asText())) mine = item.path("id").asText();
+        }
+        mockMvc.perform(post("/api/v1/resume-links/{id}/views/{view}/own", linkId, mine).cookie(owner.cookie()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.viewCount").value(1));
+        mockMvc.perform(patch("/api/v1/resume-links/{id}", linkId).cookie(owner.cookie()).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"label\":\"秋招双选会\",\"hideContact\":true}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.label").value("秋招双选会"))
+                .andExpect(jsonPath("$.data.hideContact").value(true));
+
+        jdbc.update("UPDATE resume_share_links SET expires_at=? WHERE id=?", java.sql.Timestamp.from(Instant.now().minus(Duration.ofDays(1))), linkId);
+        mockMvc.perform(patch("/api/v1/resume-links/{id}", linkId).cookie(owner.cookie()).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"expiresInDays\":30}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("ACTIVE"))
+                .andExpect(jsonPath("$.data.token").value(token));
+    }
+
+    @Test
+    void theOwnersBrowserMarkLastsAMonthAndEndsWhenTheySignOut() throws Exception {
+        Session owner = seeker();
+        String versionId = frozenVersion(owner);
+        String token = data(mockMvc.perform(post("/api/v1/resume-links").cookie(owner.cookie()).contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(Map.of("resumeVersionId", versionId, "label", "设备测试"))))
+                .andExpect(status().isOk()).andReturn()).path("token").asText();
+        Cookie device = mockMvc.perform(get("/api/v1/job-applications").cookie(owner.cookie())).andReturn()
+                .getResponse().getCookie("jp_owner_device");
+        assertThat(device.getMaxAge()).isEqualTo((int) Duration.ofDays(30).toSeconds());
+        assertThat(view(token, null, "laptop", DESKTOP, device).path("reason").asText()).isEqualTo("OWNER");
+
+        // A month without opening 投递追踪 there: the browser is no longer taken for the owner's.
+        jdbc.update("UPDATE resume_owner_devices SET last_seen_at=? WHERE account_id=?",
+                java.sql.Timestamp.from(Instant.now().minus(Duration.ofDays(31))), owner.accountId());
+        assertThat(view(token, null, "laptop", DESKTOP, device).path("recorded").asBoolean()).isTrue();
+        // Opening 投递追踪 again renews it, cookie included.
+        Cookie renewed = mockMvc.perform(get("/api/v1/job-applications").cookie(owner.cookie(), device)).andReturn()
+                .getResponse().getCookie("jp_owner_device");
+        assertThat(renewed.getValue()).isEqualTo(device.getValue());
+        assertThat(view(token, null, "laptop", DESKTOP, device).path("reason").asText()).isEqualTo("OWNER");
+
+        // Signing out here forgets the browser and clears the cookie.
+        MvcResult logout = mockMvc.perform(post("/api/v1/auth/logout").cookie(owner.cookie(), device))
+                .andExpect(status().isOk()).andReturn();
+        assertThat(logout.getResponse().getHeaders("Set-Cookie")).anyMatch(value -> value.startsWith("jp_owner_device=;")
+                && value.contains("Max-Age=0"));
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM resume_owner_devices WHERE account_id=?", Integer.class, owner.accountId())).isZero();
+        assertThat(view(token, null, "laptop-after", DESKTOP, device).path("recorded").asBoolean()).isTrue();
+    }
+
+    @Test
+    void signingOutOtherDevicesForgetsTheirBrowsersButNotThisOne() throws Exception {
+        Session owner = seeker();
+        Session second = login(owner);
+        Cookie here = mockMvc.perform(get("/api/v1/job-applications").cookie(owner.cookie())).andReturn()
+                .getResponse().getCookie("jp_owner_device");
+        mockMvc.perform(get("/api/v1/job-applications").cookie(second.cookie())).andReturn();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM resume_owner_devices WHERE account_id=?", Integer.class, owner.accountId())).isEqualTo(2);
+        mockMvc.perform(post("/api/v1/auth/sessions/revoke-others").cookie(owner.cookie(), here)).andExpect(status().isOk());
+        assertThat(jdbc.queryForList("SELECT device_hash FROM resume_owner_devices WHERE account_id=?", String.class, owner.accountId()))
+                .containsExactly(com.jobproof.shared.security.Tokens.sha256(here.getValue()));
+
+        mockMvc.perform(post("/api/v1/auth/password/change").cookie(owner.cookie(), here).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"currentPassword\":\"Passw0rd!\",\"newPassword\":\"N3wPassw0rd!\"}"))
+                .andExpect(status().isOk());
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM resume_owner_devices WHERE account_id=?", Integer.class, owner.accountId())).isZero();
+    }
+
+    private JsonNode application(Session owner, String company, String versionId) throws Exception {
+        return data(mockMvc.perform(post("/api/v1/job-applications").cookie(owner.cookie())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(Map.of("company", company, "positionTitle", "数据分析师",
+                                "resumeVersionId", versionId, "createLink", true))))
+                .andExpect(status().isOk()).andReturn());
+    }
+
+    private Session login(Session existing) throws Exception {
+        String email = jdbc.queryForObject("SELECT email FROM accounts WHERE id=?", String.class, existing.accountId());
+        MvcResult login = mockMvc.perform(post("/api/v1/auth/login").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"%s\",\"password\":\"Passw0rd!\"}".formatted(email)))
+                .andExpect(status().isOk()).andReturn();
+        return new Session(login.getResponse().getCookie("jobproof_session"), existing.accountId());
+    }
+
     private List<String> reminderTitles(Session owner) {
         return jdbc.queryForList("SELECT title FROM notifications WHERE account_id=? AND type='REMINDER' ORDER BY created_at",
                 String.class, owner.accountId());

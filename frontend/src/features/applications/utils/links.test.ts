@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { filterLinks, linkState, linkTitle, sortLinks } from './links.ts'
+import { canAdjust, filterLinks, linkState, linkTitle, offReason, opens, sortLinks } from './links.ts'
 import type { ResumeLink } from '../types'
 
 const now = new Date('2026-10-19T04:00:00Z')
@@ -15,6 +15,17 @@ test('a link says whether it still works and for how long', () => {
   assert.deepEqual(linkState(link({ expiresAt: '2026-10-21T03:00:00Z' }), now), { label: '2 天后到期', tone: 'warning' })
   assert.equal(linkState(link({ expiresAt: '2026-10-19T20:00:00Z' }), now).label, '今天到期')
   assert.equal(linkState(link({ status: 'REVOKED' }), now).label, '已撤回')
+  assert.equal(linkState(link({ status: 'SUSPENDED', expiresAt: '2026-10-29T04:00:00Z' }), now).label, '已停用')
+})
+
+test('only an open link is previewed; anything but a revoked one can still be adjusted', () => {
+  assert.equal(opens(link({})), true)
+  for (const status of ['EXPIRED', 'REVOKED', 'SUSPENDED'] as const) assert.equal(opens(link({ status })), false)
+  assert.equal(canAdjust(link({ status: 'EXPIRED' })), true)
+  assert.equal(canAdjust(link({ status: 'SUSPENDED' })), true)
+  assert.equal(canAdjust(link({ status: 'REVOKED' })), false)
+  assert.match(offReason(link({ status: 'SUSPENDED' })) ?? '', /投递已归档/)
+  assert.equal(offReason(link({})), null)
 })
 
 test('general links are those without an application, and active ones come first', () => {

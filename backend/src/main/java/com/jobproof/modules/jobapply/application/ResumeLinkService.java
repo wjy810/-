@@ -48,6 +48,13 @@ public class ResumeLinkService {
     static final int DEFAULT_EXPIRY_DAYS = 60;
     /** Once an application ends, its link stays readable this long, then stops counting towards the limit. */
     static final Duration AFTER_CLOSE = Duration.ofDays(14);
+    /**
+     * A browser counts as the owner's for this long after they last opened 投递追踪 in it; the cookie is renewed on
+     * each visit and dropped when they sign out there.
+     */
+    public static final Duration OWNER_DEVICE_TTL = Duration.ofDays(30);
+    /** Links that are public right now: not revoked, not suspended with an archived application, not expired. */
+    static final String COUNTED = "revoked_at IS NULL AND suspended_at IS NULL AND (expires_at IS NULL OR expires_at>?)";
     /** A reload within this window continues the same visit instead of counting a new one. */
     private static final Duration SAME_VISIT = Duration.ofMinutes(30);
     private static final int VIEWS_PER_HOUR = 120;
@@ -97,11 +104,15 @@ public class ResumeLinkService {
         String applicationId = blankToNull(command.applicationId());
         String label = blankToNull(command.label());
         if (applicationId != null) {
-            List<String> names = jdbc.query("SELECT company,position_title FROM job_applications WHERE id=? AND account_id=?",
-                    (rs, n) -> rs.getString("company") + " · " + rs.getString("position_title"),
+            List<String[]> rows = jdbc.query("SELECT company,position_title,archived_at FROM job_applications WHERE id=? AND account_id=?",
+                    (rs, n) -> new String[] { rs.getString("company") + " · " + rs.getString("position_title"),
+                            rs.getTimestamp("archived_at") == null ? null : "ARCHIVED" },
                     applicationId, current.accountId());
-            if (names.isEmpty()) throw AppException.forbidden("OBJECT_FORBIDDEN", "投递记录不存在或无权访问");
-            if (label == null) label = names.get(0);
+            if (rows.isEmpty()) throw AppException.forbidden("OBJECT_FORBIDDEN", "投递记录不存在或无权访问");
+            if (rows.get(0)[1] != null) {
+                throw AppException.conflict("APPLICATION_ARCHIVED", "这条投递在归档里，恢复后才能生成专属链接");
+            }
+            if (label == null) label = rows.get(0)[0];
         }
         return createFor(current.accountId(), command.resumeVersionId(), label, applicationId,
                 Boolean.TRUE.equals(command.hideContact()), command.expiresInDays());
@@ -134,8 +145,9 @@ public class ResumeLinkService {
     }
 
     /**
-     * Changes how long a link lasts and whether it shows contact details, keeping its address and receipts.
-     * An expired link can be given a new expiry, which makes it active again if the plan allows another.
+     * Changes a link in place — how long it lasts, whether it shows contact details, its name, and whether a link
+     * suspended with its archived application is back on — keeping its address and receipts. Anything that makes
+     * a link count again (a new expiry on an expired one, turning a suspended one back on) needs room in the plan.
      */
     @Transactional
     public LinkView update(CurrentAccount current, String linkId, LinkPatch patch) {
@@ -144,16 +156,35 @@ public class ResumeLinkService {
         Instant now = clock.now();
         LinkView link = requireLink(current.accountId(), linkId, now);
         if (link.revokedAt() != null) throw AppException.conflict("RESUME_LINK_REVOKED", "已撤回的链接不能修改，请生成新的链接");
+        boolean renew = Boolean.TRUE.equals(patch.neverExpires()) || patch.expiresInDays() != null;
+        if (patch.expiresInDays() != null && !EXPIRY_DAYS.contains(patch.expiresInDays())) {
+            throw AppException.user("RESUME_LINK_EXPIRY_INVALID", "有效期只能是 7、30、60、90 天或长期有效");
+        }
+        boolean reactivate = Boolean.TRUE.equals(patch.reactivate()) && link.suspendedAt() != null;
+        if (reactivate && applicationArchived(current.accountId(), link.applicationId())) {
+            throw AppException.conflict("APPLICATION_ARCHIVED", "这条投递在归档里，恢复投递后链接才能重新启用");
+        }
+        boolean expired = link.expiresAt() != null && !link.expiresAt().isAfter(now);
+        boolean countedBefore = link.suspendedAt() == null && !expired;
+        boolean countedAfter = (link.suspendedAt() == null || reactivate) && (renew || !expired);
+        if (countedAfter && !countedBefore) assertWithinLimit(current.accountId(), now);
         List<String> changes = new java.util.ArrayList<>();
-        if (Boolean.TRUE.equals(patch.neverExpires()) || patch.expiresInDays() != null) {
-            if (patch.expiresInDays() != null && !EXPIRY_DAYS.contains(patch.expiresInDays())) {
-                throw AppException.user("RESUME_LINK_EXPIRY_INVALID", "有效期只能是 7、30、60、90 天或长期有效");
-            }
-            if ("EXPIRED".equals(link.status())) assertWithinLimit(current.accountId(), now);
+        if (reactivate) {
+            jdbc.update("UPDATE resume_share_links SET suspended_at=NULL,updated_at=? WHERE id=? AND account_id=?",
+                    now, linkId, current.accountId());
+            changes.add("重新启用");
+        }
+        if (renew) {
             Instant expiresAt = Boolean.TRUE.equals(patch.neverExpires()) ? null : now.plus(Duration.ofDays(patch.expiresInDays()));
             jdbc.update("UPDATE resume_share_links SET expires_at=?,updated_at=? WHERE id=? AND account_id=?",
                     expiresAt == null ? null : Timestamp.from(expiresAt), now, linkId, current.accountId());
             changes.add(expiresAt == null ? "改为长期有效" : "有效期改为 " + patch.expiresInDays() + " 天");
+        }
+        String label = blankToNull(patch.label());
+        if (label != null && !label.equals(link.label())) {
+            jdbc.update("UPDATE resume_share_links SET label=?,updated_at=? WHERE id=? AND account_id=?",
+                    clip(label, 120), now, linkId, current.accountId());
+            changes.add("改名为「" + clip(label, 40) + "」");
         }
         if (patch.hideContact() != null && patch.hideContact() != link.hideContact()) {
             jdbc.update("UPDATE resume_share_links SET hide_contact=?,updated_at=? WHERE id=? AND account_id=?",
@@ -192,6 +223,41 @@ public class ResumeLinkService {
         return requireLink(current.accountId(), linkId, now);
     }
 
+    /**
+     * An archived application is off the board, so its links go private with it: the share page says the link is
+     * off, nothing is counted or announced, and they stop taking a place in the plan's limit.
+     */
+    void suspendForArchive(String accountId, String applicationId, Instant now) {
+        int changed = jdbc.update("UPDATE resume_share_links SET suspended_at=?,updated_at=? WHERE account_id=? AND application_id=? AND revoked_at IS NULL AND suspended_at IS NULL",
+                now, now, accountId, applicationId);
+        if (changed > 0) {
+            timeline.record(accountId, applicationId, ApplicationTimeline.LINK_UPDATED, null, null,
+                    "投递已归档，专属链接已停用：对方打开会看到“链接已停用”，不再占用有效链接名额", now);
+        }
+    }
+
+    /**
+     * The application is back: its suspended links come back with it while the plan has room; an expired one comes
+     * back expired. One that does not fit stays off and can be turned on from the application later.
+     */
+    void resumeAfterRestore(String accountId, String applicationId, Instant now) {
+        List<LinkRow> suspended = jdbc.query(LINK_SELECT + " WHERE l.account_id=? AND l.application_id=? AND l.revoked_at IS NULL AND l.suspended_at IS NOT NULL ORDER BY l.created_at DESC",
+                (rs, n) -> row(rs), accountId, applicationId);
+        boolean waiting = false;
+        for (LinkRow link : suspended) {
+            boolean expired = link.expiresAt() != null && !link.expiresAt().isAfter(now);
+            if (!expired && !hasRoom(accountId, now)) {
+                waiting = true;
+                continue;
+            }
+            jdbc.update("UPDATE resume_share_links SET suspended_at=NULL,updated_at=? WHERE id=?", now, link.id());
+        }
+        if (suspended.isEmpty()) return;
+        timeline.record(accountId, applicationId, ApplicationTimeline.LINK_UPDATED, null, null, waiting
+                ? "投递已恢复，但有效链接已达上限，专属链接仍停用；撤回不用的链接后可以在这里重新启用"
+                : "投递已恢复，专属链接重新可用", now);
+    }
+
     /** An application has ended: its active links stop in {@link #AFTER_CLOSE} unless they end sooner anyway. */
     void expireAfterClose(String accountId, String applicationId, Instant now) {
         Instant until = now.plus(AFTER_CLOSE);
@@ -215,6 +281,23 @@ public class ResumeLinkService {
             jdbc.update("INSERT INTO resume_owner_devices(device_hash,account_id,created_at,last_seen_at) VALUES(?,?,?,?)", hash, accountId, now, now);
         } catch (DuplicateKeyException raced) {
             jdbc.update("UPDATE resume_owner_devices SET account_id=?,last_seen_at=? WHERE device_hash=?", accountId, now, hash);
+        }
+    }
+
+    /** The owner signed out in this browser: it is no longer theirs, so their link openings here count again. */
+    @Transactional
+    public void forgetOwnerDevice(String accountId, String deviceToken) {
+        if (deviceToken == null || deviceToken.isBlank()) return;
+        jdbc.update("DELETE FROM resume_owner_devices WHERE device_hash=? AND account_id=?", Tokens.sha256(deviceToken), accountId);
+    }
+
+    /** Every other browser of the account was signed out (or all of them, when {@code keepToken} is null). */
+    @Transactional
+    public void forgetOtherOwnerDevices(String accountId, String keepToken) {
+        if (keepToken == null || keepToken.isBlank()) {
+            jdbc.update("DELETE FROM resume_owner_devices WHERE account_id=?", accountId);
+        } else {
+            jdbc.update("DELETE FROM resume_owner_devices WHERE account_id=? AND device_hash<>?", accountId, Tokens.sha256(keepToken));
         }
     }
 
@@ -290,7 +373,7 @@ public class ResumeLinkService {
 
     Map<String, Object> exportFor(String accountId) {
         Map<String, Object> result = new LinkedHashMap<>();
-        result.put("links", jdbc.queryForList("SELECT id,token,resume_version_id,application_id,label,hide_contact,expires_at,revoked_at,view_count,visitor_count,read_seconds,first_viewed_at,last_viewed_at,created_at FROM resume_share_links WHERE account_id=? ORDER BY created_at", accountId));
+        result.put("links", jdbc.queryForList("SELECT id,token,resume_version_id,application_id,label,hide_contact,expires_at,revoked_at,suspended_at,view_count,visitor_count,read_seconds,first_viewed_at,last_viewed_at,created_at FROM resume_share_links WHERE account_id=? ORDER BY created_at", accountId));
         result.put("views", jdbc.queryForList("SELECT v.link_id,v.device,v.client,v.referrer_host,v.started_at,v.read_seconds FROM resume_share_views v JOIN resume_share_links l ON l.id=v.link_id WHERE l.account_id=? ORDER BY v.started_at", accountId));
         return result;
     }
@@ -316,7 +399,7 @@ public class ResumeLinkService {
             String userAgent, String referrer) {
         Instant now = clock.now();
         LinkRow link = activeLink(token, now);
-        if (isOwner(viewer, link) || ownerDevice(ownerDevice, link)) return ViewStart.skipped("OWNER");
+        if (isOwner(viewer, link) || ownerDevice(ownerDevice, link, now)) return ViewStart.skipped("OWNER");
         ViewerAgent agent = ViewerAgent.parse(userAgent);
         if (agent.bot()) return ViewStart.skipped("AUTOMATED");
         String visitor = Tokens.sha256(link.id() + "|" + nullToEmpty(readerId) + "|" + nullToEmpty(userAgent));
@@ -371,13 +454,26 @@ public class ResumeLinkService {
 
     // ---- internals --------------------------------------------------------------------------------
 
+    private boolean hasRoom(String accountId, Instant now) {
+        Integer active = jdbc.queryForObject("SELECT COUNT(*) FROM resume_share_links WHERE account_id=? AND " + COUNTED,
+                Integer.class, accountId, Timestamp.from(now));
+        return active == null || active < memberships.entitlements(accountId).activeLinks();
+    }
+
+    private boolean applicationArchived(String accountId, String applicationId) {
+        if (applicationId == null) return false;
+        Integer archived = jdbc.queryForObject("SELECT COUNT(*) FROM job_applications WHERE id=? AND account_id=? AND archived_at IS NOT NULL",
+                Integer.class, applicationId, accountId);
+        return archived != null && archived > 0;
+    }
+
     private void assertWithinLimit(String accountId, Instant now) {
-        Integer active = jdbc.queryForObject("SELECT COUNT(*) FROM resume_share_links WHERE account_id=? AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at>?)",
-                Integer.class, accountId, now);
+        Integer active = jdbc.queryForObject("SELECT COUNT(*) FROM resume_share_links WHERE account_id=? AND " + COUNTED,
+                Integer.class, accountId, Timestamp.from(now));
         Entitlements plan = memberships.entitlements(accountId);
         if (active != null && active >= plan.activeLinks()) {
             throw AppException.conflict("RESUME_LINK_LIMIT", "FREE".equals(plan.plan())
-                    ? "免费版最多同时保留 " + plan.activeLinks() + " 条有效链接（投递结束 14 天后链接自动失效）。撤回不再使用的链接，或升级专业版"
+                    ? "免费版最多同时保留 " + plan.activeLinks() + " 条有效链接（投递结束 14 天后、或投递归档后不再占用）。撤回不再使用的链接，或升级专业版"
                     : "有效链接已达 " + plan.activeLinks() + " 条，请先撤回不再使用的链接");
         }
     }
@@ -391,10 +487,10 @@ public class ResumeLinkService {
                 linkId, linkId, linkId, linkId, linkId, now, linkId);
     }
 
-    private boolean ownerDevice(String deviceToken, LinkRow link) {
+    private boolean ownerDevice(String deviceToken, LinkRow link, Instant now) {
         if (deviceToken == null || deviceToken.isBlank() || deviceToken.length() > 64) return false;
-        Integer found = jdbc.queryForObject("SELECT COUNT(*) FROM resume_owner_devices WHERE device_hash=? AND account_id=?",
-                Integer.class, Tokens.sha256(deviceToken), link.accountId());
+        Integer found = jdbc.queryForObject("SELECT COUNT(*) FROM resume_owner_devices WHERE device_hash=? AND account_id=? AND last_seen_at>?",
+                Integer.class, Tokens.sha256(deviceToken), link.accountId(), Timestamp.from(now.minus(OWNER_DEVICE_TTL)));
         return found != null && found > 0;
     }
 
@@ -460,6 +556,7 @@ public class ResumeLinkService {
         LinkRow link = jdbc.query(LINK_SELECT + " WHERE l.token=?", (rs, n) -> row(rs), token).stream().findFirst()
                 .orElseThrow(() -> AppException.user("RESUME_LINK_NOT_FOUND", "简历链接不存在，请检查链接是否完整"));
         if (link.revokedAt() != null) throw AppException.user("RESUME_LINK_REVOKED", "求职者已撤回这个简历链接");
+        if (link.suspendedAt() != null) throw AppException.user("RESUME_LINK_SUSPENDED", "求职者已停用这个简历链接");
         if (link.expiresAt() != null && !link.expiresAt().isAfter(now)) {
             throw AppException.user("RESUME_LINK_EXPIRED", "这个简历链接已过期");
         }
@@ -480,16 +577,18 @@ public class ResumeLinkService {
         return new LinkRow(rs.getString("id"), rs.getString("account_id"), rs.getString("token"),
                 rs.getString("resume_version_id"), rs.getString("application_id"), rs.getString("label"),
                 rs.getBoolean("hide_contact"), instant(rs, "expires_at"), instant(rs, "revoked_at"),
-                rs.getInt("view_count"), rs.getInt("visitor_count"), rs.getInt("read_seconds"),
+                instant(rs, "suspended_at"), rs.getInt("view_count"), rs.getInt("visitor_count"), rs.getInt("read_seconds"),
                 instant(rs, "first_viewed_at"), instant(rs, "last_viewed_at"), instant(rs, "created_at"),
                 rs.getString("resume_title"));
     }
 
     private static LinkView view(LinkRow row, Instant now) {
         String status = row.revokedAt() != null ? "REVOKED"
+                : row.suspendedAt() != null ? "SUSPENDED"
                 : row.expiresAt() != null && !row.expiresAt().isAfter(now) ? "EXPIRED" : "ACTIVE";
         return new LinkView(row.id(), row.token(), "/r/" + row.token(), row.label(), row.versionId(),
-                row.resumeTitle(), row.applicationId(), row.hideContact(), row.expiresAt(), row.revokedAt(), status,
+                row.resumeTitle(), row.applicationId(), row.hideContact(), row.expiresAt(), row.revokedAt(),
+                row.suspendedAt(), status,
                 row.viewCount(), row.visitorCount(), row.readSeconds(), row.firstViewedAt(), row.lastViewedAt(),
                 row.createdAt());
     }
@@ -546,7 +645,7 @@ public class ResumeLinkService {
     }
 
     private record LinkRow(String id, String accountId, String token, String versionId, String applicationId,
-            String label, boolean hideContact, Instant expiresAt, Instant revokedAt, int viewCount, int visitorCount,
+            String label, boolean hideContact, Instant expiresAt, Instant revokedAt, Instant suspendedAt, int viewCount, int visitorCount,
             int readSeconds, Instant firstViewedAt, Instant lastViewedAt, Instant createdAt, String resumeTitle) {
     }
 
@@ -554,8 +653,12 @@ public class ResumeLinkService {
             Integer expiresInDays) {
     }
 
-    /** {@code neverExpires=true} for 长期有效; otherwise {@code expiresInDays} from now. Absent fields stay as they are. */
-    public record LinkPatch(Integer expiresInDays, Boolean neverExpires, Boolean hideContact) {
+    /**
+     * {@code neverExpires=true} for 长期有效; otherwise {@code expiresInDays} from now. {@code reactivate} turns a
+     * link suspended with its archived application back on. Absent fields stay as they are.
+     */
+    public record LinkPatch(Integer expiresInDays, Boolean neverExpires, Boolean hideContact, String label,
+            Boolean reactivate) {
     }
 
     /** All links an application has had, added up: replacing a link no longer makes its receipts disappear. */
@@ -563,9 +666,10 @@ public class ResumeLinkService {
             Instant lastViewedAt) {
     }
 
+    /** {@code status}: ACTIVE, EXPIRED, REVOKED, or SUSPENDED while its application is archived. */
     public record LinkView(String id, String token, String path, String label, String resumeVersionId,
             String resumeTitle, String applicationId, boolean hideContact, Instant expiresAt, Instant revokedAt,
-            String status, int viewCount, int visitorCount, int readSeconds, Instant firstViewedAt,
+            Instant suspendedAt, String status, int viewCount, int visitorCount, int readSeconds, Instant firstViewedAt,
             Instant lastViewedAt, Instant createdAt) {
     }
 

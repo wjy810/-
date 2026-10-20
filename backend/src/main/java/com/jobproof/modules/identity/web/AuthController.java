@@ -10,6 +10,7 @@ import com.jobproof.modules.identity.application.IdentityService.LoginResult;
 import com.jobproof.modules.identity.application.IdentityService.SessionView;
 import com.jobproof.modules.identity.domain.VerificationChannel;
 import com.jobproof.shared.auth.CurrentAccount;
+import com.jobproof.shared.auth.SignOutListener;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -18,6 +19,10 @@ import jakarta.validation.constraints.NotNull;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -30,17 +35,22 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1")
 public class AuthController {
 
+    private static final Logger log = LoggerFactory.getLogger(AuthController.class);
+
     private final IdentityService identityService;
     private final SessionAuthFilter sessionAuthFilter;
     private final JobProofProperties properties;
+    private final ObjectProvider<SignOutListener> signOutListeners;
 
     public AuthController(
             IdentityService identityService,
             SessionAuthFilter sessionAuthFilter,
-            JobProofProperties properties) {
+            JobProofProperties properties,
+            ObjectProvider<SignOutListener> signOutListeners) {
         this.identityService = identityService;
         this.sessionAuthFilter = sessionAuthFilter;
         this.properties = properties;
+        this.signOutListeners = signOutListeners;
     }
 
     @PostMapping("/auth/register")
@@ -78,29 +88,39 @@ public class AuthController {
 
     @PostMapping("/auth/logout")
     public ApiResponse<Void> logout(HttpServletRequest servletRequest, HttpServletResponse response) {
-        identityService.logout(SecurityConfig.currentAccount());
+        CurrentAccount current = SecurityConfig.currentAccount();
+        identityService.logout(current);
         sessionAuthFilter.clearSessionCookie(servletRequest, response);
+        notifySignOut(listener -> listener.signedOut(current.accountId(), servletRequest, response));
         return ApiResponse.ok(null);
     }
 
     @PostMapping("/auth/password/change")
     public ApiResponse<Void> changePassword(@Valid @RequestBody ChangePasswordRequest request, HttpServletRequest servletRequest, HttpServletResponse response) {
-        identityService.changePassword(SecurityConfig.currentAccount(), request.currentPassword(), request.newPassword());
+        CurrentAccount current = SecurityConfig.currentAccount();
+        identityService.changePassword(current, request.currentPassword(), request.newPassword());
         sessionAuthFilter.clearSessionCookie(servletRequest, response);
+        notifySignOut(listener -> listener.otherBrowsersSignedOut(current.accountId(), true, servletRequest, response));
         return ApiResponse.ok(null);
     }
 
     @PostMapping("/auth/password/reset/confirm")
-    public ApiResponse<Void> confirmReset(@Valid @RequestBody ResetConfirmRequest request) {
+    public ApiResponse<Void> confirmReset(@Valid @RequestBody ResetConfirmRequest request,
+            HttpServletRequest servletRequest, HttpServletResponse response) {
+        String accountId;
         if (request.channel() == null && properties.getVerification().isLegacyTestCompatibilityEnabled()) {
-            identityService.confirmPasswordReset(request.email(), request.code(), request.newPassword());
-            return ApiResponse.ok(null);
+            accountId = identityService.confirmPasswordReset(request.email(), request.code(), request.newPassword());
+        } else {
+            if (request.channel() == null || blank(request.destination()) || blank(request.verificationToken())) {
+                throw com.jobproof.shared.error.AppException.user("RESET_REQUEST_INVALID", "找回密码验证信息不完整");
+            }
+            accountId = identityService.confirmPasswordReset(
+                    request.channel(), request.destination(), request.verificationToken(), request.newPassword());
         }
-        if (request.channel() == null || blank(request.destination()) || blank(request.verificationToken())) {
-            throw com.jobproof.shared.error.AppException.user("RESET_REQUEST_INVALID", "找回密码验证信息不完整");
+        // A reset ends every session of the account, wherever it was.
+        if (accountId != null) {
+            notifySignOut(listener -> listener.otherBrowsersSignedOut(accountId, true, servletRequest, response));
         }
-        identityService.confirmPasswordReset(
-                request.channel(), request.destination(), request.verificationToken(), request.newPassword());
         return ApiResponse.ok(null);
     }
 
@@ -132,9 +152,22 @@ public class AuthController {
     }
 
     @PostMapping("/auth/sessions/revoke-others")
-    public ApiResponse<Map<String, Integer>> revokeOtherSessions() {
-        int revoked = identityService.revokeOtherSessions(SecurityConfig.currentAccount());
+    public ApiResponse<Map<String, Integer>> revokeOtherSessions(HttpServletRequest servletRequest, HttpServletResponse response) {
+        CurrentAccount current = SecurityConfig.currentAccount();
+        int revoked = identityService.revokeOtherSessions(current);
+        notifySignOut(listener -> listener.otherBrowsersSignedOut(current.accountId(), false, servletRequest, response));
         return ApiResponse.ok(Map.of("revoked", revoked));
+    }
+
+    /** The sign-out has happened; what other modules drop with it must not undo it. */
+    private void notifySignOut(Consumer<SignOutListener> call) {
+        signOutListeners.orderedStream().forEach(listener -> {
+            try {
+                call.accept(listener);
+            } catch (RuntimeException e) {
+                log.warn("sign-out listener {} failed: {}", listener.getClass().getSimpleName(), e.toString());
+            }
+        });
     }
 
     private void writeSessionCookie(HttpServletRequest request, HttpServletResponse response, LoginResult result, boolean persistent) {

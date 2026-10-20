@@ -134,6 +134,14 @@ async function move(id: string, stage: ApplicationStage, outcome?: ApplicationOu
     replace(updated)
     void refreshQuietly()
     if (outcome === 'ACCEPTED') await offerToCloseOthers(updated)
+    else if (current.stage === 'WISHLIST' && stage !== 'WISHLIST' && stage !== 'CLOSED' && updated.link?.status !== 'ACTIVE') {
+      // 想投 got no link; now that it went out, offer one.
+      toast.success(`「${updated.company}」已投递，投递日期记为今天`, {
+        description: '生成这家公司的专属简历链接，对方打开时提醒你。',
+        action: { label: '生成链接', onClick: () => openDrawer(updated.id) },
+        duration: 8000,
+      })
+    }
   } catch (reason) {
     replace(current)
     toast.error(errorMessage(reason, '阶段更新失败'))
@@ -211,6 +219,7 @@ function onArchived(application: JobApplication): void {
   archived.value = null
   void refreshQuietly()
   toast.success(`「${application.company}」已移入归档`, {
+    description: application.link?.status === 'SUSPENDED' ? '专属链接已停用，不再占用有效链接名额；恢复后自动重新启用。' : undefined,
     action: { label: '撤销', onClick: () => { void restore(application) } },
   })
 }
@@ -225,13 +234,24 @@ async function openArchive(): Promise<void> {
   }
 }
 
+function announceRestored(restored: JobApplication): void {
+  replace(restored)
+  archived.value = archived.value?.filter(item => item.id !== restored.id) ?? null
+  void refreshQuietly()
+  if (restored.link?.status === 'SUSPENDED') {
+    toast.warning(`「${restored.company}」已恢复，专属链接还停用着`, {
+      description: '有效链接名额已满。撤回不再使用的链接后，在详情里重新启用。',
+      action: { label: '查看', onClick: () => openDrawer(restored.id) },
+    })
+  } else {
+    toast.success(`「${restored.company}」已恢复`)
+  }
+}
+
 async function restore(application: JobApplication): Promise<void> {
   archivePending.value = application.id
   try {
-    replace(await restoreApplication(application.id))
-    archived.value = archived.value?.filter(item => item.id !== application.id) ?? null
-    void refreshQuietly()
-    toast.success(`「${application.company}」已恢复`)
+    announceRestored(await restoreApplication(application.id))
   } catch (reason) {
     toast.error(errorMessage(reason, '恢复失败'))
   } finally { archivePending.value = '' }
@@ -401,6 +421,7 @@ onUnmounted(() => window.clearInterval(clock))
       @close="drawerId = null"
       @changed="onDrawerChanged"
       @archived="onArchived"
+      @restored="announceRestored"
       @edit="editFromDrawer"
     />
     <UiDialog
