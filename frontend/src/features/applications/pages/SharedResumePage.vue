@@ -1,12 +1,14 @@
 <script setup lang="ts">
 /**
  * /r/:token — the resume behind a link, for whoever holds it (docs/phase2/01). No sign-in. The page
- * tells the reader plainly what is recorded: when it was opened, the kind of device and how long the
- * page was visible; never the reader's address.
+ * tells the reader plainly what is recorded: when it was opened, the kind of device and app, where the
+ * link was clicked and how long it was read; never the reader's address. Reading time only grows while
+ * the page is visible and someone has scrolled, tapped or typed in the last 30 seconds, so a tab left
+ * open in the background does not count as reading.
  */
 import { computed, nextTick, onMounted, onUnmounted, ref, shallowRef } from 'vue'
 import { useRoute } from 'vue-router'
-import { Info, Printer, ShieldCheck } from 'lucide-vue-next'
+import { EyeOff, Info, Printer, ShieldCheck, Smartphone } from 'lucide-vue-next'
 import BrandMark from '@/shared/ui/BrandMark.vue'
 import UiButton from '@/shared/ui/UiButton.vue'
 import UiEmptyState from '@/shared/ui/UiEmptyState.vue'
@@ -19,6 +21,11 @@ import { fetchSharedResume, sendReadTime, startResumeView } from '../services/ap
 import type { SharedResume } from '../types'
 
 const HEARTBEAT_SECONDS = 15
+/** Seconds without any scroll, tap or key press after which the page is not being read. */
+const IDLE_SECONDS = 30
+const ACTIVITY_EVENTS = ['scroll', 'wheel', 'pointerdown', 'pointermove', 'keydown', 'touchstart'] as const
+/** WeChat's in-app browser has no print; the reader is told how to get to one that does. */
+const inWeChat = typeof navigator !== 'undefined' && /MicroMessenger/i.test(navigator.userAgent)
 
 const route = useRoute()
 const token = computed(() => String(route.params.token ?? ''))
@@ -26,6 +33,7 @@ const resume = shallowRef<SharedResume | null>(null)
 const template = shallowRef<TemplateModule | null>(null)
 const failure = ref<{ title: string; description: string } | null>(null)
 const printing = ref(false)
+const printHint = ref(false)
 
 let viewId: string | null = null
 let viewKey: string | null = null
@@ -33,6 +41,8 @@ let baseSeconds = 0
 let visibleSeconds = 0
 let sentSeconds = -1
 let ticker: number | undefined
+let lastActivity = Date.now()
+const onActivity = () => { lastActivity = Date.now() }
 
 const ownerName = computed(() => {
   const basics = resume.value?.content?.basics
@@ -83,6 +93,7 @@ async function startReceipt(): Promise<void> {
 
 function tick(): void {
   if (document.visibilityState !== 'visible') return
+  if (Date.now() - lastActivity > IDLE_SECONDS * 1000) return
   visibleSeconds += 1
   if (visibleSeconds % HEARTBEAT_SECONDS === 0) flush()
 }
@@ -100,6 +111,10 @@ function onVisibility(): void {
 }
 
 async function print(): Promise<void> {
+  if (inWeChat) {
+    printHint.value = true
+    return
+  }
   printing.value = true
   await nextTick()
   await new Promise(resolve => window.setTimeout(resolve, 400))
@@ -111,6 +126,7 @@ function afterPrint(): void { printing.value = false }
 
 onMounted(() => {
   markUnlisted()
+  ACTIVITY_EVENTS.forEach(name => window.addEventListener(name, onActivity, { passive: true }))
   document.addEventListener('visibilitychange', onVisibility)
   window.addEventListener('pagehide', flush)
   window.addEventListener('beforeprint', beforePrint)
@@ -121,6 +137,7 @@ onMounted(() => {
 onUnmounted(() => {
   flush()
   window.clearInterval(ticker)
+  ACTIVITY_EVENTS.forEach(name => window.removeEventListener(name, onActivity))
   document.removeEventListener('visibilitychange', onVisibility)
   window.removeEventListener('pagehide', flush)
   window.removeEventListener('beforeprint', beforePrint)
@@ -141,6 +158,12 @@ onUnmounted(() => {
 
     <div v-if="resume?.ownerPreview" class="shared__owner" role="status">
       <Info :size="16" />这是你分享出去的页面。你自己打开不会计入回执。
+    </div>
+    <div v-if="printHint" class="shared__notice" role="status">
+      <Smartphone :size="16" />微信里不能直接打印。点右上角 <strong>···</strong>，选择“在浏览器打开”，再点“打印 / 存为 PDF”。
+    </div>
+    <div v-if="resume?.hideContact && !resume.ownerPreview" class="shared__notice">
+      <EyeOff :size="16" />求职者隐藏了联系方式。如需联系，请通过收到这份简历的渠道（招聘平台、内推人或邮件）回复。
     </div>
 
     <main class="shared__main">
@@ -163,7 +186,7 @@ onUnmounted(() => {
     <footer v-if="resume" class="shared__foot">
       <p>
         <ShieldCheck :size="14" />
-        为了让求职者知道简历已经送达，这个页面会记录打开时间、设备类型和停留时长；不记录你的 IP 地址，也不需要登录。
+        为了让求职者知道简历已经送达，这个页面会记录打开时间、设备类型（手机 / 电脑）、所用 App（如微信）、从哪个网站点进来，以及实际阅读的时长；用一个随机标识区分是否同一位读者，不记录你的 IP 地址，也不需要登录。
       </p>
       <p class="shared__growth">也在找工作？<a href="/" target="_blank" rel="noopener">用 JobProof 做一份有证据支撑的简历 →</a></p>
     </footer>
@@ -181,6 +204,25 @@ onUnmounted(() => {
     var(--surface-2);
   color: var(--text-primary);
 }
+
+.shared__notice {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  width: min(900px, calc(100% - 2 * var(--space-4)));
+  margin: var(--space-3) auto 0;
+  padding: 10px 14px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  background: var(--surface-1);
+  font-size: var(--fs-sm);
+  line-height: 1.6;
+}
+
+.shared__notice svg { flex: 0 0 auto; margin-top: 3px; color: var(--color-primary); }
+
+.shared.is-printing .shared__notice { display: none; }
 
 .shared__bar {
   position: sticky;

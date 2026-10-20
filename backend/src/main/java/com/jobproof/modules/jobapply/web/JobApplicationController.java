@@ -1,5 +1,9 @@
 package com.jobproof.modules.jobapply.web;
 
+import jakarta.servlet.http.HttpServletResponse;
+import jakarta.servlet.http.HttpServletRequest;
+import com.jobproof.shared.auth.CurrentAccount;
+import com.jobproof.modules.jobapply.application.JobApplicationService.NextStepDone;
 import com.jobproof.infrastructure.security.SecurityConfig;
 import com.jobproof.infrastructure.web.ApiResponse;
 import com.jobproof.modules.jobapply.application.JobApplicationService;
@@ -26,14 +30,38 @@ import org.springframework.web.bind.annotation.RestController;
 public class JobApplicationController {
 
     private final JobApplicationService applications;
+    private final OwnerDeviceCookie ownerDevices;
 
-    public JobApplicationController(JobApplicationService applications) {
+    public JobApplicationController(JobApplicationService applications, OwnerDeviceCookie ownerDevices) {
         this.applications = applications;
+        this.ownerDevices = ownerDevices;
     }
 
     @GetMapping
-    public ApiResponse<OverviewView> overview() {
-        return ApiResponse.ok(applications.overview(SecurityConfig.currentAccount()));
+    public ApiResponse<OverviewView> overview(HttpServletRequest request, HttpServletResponse response) {
+        CurrentAccount current = SecurityConfig.currentAccount();
+        ownerDevices.register(current, request, response);
+        return ApiResponse.ok(applications.overview(current));
+    }
+
+    @GetMapping("/archived")
+    public ApiResponse<List<ApplicationView>> archived() {
+        return ApiResponse.ok(applications.archived(SecurityConfig.currentAccount()));
+    }
+
+    @PostMapping("/{id}/archive")
+    public ApiResponse<ApplicationView> archive(@PathVariable String id) {
+        return ApiResponse.ok(applications.archive(SecurityConfig.currentAccount(), id, true));
+    }
+
+    @PostMapping("/{id}/restore")
+    public ApiResponse<ApplicationView> restore(@PathVariable String id) {
+        return ApiResponse.ok(applications.archive(SecurityConfig.currentAccount(), id, false));
+    }
+
+    @PostMapping("/{id}/next-step/done")
+    public ApiResponse<ApplicationView> completeNextStep(@PathVariable String id, @RequestBody(required = false) NextStepDone write) {
+        return ApiResponse.ok(applications.completeNextStep(SecurityConfig.currentAccount(), id, write));
     }
 
     /** Frozen resume versions that can go out with an application. */

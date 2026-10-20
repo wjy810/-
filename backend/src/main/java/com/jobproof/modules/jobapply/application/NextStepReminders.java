@@ -40,7 +40,7 @@ public class NextStepReminders {
     /** Sends the reminders due at {@code now}; returns how many went out. */
     public int sendDue(Instant now) {
         List<Due> due = jdbc.query("SELECT id,account_id,company,position_title,next_step,next_step_at FROM job_applications "
-                        + "WHERE next_step_at>? AND next_step_at<=? AND stage<>'CLOSED' AND updated_at<=? "
+                        + "WHERE next_step_at>? AND next_step_at<=? AND stage<>'CLOSED' AND archived_at IS NULL AND updated_at<=? "
                         + "AND (next_step_reminded_for IS NULL OR next_step_reminded_for<>next_step_at) "
                         + "ORDER BY next_step_at LIMIT " + BATCH,
                 (rs, n) -> new Due(rs.getString("id"), rs.getString("account_id"), rs.getString("company"),

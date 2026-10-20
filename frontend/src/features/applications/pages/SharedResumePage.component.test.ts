@@ -39,6 +39,36 @@ describe('shared resume page', () => {
     wrapper.unmount()
   })
 
+  it('counts reading time only while someone is actually reading', async () => {
+    vi.useFakeTimers()
+    try {
+      api.fetchSharedResume.mockResolvedValue(shared())
+      api.startResumeView.mockResolvedValue({ recorded: true, viewId: 'v1', viewKey: 'k1', readSeconds: 0 })
+      const wrapper = mountPage()
+      await flushPromises()
+      await vi.advanceTimersByTimeAsync(15_000)
+      expect(api.sendReadTime).toHaveBeenLastCalledWith('tok123', 'v1', 'k1', 15)
+      // Left open with nobody scrolling or tapping: after 30 idle seconds the clock stops.
+      await vi.advanceTimersByTimeAsync(60_000)
+      expect(api.sendReadTime).toHaveBeenLastCalledWith('tok123', 'v1', 'k1', 30)
+      window.dispatchEvent(new Event('scroll'))
+      await vi.advanceTimersByTimeAsync(15_000)
+      expect(api.sendReadTime).toHaveBeenLastCalledWith('tok123', 'v1', 'k1', 45)
+      wrapper.unmount()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('tells HR when the candidate hid their contact details', async () => {
+    api.fetchSharedResume.mockResolvedValue({ ...shared(), hideContact: true })
+    api.startResumeView.mockResolvedValue({ recorded: false, reason: 'AUTOMATED', readSeconds: 0 })
+    const wrapper = mountPage()
+    await flushPromises()
+    expect(wrapper.text()).toContain('求职者隐藏了联系方式')
+    wrapper.unmount()
+  })
+
   it('never counts the owner looking at their own link', async () => {
     api.fetchSharedResume.mockResolvedValue(shared(true))
     const wrapper = mountPage()

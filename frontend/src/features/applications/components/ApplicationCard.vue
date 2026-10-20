@@ -9,7 +9,7 @@ import { dueOf, receiptOf } from '../utils/receipts'
 const props = defineProps<{ application: JobApplication; now: Date }>()
 defineEmits<{ open: [] }>()
 
-const receipt = computed(() => receiptOf(props.application.link, props.now))
+const receipt = computed(() => receiptOf(props.application.link, props.now, props.application.receipts))
 const due = computed(() => (props.application.stage === 'CLOSED' ? null : dueOf(props.application.nextStepAt, props.now)))
 const initial = computed(() => Array.from(props.application.company.trim())[0] ?? '?')
 </script>

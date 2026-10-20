@@ -53,17 +53,18 @@ const creating = ref(false)
 const submitting = ref(false)
 const touched = ref(false)
 const versions = shallowRef<ShareableVersion[]>([])
-const form = ref({ label: '', versionId: '', expiry: 'none', hideContact: false })
+const form = ref({ label: '', versionId: '', expiry: '60', hideContact: false })
 const versionOptions = computed<SelectOption[]>(() => versions.value.map(item => ({
   value: item.versionId,
   label: `${item.resumeTitle} · 版本 ${item.ordinal}`,
   description: item.anonymous ? '匿名版' : `冻结于 ${new Date(item.frozenAt).toLocaleDateString('zh-CN')}`,
 })))
 const expiryOptions: SelectOption[] = [
-  { value: 'none', label: '长期有效' },
   { value: '7', label: '7 天' },
   { value: '30', label: '30 天' },
+  { value: '60', label: '60 天（推荐）' },
   { value: '90', label: '90 天' },
+  { value: 'none', label: '长期有效' },
 ]
 const labelError = computed(() => (touched.value && !form.value.label.trim() ? '写一下这条链接发到哪里，方便以后区分' : null))
 
@@ -116,7 +117,7 @@ async function revoke(link: ResumeLink): Promise<void> {
 }
 
 async function openCreate(): Promise<void> {
-  form.value = { label: '', versionId: '', expiry: 'none', hideContact: false }
+  form.value = { label: '', versionId: '', expiry: '60', hideContact: false }
   touched.value = false
   creating.value = true
   try {

@@ -1,5 +1,10 @@
 package com.jobproof.modules.jobapply.web;
 
+import org.springframework.web.bind.annotation.PatchMapping;
+import jakarta.servlet.http.HttpServletResponse;
+import jakarta.servlet.http.HttpServletRequest;
+import com.jobproof.shared.auth.CurrentAccount;
+import com.jobproof.modules.jobapply.application.ResumeLinkService.LinkPatch;
 import com.jobproof.infrastructure.security.SecurityConfig;
 import com.jobproof.infrastructure.web.ApiResponse;
 import com.jobproof.modules.jobapply.application.ResumeLinkService;
@@ -20,14 +25,29 @@ import org.springframework.web.bind.annotation.RestController;
 public class ResumeLinkController {
 
     private final ResumeLinkService links;
+    private final OwnerDeviceCookie ownerDevices;
 
-    public ResumeLinkController(ResumeLinkService links) {
+    public ResumeLinkController(ResumeLinkService links, OwnerDeviceCookie ownerDevices) {
         this.links = links;
+        this.ownerDevices = ownerDevices;
     }
 
     @GetMapping
-    public ApiResponse<List<LinkView>> list() {
-        return ApiResponse.ok(links.list(SecurityConfig.currentAccount()));
+    public ApiResponse<List<LinkView>> list(HttpServletRequest request, HttpServletResponse response) {
+        CurrentAccount current = SecurityConfig.currentAccount();
+        ownerDevices.register(current, request, response);
+        return ApiResponse.ok(links.list(current));
+    }
+
+    @PatchMapping("/{id}")
+    public ApiResponse<LinkView> update(@PathVariable String id, @RequestBody LinkPatch patch) {
+        return ApiResponse.ok(links.update(SecurityConfig.currentAccount(), id, patch));
+    }
+
+    /** 这是我自己打开的. */
+    @PostMapping("/{id}/views/{viewId}/own")
+    public ApiResponse<LinkView> markOwnView(@PathVariable String id, @PathVariable String viewId) {
+        return ApiResponse.ok(links.markOwnView(SecurityConfig.currentAccount(), id, viewId));
     }
 
     @PostMapping

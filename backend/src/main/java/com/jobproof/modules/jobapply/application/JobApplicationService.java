@@ -1,6 +1,7 @@
 package com.jobproof.modules.jobapply.application;
 
 import com.jobproof.modules.jobapply.application.ResumeLinkService.LinkView;
+import com.jobproof.modules.jobapply.application.ResumeLinkService.Receipts;
 import com.jobproof.modules.jobapply.application.ResumeLinkService.ViewRecord;
 import com.jobproof.modules.jobapply.domain.ApplicationStage;
 import com.jobproof.shared.auth.CurrentAccount;
@@ -38,6 +39,8 @@ public class JobApplicationService implements DeletionModuleHandler, AccountExpo
     static final Set<String> CHANNELS = Set.of("OFFICIAL_SITE", "JOB_BOARD", "REFERRAL", "CAMPUS", "EMAIL",
             "HEADHUNTER", "OTHER");
     static final Set<String> OUTCOMES = Set.of("ACCEPTED", "DECLINED", "REJECTED", "WITHDRAWN", "NO_RESPONSE");
+    /** Accepting or declining is about an offer, so only an application that reached one can end that way. */
+    static final Set<String> OFFER_OUTCOMES = Set.of("ACCEPTED", "DECLINED");
     private static final int MAX_APPLICATIONS = 500;
     private static final String APPLICATION_SELECT = """
             SELECT a.*,m.id resume_master_id,m.title resume_title,j.title match_title,r.total_score match_score
@@ -68,8 +71,16 @@ public class JobApplicationService implements DeletionModuleHandler, AccountExpo
     @Transactional(readOnly = true)
     public OverviewView overview(CurrentAccount current) {
         assertSeeker(current);
-        List<ApplicationView> items = all(current.accountId());
-        return new OverviewView(items, stats(items, clock.now()));
+        List<ApplicationView> items = all(current.accountId(), false);
+        Integer archived = jdbc.queryForObject("SELECT COUNT(*) FROM job_applications WHERE account_id=? AND archived_at IS NOT NULL",
+                Integer.class, current.accountId());
+        return new OverviewView(items, stats(items, clock.now()), archived == null ? 0 : archived);
+    }
+
+    @Transactional(readOnly = true)
+    public List<ApplicationView> archived(CurrentAccount current) {
+        assertSeeker(current);
+        return all(current.accountId(), true);
     }
 
     @Transactional(readOnly = true)
@@ -95,7 +106,7 @@ public class JobApplicationService implements DeletionModuleHandler, AccountExpo
         }
         Fields fields = fields(current.accountId(), write);
         ApplicationStage stage = write.stage() == null ? ApplicationStage.APPLIED : ApplicationStage.parse(write.stage());
-        String outcome = outcome(stage, write.outcome());
+        String outcome = outcome(stage, write.outcome(), stage.open() ? stage : ApplicationStage.APPLIED);
         LocalDate appliedOn = fields.appliedOn() != null || stage == ApplicationStage.WISHLIST ? fields.appliedOn()
                 : LocalDate.now(java.time.ZoneId.of("Asia/Shanghai"));
         Instant now = clock.now();
@@ -108,7 +119,7 @@ public class JobApplicationService implements DeletionModuleHandler, AccountExpo
         timeline.record(current.accountId(), id, ApplicationTimeline.CREATED, null, stage.name(), null, now);
         if (Boolean.TRUE.equals(write.createLink()) && fields.versionId() != null) {
             links.createFor(current.accountId(), fields.versionId(), fields.company() + " · " + fields.position(), id,
-                    Boolean.TRUE.equals(write.hideContact()), null);
+                    Boolean.TRUE.equals(write.hideContact()), ResumeLinkService.DEFAULT_EXPIRY_DAYS);
         }
         return require(current.accountId(), id);
     }
@@ -135,7 +146,7 @@ public class JobApplicationService implements DeletionModuleHandler, AccountExpo
         ApplicationView existing = require(current.accountId(), id);
         Versions.assertExpected(write.expectedVersion(), existing.version());
         ApplicationStage next = ApplicationStage.parse(write.stage());
-        String outcome = outcome(next, write.outcome());
+        String outcome = outcome(next, write.outcome(), ApplicationStage.parse(existing.furthestStage()));
         ApplicationStage previous = ApplicationStage.parse(existing.stage());
         if (previous == next && java.util.Objects.equals(outcome, existing.outcome())) return existing;
         ApplicationStage furthest = ApplicationStage.furthest(ApplicationStage.parse(existing.furthestStage()), next);
@@ -147,6 +158,43 @@ public class JobApplicationService implements DeletionModuleHandler, AccountExpo
         if (changed == 0) throw AppException.conflict("VERSION_CONFLICT", "投递记录刚在别处更新过，请刷新后重试");
         timeline.record(current.accountId(), id, ApplicationTimeline.STAGE_CHANGED, previous.name(), next.name(),
                 outcome, now);
+        if (previous.open() && !next.open()) links.expireAfterClose(current.accountId(), id, now);
+        return require(current.accountId(), id);
+    }
+
+    /** 已完成 / 记录结果: the next step happened, so it is no longer due (or overdue); the note goes on the timeline. */
+    @Transactional
+    public ApplicationView completeNextStep(CurrentAccount current, String id, NextStepDone write) {
+        assertSeeker(current);
+        ApplicationView existing = require(current.accountId(), id);
+        Versions.assertExpected(write == null ? null : write.expectedVersion(), existing.version());
+        if (existing.nextStep() == null && existing.nextStepAt() == null) {
+            throw AppException.conflict("APPLICATION_NEXT_STEP_NONE", "这条投递没有待办的下一步");
+        }
+        Instant now = clock.now();
+        int changed = jdbc.update("UPDATE job_applications SET next_step=NULL,next_step_at=NULL,version_no=version_no+1,updated_at=? WHERE id=? AND account_id=? AND version_no=?",
+                now, id, current.accountId(), existing.version());
+        if (changed == 0) throw AppException.conflict("VERSION_CONFLICT", "投递记录刚在别处更新过，请刷新后重试");
+        String note = write == null ? null : optional(write.note(), 200);
+        timeline.record(current.accountId(), id, ApplicationTimeline.NEXT_STEP_DONE, null, null,
+                "完成：" + blank(existing.nextStep(), "下一步") + (note == null ? "" : "。" + note), now);
+        return require(current.accountId(), id);
+    }
+
+    /** 删除 moves an application to the archive: off the board and out of reminders, until restored. */
+    @Transactional
+    public ApplicationView archive(CurrentAccount current, String id, boolean archived) {
+        assertSeeker(current);
+        require(current.accountId(), id);
+        Instant now = clock.now();
+        int changed = jdbc.update(archived
+                        ? "UPDATE job_applications SET archived_at=?,version_no=version_no+1,updated_at=? WHERE id=? AND account_id=? AND archived_at IS NULL"
+                        : "UPDATE job_applications SET archived_at=NULL,version_no=version_no+1,updated_at=? WHERE id=? AND account_id=? AND archived_at IS NOT NULL",
+                archived ? new Object[] { now, now, id, current.accountId() } : new Object[] { now, id, current.accountId() });
+        if (changed > 0) {
+            timeline.record(current.accountId(), id, archived ? ApplicationTimeline.ARCHIVED : ApplicationTimeline.RESTORED,
+                    null, null, archived ? "移入归档" : "从归档恢复", now);
+        }
         return require(current.accountId(), id);
     }
 
@@ -202,39 +250,45 @@ public class JobApplicationService implements DeletionModuleHandler, AccountExpo
         return result;
     }
 
-    /** Summary for the dashboard: open applications, unread receipts and the next due step. */
+    /** Summary for the dashboard: open applications, recent receipts, the steps coming up and those overdue. */
     @Transactional(readOnly = true)
     public Map<String, Object> summary(String accountId) {
         Instant now = clock.now();
-        StatsView stats = stats(all(accountId), now);
+        StatsView stats = stats(all(accountId, false), now);
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("stats", stats);
-        result.put("recentOpens", jdbc.query("SELECT a.id,a.company,a.position_title,l.last_viewed_at,l.view_count FROM resume_share_links l JOIN job_applications a ON a.id=l.application_id WHERE l.account_id=? AND l.last_viewed_at IS NOT NULL ORDER BY l.last_viewed_at DESC LIMIT 3",
+        result.put("recentOpens", jdbc.query("SELECT a.id,a.company,a.position_title,MAX(l.last_viewed_at) last_viewed_at,SUM(l.view_count) view_count FROM resume_share_links l JOIN job_applications a ON a.id=l.application_id WHERE l.account_id=? AND a.archived_at IS NULL AND l.last_viewed_at IS NOT NULL GROUP BY a.id,a.company,a.position_title ORDER BY MAX(l.last_viewed_at) DESC LIMIT 3",
                 (rs, n) -> Map.of("id", rs.getString("id"), "company", rs.getString("company"),
                         "positionTitle", rs.getString("position_title"), "lastViewedAt", instant(rs, "last_viewed_at"),
                         "viewCount", rs.getInt("view_count")), accountId));
-        result.put("nextSteps", jdbc.query("SELECT id,company,next_step,next_step_at FROM job_applications WHERE account_id=? AND stage<>'CLOSED' AND next_step_at IS NOT NULL ORDER BY next_step_at LIMIT 3",
-                (rs, n) -> Map.of("id", rs.getString("id"), "company", rs.getString("company"),
-                        "nextStep", blank(rs.getString("next_step"), "下一步"), "nextStepAt", instant(rs, "next_step_at")),
-                accountId));
+        String steps = "SELECT id,company,next_step,next_step_at FROM job_applications WHERE account_id=? AND stage<>'CLOSED' AND archived_at IS NULL AND next_step_at IS NOT NULL ";
+        result.put("nextSteps", jdbc.query(steps + "AND next_step_at>=? ORDER BY next_step_at LIMIT 3",
+                (rs, n) -> step(rs), accountId, Timestamp.from(now)));
+        result.put("overdueSteps", jdbc.query(steps + "AND next_step_at<? ORDER BY next_step_at DESC LIMIT 3",
+                (rs, n) -> step(rs), accountId, Timestamp.from(now)));
         return result;
     }
 
     // ---- internals --------------------------------------------------------------------------------
 
-    private List<ApplicationView> all(String accountId) {
+    private List<ApplicationView> all(String accountId, boolean archived) {
         Map<String, LinkView> current = links.currentLinks(accountId);
-        return jdbc.query(APPLICATION_SELECT + " WHERE a.account_id=? ORDER BY a.updated_at DESC,a.id",
-                (rs, n) -> view(rs, current), accountId);
+        Map<String, Receipts> receipts = links.receipts(accountId);
+        return jdbc.query(APPLICATION_SELECT + " WHERE a.account_id=? AND a.archived_at IS " + (archived ? "NOT NULL" : "NULL")
+                        + " ORDER BY a.updated_at DESC,a.id",
+                (rs, n) -> view(rs, current, receipts), accountId);
     }
 
     private ApplicationView require(String accountId, String id) {
         List<ApplicationView> found = jdbc.query(APPLICATION_SELECT + " WHERE a.id=? AND a.account_id=?",
-                (rs, n) -> view(rs, Map.of()), id, accountId);
+                (rs, n) -> view(rs, links.currentLinks(accountId), links.receipts(accountId)), id, accountId);
         if (found.isEmpty()) throw AppException.forbidden("OBJECT_FORBIDDEN", "投递记录不存在或无权访问");
-        ApplicationView application = found.get(0);
-        LinkView link = links.currentLinks(accountId).get(id);
-        return link == null ? application : application.withLink(link);
+        return found.get(0);
+    }
+
+    private static Map<String, Object> step(ResultSet rs) throws SQLException {
+        return Map.of("id", rs.getString("id"), "company", rs.getString("company"),
+                "nextStep", blank(rs.getString("next_step"), "下一步"), "nextStepAt", instant(rs, "next_step_at"));
     }
 
     static StatsView stats(List<ApplicationView> items, Instant now) {
@@ -251,9 +305,9 @@ public class JobApplicationService implements DeletionModuleHandler, AccountExpo
             boolean sent = furthest.rank() >= ApplicationStage.APPLIED.rank();
             if (sent) applied++;
             if (ApplicationStage.parse(item.stage()).open()) active++;
-            if (sent && item.link() != null) {
+            if (sent && item.receipts() != null) {
                 linked++;
-                if (item.link().viewCount() > 0) opened++;
+                if (item.receipts().views() > 0) opened++;
             }
             if (furthest.rank() >= ApplicationStage.INTERVIEW.rank()) interviews++;
             if (furthest.rank() >= ApplicationStage.OFFER.rank()) offers++;
@@ -300,14 +354,18 @@ public class JobApplicationService implements DeletionModuleHandler, AccountExpo
                 write.nextStepAt(), optional(write.notes(), 4000));
     }
 
-    private static String outcome(ApplicationStage stage, String outcome) {
+    private static String outcome(ApplicationStage stage, String outcome, ApplicationStage furthest) {
         if (stage.open()) return null;
         String value = outcome == null ? "" : outcome.trim().toUpperCase(Locale.ROOT);
         if (!OUTCOMES.contains(value)) throw AppException.user("APPLICATION_OUTCOME_REQUIRED", "结束投递时请选择结果");
+        if (OFFER_OUTCOMES.contains(value) && furthest.rank() < ApplicationStage.OFFER.rank()) {
+            throw AppException.user("APPLICATION_OUTCOME_NEEDS_OFFER", "只有拿到 Offer 的投递才能选择接受或婉拒 Offer");
+        }
         return value;
     }
 
-    private static ApplicationView view(ResultSet rs, Map<String, LinkView> currentLinks) throws SQLException {
+    private static ApplicationView view(ResultSet rs, Map<String, LinkView> currentLinks, Map<String, Receipts> receipts)
+            throws SQLException {
         Object score = rs.getObject("match_score");
         java.sql.Date applied = rs.getDate("applied_on");
         return new ApplicationView(rs.getString("id"), rs.getString("company"), rs.getString("position_title"),
@@ -318,7 +376,7 @@ public class JobApplicationService implements DeletionModuleHandler, AccountExpo
                 score instanceof Number number ? number.intValue() : null,
                 applied == null ? null : applied.toLocalDate(), rs.getString("next_step"), instant(rs, "next_step_at"),
                 rs.getString("notes"), rs.getInt("version_no"), instant(rs, "created_at"), instant(rs, "updated_at"),
-                currentLinks.get(rs.getString("id")));
+                instant(rs, "archived_at"), currentLinks.get(rs.getString("id")), receipts.get(rs.getString("id")));
     }
 
     private static Instant instant(ResultSet rs, String column) throws SQLException {
@@ -360,16 +418,14 @@ public class JobApplicationService implements DeletionModuleHandler, AccountExpo
     public record StageWrite(String stage, String outcome, Integer expectedVersion) {
     }
 
+    public record NextStepDone(String note, Integer expectedVersion) {
+    }
+
     public record ApplicationView(String id, String company, String positionTitle, String location, String channel,
             String jobUrl, String stage, String furthestStage, String outcome, String salaryText,
             String resumeVersionId, String resumeMasterId, String resumeTitle, String jobMatchId, String matchTitle,
             Integer matchScore, LocalDate appliedOn, String nextStep, Instant nextStepAt, String notes, int version,
-            Instant createdAt, Instant updatedAt, LinkView link) {
-        ApplicationView withLink(LinkView value) {
-            return new ApplicationView(id, company, positionTitle, location, channel, jobUrl, stage, furthestStage,
-                    outcome, salaryText, resumeVersionId, resumeMasterId, resumeTitle, jobMatchId, matchTitle,
-                    matchScore, appliedOn, nextStep, nextStepAt, notes, version, createdAt, updatedAt, value);
-        }
+            Instant createdAt, Instant updatedAt, Instant archivedAt, LinkView link, Receipts receipts) {
     }
 
     /**
@@ -380,7 +436,7 @@ public class JobApplicationService implements DeletionModuleHandler, AccountExpo
             int overdue, int upcoming) {
     }
 
-    public record OverviewView(List<ApplicationView> items, StatsView stats) {
+    public record OverviewView(List<ApplicationView> items, StatsView stats, int archivedCount) {
     }
 
     public record EventView(String id, String type, String fromStage, String toStage, String detail, Instant createdAt) {

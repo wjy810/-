@@ -13,15 +13,18 @@ import UiField from '@/shared/ui/UiField.vue'
 import UiInput from '@/shared/ui/UiInput.vue'
 import UiSelect, { type SelectOption } from '@/shared/ui/UiSelect.vue'
 import UiTextarea from '@/shared/ui/UiTextarea.vue'
+import { confirm } from '@/shared/ui/confirm'
+import { formatRelative } from '@/shared/lib/datetime'
 import { errorMessage, isApiClientError } from '@/shared/api/types'
 import { listJobMatches } from '@/features/job-match/services/jobMatchApi'
 import { createApplication, fetchShareableVersions, updateApplication } from '../services/applicationsApi'
+import { duplicateOf } from '../utils/receipts'
 import { CHANNELS, STAGES } from '../labels'
 import type { ApplicationChannel, ApplicationStage, ApplicationWrite, JobApplication, ShareableVersion } from '../types'
 
 export type ApplicationPrefill = { company?: string; positionTitle?: string; location?: string; jobMatchId?: string; jobUrl?: string }
 
-const props = defineProps<{ open: boolean; application?: JobApplication | null; prefill?: ApplicationPrefill | null }>()
+const props = defineProps<{ open: boolean; application?: JobApplication | null; prefill?: ApplicationPrefill | null; existing?: JobApplication[] }>()
 const emit = defineEmits<{ close: []; saved: [application: JobApplication] }>()
 
 const NO_VERSION = '__none__'
@@ -136,6 +139,12 @@ async function loadOptions(): Promise<void> {
 async function submit(): Promise<void> {
   touched.value = true
   if (missing.value || submitting.value) return
+  const twin = props.application ? null : duplicateOf(props.existing ?? [], form.company, form.positionTitle)
+  if (twin && !(await confirm({
+    title: '这条投递好像记录过了',
+    message: `${formatRelative(twin.createdAt)}已经记录过「${twin.company} · ${twin.positionTitle}」。如果是同一次投递，打开原来那条更新就好；确实是新的一次（例如重新投递）再记一条。`,
+    confirmText: '仍然记录',
+  }))) return
   submitting.value = true
   error.value = ''
   linkLimited.value = false

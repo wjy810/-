@@ -1,9 +1,12 @@
 <script setup lang="ts">
 /**
- * The board: one column per stage. Cards are dragged between columns with the mouse; on touch
- * screens the stage is changed from the card's drawer instead.
+ * The board: one column per stage, cards dragged between columns with the mouse. On a phone (≤640px) the
+ * columns would scroll sideways one at a time, so they become a list grouped by stage, and each card has a
+ * "移动到…" menu instead of dragging.
  */
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { ChevronDown, MoveRight } from 'lucide-vue-next'
+import UiDropdownMenu, { type MenuItem } from '@/shared/ui/UiDropdownMenu.vue'
 import type { ApplicationStage, JobApplication } from '../types'
 import { STAGES } from '../labels'
 import { sortForColumn } from '../utils/receipts'
@@ -23,6 +26,28 @@ const columns = computed(() => STAGES.map(stage => ({
   items: sortForColumn(props.items.filter(item => item.stage === stage.value)),
 })))
 const draggingStage = computed(() => props.items.find(item => item.id === draggingId.value)?.stage ?? null)
+
+const narrow = ref(false)
+let media: MediaQueryList | null = null
+const syncNarrow = () => { narrow.value = Boolean(media?.matches) }
+onMounted(() => {
+  media = typeof window.matchMedia === 'function' ? window.matchMedia('(max-width: 640px)') : null
+  syncNarrow()
+  media?.addEventListener?.('change', syncNarrow)
+})
+onBeforeUnmount(() => media?.removeEventListener?.('change', syncNarrow))
+
+/** Folded stage groups on a phone: 已结束 starts folded, like its narrow column on the desktop. */
+const folded = ref<Set<ApplicationStage>>(new Set(['CLOSED']))
+function toggleGroup(stage: ApplicationStage): void {
+  const next = new Set(folded.value)
+  next.has(stage) ? next.delete(stage) : next.add(stage)
+  folded.value = next
+}
+function moveMenu(item: JobApplication): MenuItem[] {
+  return [{ type: 'label', label: '移动到' }, ...STAGES.filter(stage => stage.value !== item.stage)
+    .map(stage => ({ label: stage.label, onSelect: () => emit('move', item.id, stage.value) }))]
+}
 
 function onDragStart(event: DragEvent, item: JobApplication): void {
   draggingId.value = item.id
@@ -54,7 +79,26 @@ function reset(): void {
 </script>
 
 <template>
-  <div class="board" :class="{ 'is-dragging': draggingId, 'is-closed-open': !closedFolded }" role="list" aria-label="投递看板">
+  <div v-if="narrow" class="stage-list" aria-label="投递列表（按阶段）">
+    <section v-for="column in columns" :key="column.value" class="stage-list__group">
+      <button type="button" class="stage-list__head" :aria-expanded="!folded.has(column.value)" @click="toggleGroup(column.value)">
+        <span class="board__dot" :class="`is-${column.value.toLowerCase()}`" aria-hidden="true" />
+        <strong>{{ column.label }}</strong>
+        <span class="board__count">{{ column.items.length }}</span>
+        <ChevronDown :size="16" class="stage-list__chevron" :class="{ 'is-folded': folded.has(column.value) }" aria-hidden="true" />
+      </button>
+      <ul v-if="!folded.has(column.value) && column.items.length" class="stage-list__items">
+        <li v-for="item in column.items" :key="item.id">
+          <ApplicationCard :application="item" :now="now" @open="emit('open', item.id)" />
+          <UiDropdownMenu :items="moveMenu(item)" align="end">
+            <button type="button" class="stage-list__move" :aria-label="`把「${item.company}」移动到其他阶段`"><MoveRight :size="15" />移动到…</button>
+          </UiDropdownMenu>
+        </li>
+      </ul>
+      <p v-else-if="!folded.has(column.value)" class="board__empty">暂无</p>
+    </section>
+  </div>
+  <div v-else class="board" :class="{ 'is-dragging': draggingId, 'is-closed-open': !closedFolded }" role="list" aria-label="投递看板">
     <section
       v-for="column in columns"
       :key="column.value"
@@ -262,7 +306,53 @@ function reset(): void {
   position: absolute;
 }
 
+.stage-list { display: grid; gap: var(--space-2); }
+
+.stage-list__group {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--surface-2);
+}
+
+.stage-list__head {
+  width: 100%;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 14px;
+  border: 0;
+  color: var(--text-primary);
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+
+.stage-list__chevron { margin-left: auto; color: var(--text-tertiary); transition: transform 160ms ease; }
+.stage-list__chevron.is-folded { transform: rotate(-90deg); }
+
+.stage-list__items { margin: 0; padding: 0 10px 10px; list-style: none; display: grid; gap: 8px; }
+.stage-list__items li { display: grid; gap: 6px; }
+
+.stage-list__move {
+  justify-self: end;
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 12px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  background: var(--surface-1);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+
+.stage-list .board__empty { padding: 0 14px 12px; }
+
 @media (prefers-reduced-motion: reduce) {
+  .stage-list__chevron { transition: none; }
   .board-card-move,
   .board-card-enter-active,
   .board-card-leave-active { transition: none; }

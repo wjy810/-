@@ -7,6 +7,7 @@ import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
@@ -239,6 +240,114 @@ class JobApplicationIT {
     }
 
     @Test
+    void receiptsSurviveANewLinkTheOwnersOwnOpeningsCanBeTakenOutAndClosingFreesTheSlot() throws Exception {
+        Session owner = seeker();
+        String versionId = frozenVersion(owner);
+        JsonNode created = data(mockMvc.perform(post("/api/v1/job-applications").cookie(owner.cookie())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(Map.of("company", "星图数据", "positionTitle", "数据分析师",
+                                "resumeVersionId", versionId, "createLink", true))))
+                .andExpect(status().isOk()).andReturn());
+        String applicationId = created.path("id").asText();
+        String firstToken = created.path("link").path("token").asText();
+        String firstLink = created.path("link").path("id").asText();
+        // Links made with an application last 60 days by default instead of forever.
+        assertThat(java.time.Instant.parse(created.path("link").path("expiresAt").asText()))
+                .isBetween(java.time.Instant.now().plus(Duration.ofDays(59)), java.time.Instant.now().plus(Duration.ofDays(61)));
+
+        JsonNode hr = view(firstToken, null, "hr-desktop", DESKTOP);
+        view(firstToken, null, "me-on-phone", WECHAT_PHONE);
+        // Opening 投递追踪 registers this browser as the owner's; its later openings are not receipts.
+        MvcResult overviewCall = mockMvc.perform(get("/api/v1/job-applications").cookie(owner.cookie())).andReturn();
+        Cookie device = overviewCall.getResponse().getCookie("jp_owner_device");
+        assertThat(device).isNotNull();
+        assertThat(device.isHttpOnly()).isTrue();
+        assertThat(view(firstToken, null, "my-laptop", DESKTOP, device).path("reason").asText()).isEqualTo("OWNER");
+
+        // 这是我自己打开的: the phone visit was the owner checking the link.
+        JsonNode views = data(mockMvc.perform(get("/api/v1/resume-links/{id}/views", firstLink).cookie(owner.cookie())).andReturn());
+        String phoneView = null;
+        for (JsonNode item : views) if ("WECHAT".equals(item.path("client").asText())) phoneView = item.path("id").asText();
+        mockMvc.perform(post("/api/v1/resume-links/{id}/views/{view}/own", firstLink, phoneView).cookie(owner.cookie()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.viewCount").value(1))
+                .andExpect(jsonPath("$.data.visitorCount").value(1));
+        assertThat(view(firstToken, null, "me-on-phone", WECHAT_PHONE).path("reason").asText()).isEqualTo("OWNER");
+
+        // A new link for the same application: the card still shows the HR visit from the old one.
+        JsonNode second = data(mockMvc.perform(post("/api/v1/resume-links").cookie(owner.cookie()).contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(Map.of("resumeVersionId", versionId, "applicationId", applicationId, "expiresInDays", 30))))
+                .andExpect(status().isOk()).andReturn());
+        view(second.path("token").asText(), null, "hr-desktop", DESKTOP);
+        JsonNode card = data(mockMvc.perform(get("/api/v1/job-applications").cookie(owner.cookie())).andReturn()).path("items").get(0);
+        assertThat(card.path("link").path("viewCount").asInt()).as("the current link alone").isEqualTo(1);
+        assertThat(card.path("receipts").path("views").asInt()).isEqualTo(2);
+        assertThat(card.path("receipts").path("linkCount").asInt()).isEqualTo(2);
+        assertThat(hr.path("recorded").asBoolean()).isTrue();
+
+        // Expiry and contact visibility change in place; the address stays.
+        String secondId = second.path("id").asText();
+        mockMvc.perform(patch("/api/v1/resume-links/{id}", secondId).cookie(owner.cookie()).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"neverExpires\":true,\"hideContact\":true}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.token").value(second.path("token").asText()))
+                .andExpect(jsonPath("$.data.expiresAt").doesNotExist())
+                .andExpect(jsonPath("$.data.hideContact").value(true));
+
+        // Accepting an offer needs an offer; closing frees the link slot two weeks later.
+        int version = card.path("version").asInt();
+        mockMvc.perform(post("/api/v1/job-applications/{id}/stage", applicationId).cookie(owner.cookie())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(Map.of("stage", "CLOSED", "outcome", "ACCEPTED", "expectedVersion", version))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.reason").value("APPLICATION_OUTCOME_NEEDS_OFFER"));
+        stage(owner, applicationId, Map.of("stage", "CLOSED", "outcome", "NO_RESPONSE", "expectedVersion", version));
+        String expires = jdbc.queryForObject("SELECT expires_at FROM resume_share_links WHERE id=?", String.class, secondId);
+        assertThat(java.sql.Timestamp.valueOf(expires).toInstant())
+                .isBetween(java.time.Instant.now().plus(Duration.ofDays(13)), java.time.Instant.now().plus(Duration.ofDays(15)));
+    }
+
+    @Test
+    void aDoneNextStepStopsBeingOverdueAndDeletingArchivesUntilRestored() throws Exception {
+        Session owner = seeker();
+        JsonNode created = data(mockMvc.perform(post("/api/v1/job-applications").cookie(owner.cookie())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(Map.of("company", "拾光电商", "positionTitle", "数据分析师",
+                                "nextStep", "一面", "nextStepAt", java.time.Instant.now().minus(Duration.ofDays(2)).toString()))))
+                .andExpect(status().isOk()).andReturn());
+        String id = created.path("id").asText();
+        mockMvc.perform(post("/api/v1/job-applications").cookie(owner.cookie()).contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(Map.of("company", "合成科技", "positionTitle", "后端",
+                                "nextStep", "笔试", "nextStepAt", java.time.Instant.now().plus(Duration.ofDays(2)).toString()))))
+                .andExpect(status().isOk());
+
+        // The dashboard lists what is coming separately from what is overdue.
+        JsonNode summary = data(mockMvc.perform(get("/api/v1/workspace/overview").cookie(owner.cookie())).andReturn()).path("applications");
+        assertThat(summary.path("nextSteps").findValuesAsText("company")).containsExactly("合成科技");
+        assertThat(summary.path("overdueSteps").findValuesAsText("company")).containsExactly("拾光电商");
+
+        JsonNode done = data(mockMvc.perform(post("/api/v1/job-applications/{id}/next-step/done", id).cookie(owner.cookie())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(Map.of("note", "进入二面", "expectedVersion", created.path("version").asInt()))))
+                .andExpect(status().isOk()).andReturn());
+        assertThat(done.path("nextStepAt").isMissingNode() || done.path("nextStepAt").isNull()).isTrue();
+        JsonNode overview = data(mockMvc.perform(get("/api/v1/job-applications").cookie(owner.cookie())).andReturn());
+        assertThat(overview.path("stats").path("overdue").asInt()).isZero();
+        JsonNode detail = data(mockMvc.perform(get("/api/v1/job-applications/{id}", id).cookie(owner.cookie())).andReturn());
+        assertThat(detail.path("events").findValuesAsText("detail")).contains("完成：一面。进入二面");
+
+        mockMvc.perform(post("/api/v1/job-applications/{id}/archive", id).cookie(owner.cookie())).andExpect(status().isOk());
+        overview = data(mockMvc.perform(get("/api/v1/job-applications").cookie(owner.cookie())).andReturn());
+        assertThat(overview.path("items").findValuesAsText("company")).containsExactly("合成科技");
+        assertThat(overview.path("archivedCount").asInt()).isEqualTo(1);
+        mockMvc.perform(get("/api/v1/job-applications/archived").cookie(owner.cookie()))
+                .andExpect(jsonPath("$.data[0].company").value("拾光电商"));
+        mockMvc.perform(post("/api/v1/job-applications/{id}/restore", id).cookie(owner.cookie())).andExpect(status().isOk());
+        assertThat(data(mockMvc.perform(get("/api/v1/job-applications").cookie(owner.cookie())).andReturn())
+                .path("items").size()).isEqualTo(2);
+    }
+
+    @Test
     void aNextStepWithinADayIsRemindedOnceAndAgainWhenItMoves() throws Exception {
         Session owner = seeker();
         Instant now = Instant.now().truncatedTo(ChronoUnit.SECONDS);
@@ -338,16 +447,18 @@ class JobApplicationIT {
                 String.class, owner.accountId());
     }
 
-    private JsonNode view(String token, Cookie cookie, String address, String userAgent) throws Exception {
+    /**
+     * One browser opening the link. {@code reader} names the browser: it becomes that browser's jp_reader cookie,
+     * which is how repeat visits are told from new readers (the address is not used).
+     */
+    private JsonNode view(String token, Cookie cookie, String reader, String userAgent, Cookie... extra) throws Exception {
         MockHttpServletRequestBuilder request = post("/api/v1/public/resume-links/{token}/views", token)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"referrer\":\"https://mail.example.com/inbox\"}")
                 .header("User-Agent", userAgent)
-                .with(servlet -> {
-                    servlet.setRemoteAddr(address);
-                    return servlet;
-                });
+                .cookie(new Cookie("jp_reader", "reader-" + reader.replace('.', '-') + "-0000000000"));
         if (cookie != null) request.cookie(cookie);
+        for (Cookie value : extra) request.cookie(value);
         return data(mockMvc.perform(request).andExpect(status().isOk()).andReturn());
     }
 

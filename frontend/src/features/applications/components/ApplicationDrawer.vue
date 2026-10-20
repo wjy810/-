@@ -2,12 +2,13 @@
 /** One application in full: its stage, the resume link's receipts, what happened and when. */
 import { computed, ref, shallowRef, watch } from 'vue'
 import {
-  ArrowRight, ArrowUpRight, BellRing, Check, Copy, ExternalLink, Eye, FileText, Flag, Link2, Link2Off, Mic, Monitor, Pencil,
-  RefreshCw, Smartphone, Tablet, Target, Trash2, X,
+  Archive, ArrowRight, ArrowUpRight, BellRing, Check, CheckCircle2, Copy, ExternalLink, Eye, FileText, Flag, Link2, Link2Off,
+  Mic, Monitor, Pencil, RefreshCw, Settings2, Smartphone, Tablet, Target, UserCheck, X,
 } from 'lucide-vue-next'
 import UiBadge from '@/shared/ui/UiBadge.vue'
 import UiButton from '@/shared/ui/UiButton.vue'
 import UiCheckbox from '@/shared/ui/UiCheckbox.vue'
+import UiInput from '@/shared/ui/UiInput.vue'
 import UiDrawer from '@/shared/ui/UiDrawer.vue'
 import UiErrorState from '@/shared/ui/UiErrorState.vue'
 import UiIllustration from '@/shared/ui/UiIllustration.vue'
@@ -19,15 +20,18 @@ import { errorMessage } from '@/shared/api/types'
 import { copyText } from '@/shared/lib/clipboard'
 import { formatRelative, formatWhen } from '@/shared/lib/datetime'
 import {
-  createResumeLink, deleteApplication, fetchApplication, fetchShareableVersions, moveApplication, revokeResumeLink,
+  archiveApplication, completeNextStep, createResumeLink, fetchApplication, fetchShareableVersions, markOwnView,
+  moveApplication, revokeResumeLink, updateResumeLink,
 } from '../services/applicationsApi'
 import { OUTCOMES, STAGES, channelLabel, clientLabel, deviceLabel, outcomeLabel, readTime, stageLabel } from '../labels'
-import type { ApplicationDetail, ApplicationEvent, ApplicationOutcome, ApplicationStage, JobApplication, ShareableVersion } from '../types'
+import type {
+  ApplicationDetail, ApplicationEvent, ApplicationOutcome, ApplicationStage, JobApplication, LinkViewRecord, ShareableVersion,
+} from '../types'
 import { receiptOf } from '../utils/receipts'
 import { interviewPrep } from '../utils/prep'
 
 const props = defineProps<{ open: boolean; applicationId: string | null }>()
-const emit = defineEmits<{ close: []; changed: [application: JobApplication]; deleted: [id: string]; edit: [application: JobApplication] }>()
+const emit = defineEmits<{ close: []; changed: [application: JobApplication]; archived: [application: JobApplication]; edit: [application: JobApplication] }>()
 
 const detail = shallowRef<ApplicationDetail | null>(null)
 const loading = ref(false)
@@ -38,14 +42,20 @@ const outcome = ref<ApplicationOutcome>('REJECTED')
 const versions = shallowRef<ShareableVersion[]>([])
 const linkVersion = ref('')
 const linkHideContact = ref(false)
-const linkExpiry = ref<string>('none')
+const linkExpiry = ref<string>('60')
 const copied = ref(false)
+/** Settings of the active link, changed in place (same address). */
+const settingsExpiry = ref<string>('keep')
+const settingsHideContact = ref(false)
+const stepDone = ref(false)
+const stepNote = ref('')
 
 const application = computed(() => detail.value?.application ?? null)
 const prep = computed(() => (application.value ? interviewPrep(application.value) : null))
 const link = computed(() => detail.value?.links.find(item => item.status === 'ACTIVE') ?? detail.value?.links[0] ?? null)
 const activeLink = computed(() => (link.value?.status === 'ACTIVE' ? link.value : null))
-const receipt = computed(() => receiptOf(link.value))
+const receipt = computed(() => receiptOf(link.value, new Date(), application.value?.receipts))
+const totals = computed(() => application.value?.receipts ?? null)
 const linkUrl = computed(() => (activeLink.value ? `${window.location.origin}${activeLink.value.path}` : ''))
 const openStages = STAGES.filter(stage => stage.value !== 'CLOSED')
 const versionOptions = computed<SelectOption[]>(() => versions.value.map(item => ({
@@ -54,12 +64,18 @@ const versionOptions = computed<SelectOption[]>(() => versions.value.map(item =>
   description: item.anonymous ? '匿名版' : `冻结于 ${new Date(item.frozenAt).toLocaleDateString('zh-CN')}`,
 })))
 const expiryOptions: SelectOption[] = [
-  { value: 'none', label: '长期有效' },
   { value: '7', label: '7 天' },
   { value: '30', label: '30 天' },
+  { value: '60', label: '60 天（推荐）' },
   { value: '90', label: '90 天' },
+  { value: 'none', label: '长期有效' },
 ]
-const outcomeOptions = OUTCOMES.map(item => ({ value: item.value, label: item.label }))
+const settingsExpiryOptions: SelectOption[] = [{ value: 'keep', label: '有效期不变' },
+  ...expiryOptions.map(item => ({ ...item, label: item.value === 'none' ? '改为长期有效' : `从今天起 ${item.label}` }))]
+/** 接受 / 婉拒 Offer only once an offer was reached; the server refuses it otherwise. */
+const outcomeOptions = computed(() => OUTCOMES
+  .filter(item => application.value?.furthestStage === 'OFFER' || (item.value !== 'ACCEPTED' && item.value !== 'DECLINED'))
+  .map(item => ({ value: item.value, label: item.label })))
 
 async function load(): Promise<void> {
   if (!props.applicationId) return
@@ -68,6 +84,10 @@ async function load(): Promise<void> {
   try {
     detail.value = await fetchApplication(props.applicationId)
     closing.value = false
+    stepDone.value = false
+    stepNote.value = ''
+    settingsExpiry.value = 'keep'
+    settingsHideContact.value = detail.value.links.find(item => item.status === 'ACTIVE')?.hideContact ?? false
   } catch (reason) {
     loadError.value = reason
   } finally {
@@ -129,6 +149,47 @@ async function createLink(): Promise<void> {
   }, '生成链接失败')
 }
 
+async function saveLinkSettings(): Promise<void> {
+  const target = activeLink.value
+  if (!target) return
+  const patch: { expiresInDays?: number; neverExpires?: boolean; hideContact?: boolean } = {}
+  if (settingsExpiry.value === 'none') patch.neverExpires = true
+  else if (settingsExpiry.value !== 'keep') patch.expiresInDays = Number(settingsExpiry.value)
+  if (settingsHideContact.value !== target.hideContact) patch.hideContact = settingsHideContact.value
+  if (!Object.keys(patch).length) { toast.info('设置没有变化'); return }
+  await run('settings', async () => {
+    await updateResumeLink(target.id, patch)
+    await load()
+    if (detail.value) emit('changed', detail.value.application)
+    toast.success('链接设置已更新，地址不变')
+  }, '链接设置更新失败')
+}
+
+async function markOwn(view: LinkViewRecord): Promise<void> {
+  if (!(await confirm({
+    title: '这次是你自己打开的？',
+    message: '这位读者的打开记录会从回执里去掉，之后同一个浏览器再打开也不会计入。',
+    confirmText: '是我自己',
+  }))) return
+  await run(`own-${view.id}`, async () => {
+    await markOwnView(view.linkId, view.id)
+    await load()
+    if (detail.value) emit('changed', detail.value.application)
+    toast.success('回执已更正')
+  }, '标记失败')
+}
+
+async function finishStep(): Promise<void> {
+  const current = application.value
+  if (!current) return
+  await run('step', async () => {
+    const updated = await completeNextStep(current.id, current.version, stepNote.value.trim())
+    emit('changed', updated)
+    await load()
+    toast.success('已记录完成。可以在“编辑信息”里填下一步')
+  }, '记录失败')
+}
+
 async function revoke(): Promise<void> {
   const target = activeLink.value
   if (!target || !(await confirm({
@@ -155,18 +216,13 @@ async function copyLink(): Promise<void> {
   window.setTimeout(() => { copied.value = false }, 2000)
 }
 
-async function remove(): Promise<void> {
+/** Moves the application to the archive; it can be restored from there, or deleted for good. */
+async function archive(): Promise<void> {
   const current = application.value
-  if (!current || !(await confirm({
-    title: `删除「${current.company}」的投递记录？`,
-    message: '时间线、打开记录会一并删除，专属链接立即失效。这个操作不能撤销。',
-    confirmText: '删除',
-    tone: 'danger',
-  }))) return
-  await run('delete', async () => {
-    await deleteApplication(current.id)
-    emit('deleted', current.id)
-  }, '删除失败')
+  if (!current) return
+  await run('archive', async () => {
+    emit('archived', await archiveApplication(current.id))
+  }, '移入归档失败')
 }
 
 function eventText(event: ApplicationEvent): string {
@@ -182,6 +238,10 @@ function eventIcon(event: ApplicationEvent) {
   if (event.type === 'FIRST_VIEWED' || event.type === 'NEW_VISITOR') return Eye
   if (event.type === 'LINK_CREATED') return Link2
   if (event.type === 'LINK_REVOKED') return Link2Off
+  if (event.type === 'LINK_UPDATED') return Settings2
+  if (event.type === 'OWN_VIEW_MARKED') return UserCheck
+  if (event.type === 'NEXT_STEP_DONE') return CheckCircle2
+  if (event.type === 'ARCHIVED' || event.type === 'RESTORED') return Archive
   if (event.type === 'STAGE_CHANGED') return Flag
   return Check
 }
@@ -244,7 +304,7 @@ watch(() => [props.open, props.applicationId] as const, ([open, id]) => {
           <span class="receipt__icon"><Eye :size="18" /></span>
           <div>
             <h3 id="receipt-title">简历回执</h3>
-            <p>{{ receipt.label }}<template v-if="link && link.viewCount"> · {{ receipt.detail }}</template></p>
+            <p>{{ receipt.label }}<template v-if="(totals?.views ?? link?.viewCount ?? 0) > 0"> · {{ receipt.detail }}</template></p>
           </div>
         </header>
 
@@ -260,11 +320,11 @@ watch(() => [props.open, props.applicationId] as const, ([open, id]) => {
           </p>
         </template>
 
-        <dl v-if="link && link.viewCount" class="receipt__stats">
-          <div><dt>打开</dt><dd>{{ link.viewCount }} 次</dd></div>
-          <div><dt>读者</dt><dd>{{ link.visitorCount }} 位</dd></div>
-          <div><dt>累计阅读</dt><dd>{{ readTime(link.readSeconds) }}</dd></div>
-          <div><dt>首次打开</dt><dd>{{ formatRelative(link.firstViewedAt) }}</dd></div>
+        <dl v-if="totals && totals.views" class="receipt__stats">
+          <div><dt>打开</dt><dd>{{ totals.views }} 次</dd></div>
+          <div><dt>读者</dt><dd>{{ totals.visitors }} 位</dd></div>
+          <div><dt>累计阅读</dt><dd>{{ readTime(totals.readSeconds) }}</dd></div>
+          <div><dt>首次打开</dt><dd>{{ formatRelative(totals.firstViewedAt) }}</dd></div>
         </dl>
 
         <ul v-if="detail.views.length" class="receipt__views" aria-label="打开记录">
@@ -273,8 +333,10 @@ watch(() => [props.open, props.applicationId] as const, ([open, id]) => {
             <span class="receipt__who">{{ deviceLabel(view.device) }} · {{ clientLabel(view.client) }}<small v-if="view.referrerHost"> · 来自 {{ view.referrerHost }}</small></span>
             <span class="receipt__read">{{ view.readSeconds ? `读了 ${readTime(view.readSeconds)}` : '刚打开' }}</span>
             <time :datetime="view.startedAt" :title="formatWhen(view.startedAt)">{{ formatRelative(view.startedAt) }}</time>
+            <button type="button" class="receipt__own" :disabled="Boolean(pending)" :aria-label="`${formatRelative(view.startedAt)}这次是我自己打开的`" title="这是我自己打开的" @click="markOwn(view)"><UserCheck :size="14" />是我</button>
           </li>
         </ul>
+        <p v-if="detail.views.length" class="receipt__note">自己点开检查过链接？点“是我”把那次从回执里去掉。在打开过投递追踪的浏览器上，你自己打开不会被计入。</p>
 
         <div v-if="activeLink" class="receipt__actions">
           <UiButton size="sm" variant="secondary" :icon="ExternalLink" :href="activeLink.path" target="_blank">预览对方看到的页面</UiButton>
@@ -286,14 +348,22 @@ watch(() => [props.open, props.applicationId] as const, ([open, id]) => {
             <UiIllustration name="resume-shared" :size="72" />
             <p class="receipt__pitch"><BellRing :size="14" />给这家公司一条专属链接：对方打开时提醒你，还能看到阅读时长。</p>
           </div>
-          <p v-else class="receipt__pitch">换简历版本或调整设置，会生成新链接并停用旧链接。</p>
+          <div v-else class="receipt__settings">
+            <p class="receipt__pitch"><Settings2 :size="14" />调整这条链接（地址不变，已发出的链接继续可用）</p>
+            <div class="receipt__form">
+              <UiSelect v-model="settingsExpiry" :options="settingsExpiryOptions" size="sm" aria-label="调整有效期" />
+              <UiButton size="sm" variant="secondary" :pending="pending === 'settings'" @click="saveLinkSettings">保存设置</UiButton>
+            </div>
+            <UiCheckbox v-model="settingsHideContact" label="隐藏手机号、邮箱和照片" />
+            <p class="receipt__pitch">要换一份简历版本，就生成新链接（旧链接会停用，打开记录保留）。</p>
+          </div>
           <p v-if="!versions.length" class="receipt__note">还没有冻结的简历版本。先在简历工作台导出一次 PDF。</p>
           <template v-else>
             <div class="receipt__form">
               <UiSelect v-model="linkVersion" :options="versionOptions" size="sm" aria-label="分享的简历版本" />
               <UiSelect v-model="linkExpiry" :options="expiryOptions" size="sm" aria-label="有效期" />
             </div>
-            <UiCheckbox v-model="linkHideContact" label="隐藏手机号、邮箱和照片" />
+            <UiCheckbox v-if="!activeLink" v-model="linkHideContact" label="隐藏手机号、邮箱和照片" />
             <UiButton size="sm" :variant="activeLink ? 'secondary' : 'primary'" :icon="activeLink ? RefreshCw : Link2" :pending="pending === 'link'" :disabled="!linkVersion" @click="createLink">
               {{ activeLink ? '换一个新链接' : '生成专属链接' }}
             </UiButton>
@@ -307,11 +377,17 @@ watch(() => [props.open, props.applicationId] as const, ([open, id]) => {
           <div v-if="application.location"><dt>城市</dt><dd>{{ application.location }}</dd></div>
           <div v-if="application.appliedOn"><dt>投递日期</dt><dd>{{ application.appliedOn }}</dd></div>
           <div v-if="application.salaryText"><dt>薪资</dt><dd>{{ application.salaryText }}</dd></div>
-          <div v-if="application.nextStep || application.nextStepAt"><dt>下一步</dt><dd>{{ application.nextStep || '下一步' }}<template v-if="application.nextStepAt"> · {{ formatWhen(application.nextStepAt) }}</template></dd></div>
+          <div v-if="application.nextStep || application.nextStepAt"><dt>下一步</dt><dd>{{ application.nextStep || '下一步' }}<template v-if="application.nextStepAt"> · {{ formatWhen(application.nextStepAt) }}</template>
+            <button v-if="!stepDone" type="button" class="step-done" @click="stepDone = true"><CheckCircle2 :size="13" />已完成</button></dd></div>
           <div v-if="application.resumeTitle"><dt>简历</dt><dd><RouterLink :to="`/resumes/${application.resumeMasterId}/manual`"><FileText :size="13" />{{ application.resumeTitle }}</RouterLink></dd></div>
           <div v-if="application.jobMatchId"><dt>岗位匹配</dt><dd><RouterLink :to="`/job-match/${application.jobMatchId}/report`"><Target :size="13" />{{ application.matchTitle || '查看报告' }}<template v-if="application.matchScore != null"> · {{ application.matchScore }} 分</template></RouterLink></dd></div>
           <div v-if="application.jobUrl"><dt>岗位链接</dt><dd><a :href="application.jobUrl" target="_blank" rel="noopener noreferrer">打开原岗位<ArrowUpRight :size="13" /></a></dd></div>
         </dl>
+        <div v-if="stepDone" class="step-done-form">
+          <UiInput v-model="stepNote" size="sm" :maxlength="200" placeholder="结果（可选），例如：进入二面、等通知" aria-label="下一步的结果" />
+          <UiButton size="sm" :pending="pending === 'step'" @click="finishStep">记录完成</UiButton>
+          <UiButton size="sm" variant="ghost" :icon="X" @click="stepDone = false">取消</UiButton>
+        </div>
         <p v-if="application.notes" class="app-info__notes">{{ application.notes }}</p>
       </section>
 
@@ -328,7 +404,7 @@ watch(() => [props.open, props.applicationId] as const, ([open, id]) => {
     </div>
 
     <template v-if="application" #footer>
-      <UiButton variant="ghost" :icon="Trash2" :pending="pending === 'delete'" @click="remove">删除</UiButton>
+      <UiButton variant="ghost" :icon="Archive" :pending="pending === 'archive'" @click="archive">移入归档</UiButton>
       <UiButton variant="secondary" :icon="Pencil" @click="emit('edit', application)">编辑信息</UiButton>
     </template>
   </UiDrawer>
@@ -568,6 +644,41 @@ watch(() => [props.open, props.applicationId] as const, ([open, id]) => {
   font-variant-numeric: tabular-nums;
 }
 
+.receipt__own {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  min-height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  background: var(--surface-1);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.receipt__own:hover { color: var(--color-primary); border-color: var(--color-primary-border); }
+
+.receipt__settings { display: grid; gap: 8px; }
+
+.step-done {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: 8px;
+  padding: 2px 8px;
+  border: 1px solid color-mix(in srgb, var(--color-success) 35%, var(--border-subtle));
+  border-radius: 999px;
+  color: var(--color-success-text);
+  background: var(--color-success-soft);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.step-done-form { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; }
+.step-done-form :deep(.ui-input) { flex: 1 1 220px; }
+
 .receipt__views {
   list-style: none;
   display: grid;
@@ -580,7 +691,7 @@ watch(() => [props.open, props.applicationId] as const, ([open, id]) => {
 
 .receipt__views li {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  grid-template-columns: auto minmax(0, 1fr) auto auto auto;
   align-items: center;
   gap: var(--space-2);
   padding: 8px 10px;
@@ -754,7 +865,7 @@ watch(() => [props.open, props.applicationId] as const, ([open, id]) => {
 
 @media (max-width: 560px) {
   .receipt__stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .receipt__views li { grid-template-columns: auto minmax(0, 1fr) auto; }
+  .receipt__views li { grid-template-columns: auto minmax(0, 1fr) auto auto; }
   .receipt__read { display: none; }
   .stage-track { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }

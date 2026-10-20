@@ -35,6 +35,16 @@ export type LinkViewRecord = {
   readSeconds: number
 }
 
+/** Every link an application has had, added up: replacing a link keeps the receipts. */
+export type ApplicationReceipts = {
+  linkCount: number
+  views: number
+  visitors: number
+  readSeconds: number
+  firstViewedAt?: string | null
+  lastViewedAt?: string | null
+}
+
 export type JobApplication = {
   id: string
   company: string
@@ -59,7 +69,9 @@ export type JobApplication = {
   version: number
   createdAt: string
   updatedAt: string
+  archivedAt?: string | null
   link?: ResumeLink | null
+  receipts?: ApplicationReceipts | null
 }
 
 export type ApplicationStats = {
@@ -74,11 +86,12 @@ export type ApplicationStats = {
   upcoming: number
 }
 
-export type ApplicationOverview = { items: JobApplication[]; stats: ApplicationStats }
+export type ApplicationOverview = { items: JobApplication[]; stats: ApplicationStats; archivedCount: number }
 
 export type ApplicationEvent = {
   id: string
-  type: 'CREATED' | 'STAGE_CHANGED' | 'LINK_CREATED' | 'LINK_REVOKED' | 'FIRST_VIEWED' | 'NEW_VISITOR' | string
+  type: 'CREATED' | 'STAGE_CHANGED' | 'LINK_CREATED' | 'LINK_REVOKED' | 'LINK_UPDATED' | 'FIRST_VIEWED' | 'NEW_VISITOR'
+    | 'OWN_VIEW_MARKED' | 'NEXT_STEP_DONE' | 'ARCHIVED' | 'RESTORED' | string
   fromStage?: ApplicationStage | null
   toStage?: ApplicationStage | null
   detail?: string | null

@@ -216,7 +216,19 @@ function noticeVisual(type: string) {
                 <strong>{{ step.nextStep }}</strong>
                 <small>{{ step.company }} · {{ formatWhen(step.nextStepAt) }}</small>
               </span>
-              <UiBadge :tone="new Date(step.nextStepAt).getTime() < Date.now() ? 'danger' : 'warning'" size="sm">{{ new Date(step.nextStepAt).getTime() < Date.now() ? '已逾期' : '待办' }}</UiBadge>
+              <UiBadge tone="warning" size="sm">待办</UiBadge>
+            </RouterLink>
+            <RouterLink
+              v-if="data.applications?.overdueSteps?.length"
+              to="/applications"
+              class="progress-row"
+            >
+              <span class="progress-row__icon progress-row__icon--step"><CalendarClock :size="17" /></span>
+              <span class="progress-row__main">
+                <strong>{{ data.applications.overdueSteps.length }} 个下一步已过时间</strong>
+                <small>{{ data.applications.overdueSteps.map(step => step.company).join('、') }} · 完成了就在投递追踪里点“已完成”</small>
+              </span>
+              <UiBadge tone="danger" size="sm">待更新</UiBadge>
             </RouterLink>
             <RouterLink
               v-for="match in data.jobMatches?.recent.slice(0, 3) ?? []"

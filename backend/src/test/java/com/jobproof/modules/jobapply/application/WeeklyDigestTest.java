@@ -22,13 +22,25 @@ class WeeklyDigestTest {
         assertThat(busy.title()).isEqualTo("求职周报：上周投递 3 家，简历被打开 5 次，进入下一轮 1 次");
         assertThat(busy.body()).isEqualTo("合成科技、星图数据、拾光电商 等 4 家公司打开了你的简历。本周安排：10月21日 14:00 合成科技 一面。");
 
+        // Nobody opened anything: no advice to follow up with "the companies that opened your resume".
         var quiet = new WeeklyDigest.Summary(2, 0, List.of(), 0, List.of());
         assertThat(quiet.title()).isEqualTo("求职周报：上周投递 2 家");
-        assertThat(quiet.body()).contains("还没有安排面试或笔试");
+        assertThat(quiet.body()).doesNotContain("打开过简历的公司");
+        var opened = new WeeklyDigest.Summary(1, 2, List.of("合成科技"), 0, List.of());
+        assertThat(opened.body()).contains("合成科技打开了你的简历").contains("可以跟进一下打开过简历的公司");
 
         var onlyPlans = new WeeklyDigest.Summary(0, 0, List.of(), 0, List.of("10月22日 09:00 星图数据 笔试"));
         assertThat(onlyPlans.title()).isEqualTo("求职周报：本周有 1 个安排");
 
         assertThat(new WeeklyDigest.Summary(0, 0, List.of(), 0, List.of()).empty()).isTrue();
+    }
+
+    @Test
+    void onlyForwardMovesCountAsReachingTheNextRound() {
+        assertThat(WeeklyDigest.forward("APPLIED", "INTERVIEW")).isTrue();
+        assertThat(WeeklyDigest.forward(null, "ASSESSMENT")).isTrue();
+        assertThat(WeeklyDigest.forward("OFFER", "INTERVIEW")).as("moved back after a mistake").isFalse();
+        assertThat(WeeklyDigest.forward("INTERVIEW", "INTERVIEW")).isFalse();
+        assertThat(WeeklyDigest.forward("CLOSED", "INTERVIEW")).as("reopened").isFalse();
     }
 }

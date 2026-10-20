@@ -72,7 +72,7 @@ describe('resume links panel', () => {
     await wrapper.get('#general-link-form input').setValue('校友内推群')
     await wrapper.get('#general-link-form').trigger('submit')
     await flushPromises()
-    expect(api.createResumeLink).toHaveBeenCalledWith({ resumeVersionId: 'v9', label: '校友内推群', hideContact: false, expiresInDays: null })
+    expect(api.createResumeLink).toHaveBeenCalledWith({ resumeVersionId: 'v9', label: '校友内推群', hideContact: false, expiresInDays: 60 })
     expect(wrapper.findAll('.link-row').map(row => row.find('strong').text())).toContain('校友内推群')
     expect(wrapper.emitted('changed')).toHaveLength(1)
   })

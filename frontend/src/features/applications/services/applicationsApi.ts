@@ -18,12 +18,24 @@ export const updateApplication = (id: string, write: ApplicationWrite) =>
   api<JobApplication>(`${ROOT}/${encoded(id)}`, { method: 'PUT', ...json(write) })
 export const moveApplication = (id: string, stage: ApplicationStage, expectedVersion: number, outcome?: ApplicationOutcome | null) =>
   api<JobApplication>(`${ROOT}/${encoded(id)}/stage`, { method: 'POST', ...json({ stage, outcome: outcome ?? null, expectedVersion }) })
+/** Permanent; the page only offers it for archived applications. */
 export const deleteApplication = (id: string) => api<{ deleted: boolean }>(`${ROOT}/${encoded(id)}`, { method: 'DELETE' })
+export const archiveApplication = (id: string) => api<JobApplication>(`${ROOT}/${encoded(id)}/archive`, { method: 'POST' })
+export const restoreApplication = (id: string) => api<JobApplication>(`${ROOT}/${encoded(id)}/restore`, { method: 'POST' })
+export const fetchArchivedApplications = () => api<JobApplication[]>(`${ROOT}/archived`)
+export const completeNextStep = (id: string, expectedVersion: number, note?: string) =>
+  api<JobApplication>(`${ROOT}/${encoded(id)}/next-step/done`, { method: 'POST', ...json({ note: note || null, expectedVersion }) })
 
 export const fetchResumeLinks = () => api<ResumeLink[]>(LINKS)
 export const createResumeLink = (command: { resumeVersionId: string; applicationId?: string | null; label?: string | null; hideContact?: boolean; expiresInDays?: number | null }) =>
   api<ResumeLink>(LINKS, { method: 'POST', ...json(command) })
 export const revokeResumeLink = (id: string) => api<ResumeLink>(`${LINKS}/${encoded(id)}/revoke`, { method: 'POST' })
+/** Changes expiry or contact visibility in place; the address and receipts stay. */
+export const updateResumeLink = (id: string, patch: { expiresInDays?: number; neverExpires?: boolean; hideContact?: boolean }) =>
+  api<ResumeLink>(`${LINKS}/${encoded(id)}`, { method: 'PATCH', ...json(patch) })
+/** 这是我自己打开的: removes that reader's visits and leaves them out from now on. */
+export const markOwnView = (linkId: string, viewId: string) =>
+  api<ResumeLink>(`${LINKS}/${encoded(linkId)}/views/${encoded(viewId)}/own`, { method: 'POST' })
 export const fetchLinkViews = (id: string) => api<LinkViewRecord[]>(`${LINKS}/${encoded(id)}/views`)
 
 export const fetchSharedResume = (token: string) => api<SharedResume>(`${PUBLIC}/${encoded(token)}`)

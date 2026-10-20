@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { ApplicationStats, JobApplication, ResumeLink } from '../types.ts'
 import { readTime } from '../labels.ts'
-import { dueOf, funnelOf, receiptOf, sortForColumn } from './receipts.ts'
+import { dueOf, duplicateOf, filterApplications, funnelOf, receiptOf, sortApplications, sortForColumn } from './receipts.ts'
 
 const NOW = new Date('2026-10-18T08:00:00Z')
 
@@ -56,4 +56,42 @@ test('reading time is short and human', () => {
   assert.equal(readTime(42), '42 秒')
   assert.equal(readTime(95), '1 分 35 秒')
   assert.equal(readTime(1800), '30 分钟')
+})
+
+function application(patch: Partial<JobApplication> = {}): JobApplication {
+  return {
+    id: 'a', company: '合成科技', positionTitle: 'Java 后端', channel: 'REFERRAL', stage: 'APPLIED', furthestStage: 'APPLIED',
+    version: 0, createdAt: '2026-10-10T08:00:00Z', updatedAt: '2026-10-10T08:00:00Z', ...patch,
+  }
+}
+
+test('a card counts receipts across every link the application has had', () => {
+  const current = link({ viewCount: 1, visitorCount: 1, readSeconds: 20, lastViewedAt: '2026-10-18T07:30:00Z' })
+  const receipt = receiptOf(current, NOW, { linkCount: 2, views: 4, visitors: 3, readSeconds: 300, lastViewedAt: '2026-10-18T07:30:00Z' })
+  assert.equal(receipt.label, '已打开 4 次 · 3 位读者')
+  assert.match(receipt.detail, /含之前的 1 条链接/)
+  assert.equal(receiptOf(link(), NOW, { linkCount: 1, views: 0, visitors: 0, readSeconds: 0 }).label, '还没有被打开')
+})
+
+test('the same company and role within 30 days looks like a duplicate', () => {
+  const items = [application({ id: 'old', company: '合成 科技', positionTitle: 'java 后端', createdAt: '2026-10-01T00:00:00Z' })]
+  assert.equal(duplicateOf(items, '合成科技', 'Java 后端', NOW)?.id, 'old')
+  assert.equal(duplicateOf(items, '合成科技', '前端', NOW), null)
+  assert.equal(duplicateOf([application({ createdAt: '2026-08-01T00:00:00Z' })], '合成科技', 'Java 后端', NOW), null, 'older than 30 days')
+  assert.equal(duplicateOf(items, '合成科技', 'Java 后端', NOW, 'old'), null, 'editing that same record')
+})
+
+test('filters narrow by stage, channel, overdue steps and opened resumes; sorts are stable', () => {
+  const items = [
+    application({ id: 'overdue', nextStepAt: '2026-10-17T00:00:00Z', appliedOn: '2026-10-02' }),
+    application({ id: 'opened', company: '星图', channel: 'JOB_BOARD', stage: 'INTERVIEW', receipts: { linkCount: 1, views: 2, visitors: 1, readSeconds: 10 }, appliedOn: '2026-10-05', updatedAt: '2026-10-15T00:00:00Z' }),
+    application({ id: 'closed', company: '拾光', stage: 'CLOSED', nextStepAt: '2026-10-01T00:00:00Z' }),
+  ]
+  const all = { stage: 'ALL' as const, channel: 'ALL', overdue: false, opened: false }
+  assert.deepEqual(filterApplications(items, { ...all, overdue: true }, NOW).map(item => item.id), ['overdue'])
+  assert.deepEqual(filterApplications(items, { ...all, opened: true }, NOW).map(item => item.id), ['opened'])
+  assert.deepEqual(filterApplications(items, { ...all, channel: 'JOB_BOARD' }, NOW).map(item => item.id), ['opened'])
+  assert.deepEqual(filterApplications(items, { ...all, stage: 'CLOSED' }, NOW).map(item => item.id), ['closed'])
+  assert.deepEqual(sortApplications(items, 'APPLIED').map(item => item.id).slice(0, 2), ['opened', 'overdue'])
+  assert.deepEqual(sortApplications(items, 'UPDATED')[0]!.id, 'opened')
 })

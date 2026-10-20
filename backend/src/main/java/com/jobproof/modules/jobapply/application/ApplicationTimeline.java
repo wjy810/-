@@ -15,6 +15,11 @@ public class ApplicationTimeline {
     static final String LINK_REVOKED = "LINK_REVOKED";
     static final String FIRST_VIEWED = "FIRST_VIEWED";
     static final String NEW_VISITOR = "NEW_VISITOR";
+    static final String LINK_UPDATED = "LINK_UPDATED";
+    static final String OWN_VIEW_MARKED = "OWN_VIEW_MARKED";
+    static final String NEXT_STEP_DONE = "NEXT_STEP_DONE";
+    static final String ARCHIVED = "ARCHIVED";
+    static final String RESTORED = "RESTORED";
 
     private static final int MAX_DETAIL = 300;
 

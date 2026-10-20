@@ -3,7 +3,7 @@
  * stays factual — an opening is a signal, not a promise of an interview.
  */
 import { formatRelative } from '../../../shared/lib/datetime.ts'
-import type { ApplicationStats, JobApplication, ResumeLink } from '../types'
+import type { ApplicationReceipts, ApplicationStage, ApplicationStats, JobApplication, ResumeLink } from '../types'
 import { readTime } from '../labels.ts'
 
 export type ReceiptTone = 'fresh' | 'seen' | 'waiting' | 'off' | 'none'
@@ -11,15 +11,24 @@ export type Receipt = { tone: ReceiptTone; label: string; detail: string }
 
 const DAY = 24 * 60 * 60 * 1000
 
-export function receiptOf(link: ResumeLink | null | undefined, now: Date = new Date()): Receipt {
+/**
+ * {@code totals}: an application's receipts across all its links. Without them the current link alone is used
+ * (a general link outside any application).
+ */
+export function receiptOf(link: ResumeLink | null | undefined, now: Date = new Date(),
+  totals?: ApplicationReceipts | null): Receipt {
   if (!link) return { tone: 'none', label: '未附简历链接', detail: '生成专属链接后，对方打开时你会收到提醒' }
-  if (link.viewCount > 0 && link.lastViewedAt) {
-    const recent = now.getTime() - new Date(link.lastViewedAt).getTime() < DAY
-    const readers = link.visitorCount > 1 ? ` · ${link.visitorCount} 位读者` : ''
+  const views = totals?.views ?? link.viewCount
+  const visitors = totals?.visitors ?? link.visitorCount
+  const lastViewedAt = totals ? totals.lastViewedAt : link.lastViewedAt
+  if (views > 0 && lastViewedAt) {
+    const recent = now.getTime() - new Date(lastViewedAt).getTime() < DAY
+    const readers = visitors > 1 ? ` · ${visitors} 位读者` : ''
+    const earlier = totals && totals.linkCount > 1 ? `（含之前的 ${totals.linkCount - 1} 条链接）` : ''
     return {
       tone: recent ? 'fresh' : 'seen',
-      label: `已打开 ${link.viewCount} 次${readers}`,
-      detail: `最近 ${formatRelative(link.lastViewedAt, now)} · 累计阅读 ${readTime(link.readSeconds)}`,
+      label: `已打开 ${views} 次${readers}`,
+      detail: `最近 ${formatRelative(lastViewedAt, now)} · 累计阅读 ${readTime(totals?.readSeconds ?? link.readSeconds)}${earlier}`,
     }
   }
   if (link.status !== 'ACTIVE') return { tone: 'off', label: link.status === 'EXPIRED' ? '链接已过期' : '链接已撤回', detail: '对方无法再打开这份简历' }
@@ -48,6 +57,34 @@ export function sortForColumn(items: JobApplication[]): JobApplication[] {
     if (leftDue !== rightDue) return leftDue - rightDue
     return new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime()
   })
+}
+
+/** Same company and role recorded within the last 30 days: probably the same application typed twice. */
+export function duplicateOf(items: JobApplication[], company: string, positionTitle: string,
+  now: Date = new Date(), ignoreId?: string): JobApplication | null {
+  const key = (value: string) => value.replace(/\s+/g, '').toLowerCase()
+  const since = now.getTime() - 30 * DAY
+  return items.find(item => item.id !== ignoreId && key(item.company) === key(company)
+    && key(item.positionTitle) === key(positionTitle) && new Date(item.createdAt).getTime() >= since) ?? null
+}
+
+export type ApplicationFilter = { stage: ApplicationStage | 'ALL'; channel: string; overdue: boolean; opened: boolean }
+export type ApplicationSort = 'UPDATED' | 'NEXT_STEP' | 'APPLIED' | 'COMPANY'
+
+export function filterApplications(items: JobApplication[], filter: ApplicationFilter, now: Date = new Date()): JobApplication[] {
+  return items.filter(item => (filter.stage === 'ALL' || item.stage === filter.stage)
+    && (!filter.channel || filter.channel === 'ALL' || item.channel === filter.channel)
+    && (!filter.overdue || (item.stage !== 'CLOSED' && Boolean(item.nextStepAt) && new Date(item.nextStepAt!).getTime() < now.getTime()))
+    && (!filter.opened || (item.receipts?.views ?? item.link?.viewCount ?? 0) > 0))
+}
+
+export function sortApplications(items: JobApplication[], sort: ApplicationSort): JobApplication[] {
+  const time = (value?: string | null, fallback = 0) => (value ? new Date(value).getTime() : fallback)
+  const sorted = [...items]
+  if (sort === 'NEXT_STEP') return sortForColumn(sorted)
+  if (sort === 'APPLIED') return sorted.sort((left, right) => time(right.appliedOn) - time(left.appliedOn))
+  if (sort === 'COMPANY') return sorted.sort((left, right) => left.company.localeCompare(right.company, 'zh-CN'))
+  return sorted.sort((left, right) => time(right.updatedAt) - time(left.updatedAt))
 }
 
 export type DueState = { tone: 'overdue' | 'soon' | 'later'; label: string }

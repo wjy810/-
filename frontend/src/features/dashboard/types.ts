@@ -39,7 +39,10 @@ export type RecentCanvas = {
 export type ApplicationsSummary = {
   stats: { total: number; active: number; applied: number; linked: number; opened: number; interviews: number; offers: number; overdue: number; upcoming: number }
   recentOpens: Array<{ id: string; company: string; positionTitle: string; lastViewedAt: string; viewCount: number }>
+  /** Coming up, soonest first. */
   nextSteps: Array<{ id: string; company: string; nextStep: string; nextStepAt: string }>
+  /** Past their time and not marked done, most recent first. */
+  overdueSteps?: Array<{ id: string; company: string; nextStep: string; nextStepAt: string }>
 }
 
 export type WorkspaceOverview = {
