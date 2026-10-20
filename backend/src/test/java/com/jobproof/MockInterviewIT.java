@@ -205,6 +205,34 @@ class MockInterviewIT {
                 .andExpect(jsonPath("$.data.answers[0].answer").value("这是可以校正的语音转写草稿"));
     }
 
+    @Test
+    void aSavedDraftIsOfferedBackAndEmptyDraftsDoNotPileUp() throws Exception {
+        MockCookie owner = registerAndLogin("mock-draft+" + System.nanoTime() + "@example.com");
+        mockMvc.perform(get("/api/v1/mock-interviews/drafts/latest").cookie(owner))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data").doesNotExist());
+        JsonNode first = data(mockMvc.perform(post("/api/v1/mock-interviews/drafts").cookie(owner)).andExpect(status().isOk()).andReturn());
+        JsonNode again = data(mockMvc.perform(post("/api/v1/mock-interviews/drafts").cookie(owner)).andExpect(status().isOk()).andReturn());
+        org.assertj.core.api.Assertions.assertThat(again.path("id").asText()).as("an untouched draft is reused").isEqualTo(first.path("id").asText());
+
+        mockMvc.perform(patch("/api/v1/mock-interviews/drafts/{id}", first.path("id").asText()).cookie(owner)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(Map.of("step", 3, "expectedVersion", first.path("version").asInt(),
+                                "payload", Map.of("positionName", "数据分析师", "interviewType", "PRESSURE")))))
+                .andExpect(status().isOk());
+        JsonNode fresh = data(mockMvc.perform(post("/api/v1/mock-interviews/drafts").cookie(owner)).andExpect(status().isOk()).andReturn());
+        org.assertj.core.api.Assertions.assertThat(fresh.path("id").asText()).isNotEqualTo(first.path("id").asText());
+        mockMvc.perform(get("/api/v1/mock-interviews/drafts/latest").cookie(owner))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.id").value(first.path("id").asText()))
+                .andExpect(jsonPath("$.data.step").value(3))
+                .andExpect(jsonPath("$.data.payload.positionName").value("数据分析师"));
+
+        mockMvc.perform(post("/api/v1/mock-interviews/drafts/{id}/discard", first.path("id").asText()).cookie(owner))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/api/v1/mock-interviews/drafts/latest").cookie(owner))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data").doesNotExist());
+    }
+
     private MockCookie registerAndLogin(String email) throws Exception {
         String body = "{\"email\":\"" + email + "\",\"password\":\"Passw0rd!\"}";
         mockMvc.perform(post("/api/v1/auth/register").contentType(MediaType.APPLICATION_JSON).content(body))

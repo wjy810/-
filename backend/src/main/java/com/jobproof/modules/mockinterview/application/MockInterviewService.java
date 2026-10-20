@@ -6,6 +6,7 @@ import com.jobproof.modules.aigateway.application.AiGatewayException;
 import com.jobproof.modules.mockinterview.application.MockInterviewAiService.Evaluation;
 import com.jobproof.modules.mockinterview.application.MockInterviewAiService.GeneratedQuestions;
 import com.jobproof.modules.mockinterview.application.MockInterviewAiService.QuestionInput;
+import com.jobproof.modules.mockinterview.application.MockInterviewAiService.ThreadTurn;
 import com.jobproof.shared.auth.CurrentAccount;
 import com.jobproof.shared.error.AppException;
 import com.jobproof.shared.page.PageResult;
@@ -36,6 +37,11 @@ public class MockInterviewService {
     private static final Set<String> DIFFICULTIES = Set.of("FOUNDATION", "STANDARD", "ADVANCED");
     private static final Set<String> FEEDBACK_MODES = Set.of("AFTER_EACH", "AFTER_SESSION");
     private static final Set<String> ACTIVE_STATUSES = Set.of("READY", "IN_PROGRESS", "ANSWERING", "ANALYZING", "FEEDBACK", "PAUSED", "OFFLINE", "TRANSCRIPTION_FAILED");
+    /**
+     * The interview page reports in every minute while it is open and visible. A running clock with no report for
+     * this long belongs to a page that is gone, so it stops at the last report instead of running on.
+     */
+    static final java.time.Duration IDLE_LIMIT = java.time.Duration.ofMinutes(3);
 
     private final JdbcTemplate jdbc;
     private final ObjectMapper mapper;
@@ -68,9 +74,19 @@ public class MockInterviewService {
         return new DashboardView(total, completed, text, voice, average, resumable, recent);
     }
 
+    /** Drafts older than this are not offered back; the user has most likely moved on. */
+    static final java.time.Duration DRAFT_OFFER_WINDOW = java.time.Duration.ofDays(30);
+
+    /**
+     * A draft to fill in. An untouched one from an earlier visit is reused, so opening the page repeatedly does
+     * not pile up empty drafts.
+     */
     @Transactional
     public DraftView createDraft(CurrentAccount current) {
         assertSeeker(current);
+        String untouched = jdbc.query("SELECT id FROM mock_interview_drafts WHERE account_id=? AND status='DRAFT' AND payload_json='{}' ORDER BY updated_at DESC LIMIT 1",
+                (rs, n) -> rs.getString("id"), current.accountId()).stream().findFirst().orElse(null);
+        if (untouched != null) return draft(current.accountId(), untouched);
         Instant now = clock.now();
         String id = Ids.newId();
         jdbc.update("INSERT INTO mock_interview_drafts(id,account_id,step_no,status,payload_json,version_no,created_at,updated_at) VALUES(?,?,1,'DRAFT','{}',0,?,?)",
@@ -88,6 +104,24 @@ public class MockInterviewService {
                 step, json(command.payload() == null ? Map.of() : command.payload()), clock.now(), draftId, current.accountId(), existing.version());
         requireUpdated(changed);
         return draft(current.accountId(), draftId);
+    }
+
+    /** The most recent saved, unfinished draft, to offer "继续上次的"; null when there is none. */
+    @Transactional(readOnly = true)
+    public DraftView latestDraft(CurrentAccount current) {
+        assertSeeker(current);
+        String id = jdbc.query("SELECT id FROM mock_interview_drafts WHERE account_id=? AND status='DRAFT' AND payload_json<>'{}' AND updated_at>? ORDER BY updated_at DESC LIMIT 1",
+                (rs, n) -> rs.getString("id"), current.accountId(), clock.now().minus(DRAFT_OFFER_WINDOW)).stream().findFirst().orElse(null);
+        return id == null ? null : draft(current.accountId(), id);
+    }
+
+    /** "重新开始": the draft is set aside and no longer offered. */
+    @Transactional
+    public void discardDraft(CurrentAccount current, String draftId) {
+        assertSeeker(current);
+        draft(current.accountId(), draftId);
+        jdbc.update("UPDATE mock_interview_drafts SET status='DISCARDED',version_no=version_no+1,updated_at=? WHERE id=? AND account_id=? AND status='DRAFT'",
+                clock.now(), draftId, current.accountId());
     }
 
     @Transactional(readOnly = true)
@@ -157,10 +191,10 @@ public class MockInterviewService {
             settings.put("questionGenerationMode", "BASIC_RULES");
             settings.put("aiNotice", "AI 通道暂不可用，本次使用基础题库；回答和进度仍会完整保存。");
         }
-        jdbc.update("INSERT INTO mock_interview_sessions(id,account_id,draft_id,title,position_name,company_name,mode,interview_type,difficulty,duration_minutes,question_count,language_code,feedback_mode,follow_up_enabled,status,current_question_index,elapsed_seconds,resume_snapshot_json,jd_snapshot_json,materials_snapshot_json,settings_snapshot_json,version_no,created_at,updated_at,started_at,resumed_at,paused_at,completed_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,'IN_PROGRESS',0,0,?,?,?,?,0,?,?,?,?,NULL,NULL)",
+        jdbc.update("INSERT INTO mock_interview_sessions(id,account_id,draft_id,title,position_name,company_name,mode,interview_type,difficulty,duration_minutes,question_count,language_code,feedback_mode,follow_up_enabled,status,current_question_index,elapsed_seconds,resume_snapshot_json,jd_snapshot_json,materials_snapshot_json,settings_snapshot_json,version_no,created_at,updated_at,started_at,resumed_at,paused_at,completed_at,last_active_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,'IN_PROGRESS',0,0,?,?,?,?,0,?,?,?,?,NULL,NULL,?)",
                 id, accountId, clean(command.draftId()), title, position, company, mode, type, difficulty,
                 duration, questionCount, blankTo(command.languageCode(), "zh-CN"), feedbackMode,
-                command.followUpEnabled(), json(resume), json(jd), json(materials), json(settings), now, now, now, now);
+                command.followUpEnabled(), json(resume), json(jd), json(materials), json(settings), now, now, now, now, now);
         for (int i = 0; i < seeds.size(); i++) {
             QuestionSeed seed = seeds.get(i);
             jdbc.update("INSERT INTO mock_interview_questions(id,session_id,order_no,question_type,prompt_text,source_label,source_refs_json,status,created_at) VALUES(?,?,?,?,?,?,?,'PENDING',?)",
@@ -244,15 +278,30 @@ public class MockInterviewService {
                         rs.getString("mode"), rs.getString("interview_type"), rs.getString("difficulty"), rs.getString("status"),
                         rs.getInt("current_question_index"), rs.getInt("question_count"), (Integer) rs.getObject("overall_score"),
                         instant(rs.getTimestamp("updated_at")), instant(rs.getTimestamp("completed_at")),
-                        listElapsed(rs.getInt("elapsed_seconds"), instant(rs.getTimestamp("resumed_at"))), rs.getInt("duration_minutes")),
+                        listElapsed(rs.getInt("elapsed_seconds"), instant(rs.getTimestamp("resumed_at")), instant(rs.getTimestamp("last_active_at"))),
+                        rs.getInt("duration_minutes")),
                 pageArgs.toArray());
         return new PageResult<>(items, total == null ? 0 : total, safePage, safeSize);
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public SessionView get(CurrentAccount current, String sessionId) {
-        assertSeeker(current);
+        requireCurrent(current, sessionId);
         return session(current, sessionId);
+    }
+
+    /**
+     * The interview page is open and visible. Keeps the clock running; a page that reports in after its clock was
+     * stopped for being idle gets the paused state back and asks the user to continue.
+     */
+    @Transactional
+    public SessionSummary heartbeat(CurrentAccount current, String sessionId) {
+        SessionRow row = requireCurrent(current, sessionId);
+        if (row.resumedAt() != null) {
+            jdbc.update("UPDATE mock_interview_sessions SET last_active_at=? WHERE id=? AND account_id=?",
+                    clock.now(), row.id(), current.accountId());
+        }
+        return summary(requireOwn(current, sessionId));
     }
 
     @Transactional
@@ -270,8 +319,9 @@ public class MockInterviewService {
         Map<String, Integer> scores;
         Map<String, Object> feedback;
         try {
-            Evaluation evaluation = ai.evaluateAnswer(current.accountId(), row.positionName(),
-                    new QuestionInput(question.questionType(), question.prompt(), question.sourceRefs()), text,
+            Evaluation evaluation = ai.evaluateAnswer(current.accountId(), row.positionName(), row.interviewType(),
+                    new QuestionInput(question.questionType(), question.prompt(), question.sourceRefs()),
+                    thread(row.id(), question), text,
                     row.followUpEnabled(), map(row.resumeSnapshotJson()), map(row.jdSnapshotJson()));
             scores = evaluation.scores();
             feedback = evaluation.feedback();
@@ -290,9 +340,10 @@ public class MockInterviewService {
         jdbc.update("UPDATE mock_interview_questions SET status='COMPLETED' WHERE id=? AND session_id=?", questionId, sessionId);
         int next = Math.max(row.currentQuestionIndex(), question.orderNo());
         boolean complete = next >= row.questionCount() + (askedFollowUp ? 1 : 0);
-        jdbc.update("UPDATE mock_interview_sessions SET current_question_index=?,status=?,version_no=version_no+1,updated_at=?,completed_at=? WHERE id=? AND account_id=?",
-                next, complete ? "COMPLETED" : "IN_PROGRESS", now, complete ? now : null, sessionId, current.accountId());
-        if (complete) stopClock(row, now);
+        // Answering is activity: a clock stopped while the page was away starts again (the report closes it).
+        jdbc.update("UPDATE mock_interview_sessions SET current_question_index=?,status=?,version_no=version_no+1,updated_at=?,completed_at=?,resumed_at=COALESCE(resumed_at,?),paused_at=NULL,last_active_at=? WHERE id=? AND account_id=?",
+                next, complete ? "COMPLETED" : "IN_PROGRESS", now, complete ? now : null, now, now, sessionId, current.accountId());
+        if (complete) stopClock(requireOwn(current, sessionId), now);
         if (complete) generateReport(current.accountId(), sessionId);
         return session(current, sessionId);
     }
@@ -317,6 +368,26 @@ public class MockInterviewService {
                 json(List.of("ANSWER")), now, root);
         jdbc.update("UPDATE mock_interview_sessions SET question_count=question_count+1 WHERE id=?", row.id());
         return true;
+    }
+
+    /**
+     * What came before {@code question} on the same original question: the original and its answer, then each
+     * follow-up already asked and its answer, so a follow-up digs further instead of asking the same thing again.
+     */
+    private List<ThreadTurn> thread(String sessionId, QuestionView question) {
+        String root = question.parentQuestionId() == null ? question.id() : question.parentQuestionId();
+        List<ThreadTurn> turns = new ArrayList<>();
+        for (ReviewRow item : questionsWithAnswers(sessionId)) {
+            QuestionView earlier = item.question();
+            boolean sameThread = earlier.id().equals(root) || root.equals(earlier.parentQuestionId());
+            if (!sameThread || earlier.orderNo() >= question.orderNo()) continue;
+            turns.add(new ThreadTurn(earlier.parentQuestionId() == null ? "QUESTION" : "FOLLOW_UP", earlier.prompt()));
+            if (item.answer() != null && "SUBMITTED".equals(item.answer().status()) && item.answer().answer() != null) {
+                turns.add(new ThreadTurn("ANSWER", item.answer().answer().length() > 1200
+                        ? item.answer().answer().substring(0, 1200) + "…" : item.answer().answer()));
+            }
+        }
+        return turns;
     }
 
     /** 压力面试 digs deeper: two follow-ups per question; other interviews one. */
@@ -353,19 +424,19 @@ public class MockInterviewService {
 
     @Transactional
     public SessionView resume(CurrentAccount current, String sessionId) {
-        SessionRow row = requireOwn(current, sessionId);
+        SessionRow row = requireCurrent(current, sessionId);
         if (!"PAUSED".equals(row.status()) && !"OFFLINE".equals(row.status()) && !"TRANSCRIPTION_FAILED".equals(row.status())) {
             throw AppException.conflict("MOCK_INTERVIEW_NOT_RESUMABLE", "当前面试不在可恢复状态");
         }
         Instant now = clock.now();
-        jdbc.update("UPDATE mock_interview_sessions SET status='IN_PROGRESS',paused_at=NULL,resumed_at=?,updated_at=?,version_no=version_no+1 WHERE id=? AND account_id=?",
-                now, now, row.id(), current.accountId());
+        jdbc.update("UPDATE mock_interview_sessions SET status='IN_PROGRESS',paused_at=NULL,resumed_at=?,last_active_at=?,updated_at=?,version_no=version_no+1 WHERE id=? AND account_id=?",
+                now, now, now, row.id(), current.accountId());
         return session(current, sessionId);
     }
 
     @Transactional
     public ReportView complete(CurrentAccount current, String sessionId) {
-        SessionRow row = requireOwn(current, sessionId);
+        SessionRow row = requireCurrent(current, sessionId);
         if ("ABANDONED".equals(row.status())) throw AppException.conflict("MOCK_INTERVIEW_ABANDONED", "已放弃的记录不能生成报告");
         Instant now = clock.now();
         stopClock(row, now);
@@ -377,7 +448,7 @@ public class MockInterviewService {
 
     @Transactional
     public SessionView abandon(CurrentAccount current, String sessionId) {
-        SessionRow row = requireOwn(current, sessionId);
+        SessionRow row = requireCurrent(current, sessionId);
         if ("COMPLETED".equals(row.status())) throw AppException.conflict("MOCK_INTERVIEW_COMPLETED", "已完成的记录不能放弃");
         Instant now = clock.now();
         stopClock(row, now);
@@ -401,9 +472,10 @@ public class MockInterviewService {
         for (ReviewRow item : pending) {
             Evaluation evaluation;
             try {
-                evaluation = ai.evaluateAnswer(current.accountId(), row.positionName(),
+                evaluation = ai.evaluateAnswer(current.accountId(), row.positionName(), row.interviewType(),
                         new QuestionInput(item.question().questionType(), item.question().prompt(), item.question().sourceRefs()),
-                        item.answer().answer(), row.followUpEnabled(), map(row.resumeSnapshotJson()), map(row.jdSnapshotJson()));
+                        thread(row.id(), item.question()), item.answer().answer(), row.followUpEnabled(),
+                        map(row.resumeSnapshotJson()), map(row.jdSnapshotJson()));
             } catch (AiGatewayException exception) {
                 available = false;
                 break;
@@ -458,8 +530,8 @@ public class MockInterviewService {
         SessionRow source = requireOwn(current, sessionId);
         Instant now = clock.now();
         String id = Ids.newId();
-        jdbc.update("INSERT INTO mock_interview_sessions(id,account_id,draft_id,title,position_name,company_name,mode,interview_type,difficulty,duration_minutes,question_count,language_code,feedback_mode,follow_up_enabled,status,current_question_index,elapsed_seconds,resume_snapshot_json,jd_snapshot_json,materials_snapshot_json,settings_snapshot_json,version_no,created_at,updated_at,started_at,resumed_at,paused_at,completed_at) SELECT ?,account_id,NULL,title,position_name,company_name,mode,interview_type,difficulty,duration_minutes,question_count,language_code,feedback_mode,follow_up_enabled,'IN_PROGRESS',0,0,resume_snapshot_json,jd_snapshot_json,materials_snapshot_json,settings_snapshot_json,0,?,?,?,?,NULL,NULL FROM mock_interview_sessions WHERE id=? AND account_id=?",
-                id, now, now, now, now, sessionId, current.accountId());
+        jdbc.update("INSERT INTO mock_interview_sessions(id,account_id,draft_id,title,position_name,company_name,mode,interview_type,difficulty,duration_minutes,question_count,language_code,feedback_mode,follow_up_enabled,status,current_question_index,elapsed_seconds,resume_snapshot_json,jd_snapshot_json,materials_snapshot_json,settings_snapshot_json,version_no,created_at,updated_at,started_at,resumed_at,paused_at,completed_at,last_active_at) SELECT ?,account_id,NULL,title,position_name,company_name,mode,interview_type,difficulty,duration_minutes,question_count,language_code,feedback_mode,follow_up_enabled,'IN_PROGRESS',0,0,resume_snapshot_json,jd_snapshot_json,materials_snapshot_json,settings_snapshot_json,0,?,?,?,?,NULL,NULL,? FROM mock_interview_sessions WHERE id=? AND account_id=?",
+                id, now, now, now, now, now, sessionId, current.accountId());
         // Follow-ups answered the old answers; the retry asks the original questions and lets new follow-ups come.
         List<QuestionView> sourceQuestions = questionList(sessionId).stream().filter(item -> item.parentQuestionId() == null).toList();
         int order = 0;
@@ -490,9 +562,30 @@ public class MockInterviewService {
     }
 
     private SessionRow requireActive(CurrentAccount current, String sessionId) {
-        SessionRow row = requireOwn(current, sessionId);
+        SessionRow row = requireCurrent(current, sessionId);
         if (!ACTIVE_STATUSES.contains(row.status())) throw AppException.conflict("MOCK_INTERVIEW_NOT_ACTIVE", "当前面试不可继续作答");
+        if (row.resumedAt() != null) {
+            jdbc.update("UPDATE mock_interview_sessions SET last_active_at=? WHERE id=?", clock.now(), row.id());
+        }
         return row;
+    }
+
+    /** {@link #requireOwn}, with a clock left running by a page that is gone stopped first. */
+    private SessionRow requireCurrent(CurrentAccount current, String sessionId) {
+        SessionRow row = requireOwn(current, sessionId);
+        Instant end = idleEnd(row.resumedAt(), row.lastActiveAt());
+        if (end == null || Set.of("PAUSED", "COMPLETED", "ABANDONED").contains(row.status())) return row;
+        long seconds = Math.max(0, java.time.Duration.between(row.resumedAt(), end).getSeconds());
+        jdbc.update("UPDATE mock_interview_sessions SET elapsed_seconds=elapsed_seconds+?,resumed_at=NULL,status='PAUSED',paused_at=?,version_no=version_no+1,updated_at=? WHERE id=? AND account_id=? AND resumed_at IS NOT NULL",
+                (int) Math.min(Integer.MAX_VALUE, seconds), end, clock.now(), row.id(), current.accountId());
+        return requireOwn(current, sessionId);
+    }
+
+    /** When a running clock should have stopped because its page went quiet, or null while it is still live. */
+    private Instant idleEnd(Instant resumedAt, Instant lastActiveAt) {
+        if (resumedAt == null) return null;
+        Instant last = lastActiveAt == null || lastActiveAt.isBefore(resumedAt) ? resumedAt : lastActiveAt;
+        return java.time.Duration.between(last, clock.now()).compareTo(IDLE_LIMIT) > 0 ? last : null;
     }
 
     private SessionRow requireOwn(CurrentAccount current, String sessionId) {
@@ -506,7 +599,8 @@ public class MockInterviewService {
                     rs.getInt("current_question_index"), rs.getInt("elapsed_seconds"), rs.getString("resume_snapshot_json"),
                     rs.getString("jd_snapshot_json"), rs.getString("materials_snapshot_json"), rs.getString("settings_snapshot_json"),
                     rs.getInt("version_no"), instant(rs.getTimestamp("created_at")), instant(rs.getTimestamp("updated_at")),
-                    instant(rs.getTimestamp("completed_at")), instant(rs.getTimestamp("resumed_at"))), sessionId, current.accountId());
+                    instant(rs.getTimestamp("completed_at")), instant(rs.getTimestamp("resumed_at")),
+                    instant(rs.getTimestamp("last_active_at"))), sessionId, current.accountId());
         } catch (EmptyResultDataAccessException exception) {
             throw AppException.user("MOCK_INTERVIEW_NOT_FOUND", "模拟面试不存在");
         }
@@ -626,15 +720,16 @@ public class MockInterviewService {
                 (int) Math.min(Integer.MAX_VALUE, seconds), row.id());
     }
 
-    private int listElapsed(int accumulated, Instant resumedAt) {
-        long running = resumedAt == null ? 0 : Math.max(0, java.time.Duration.between(resumedAt, clock.now()).getSeconds());
+    /** Active time: what was banked, plus the running stretch up to now or, for a page gone quiet, its last report. */
+    private int listElapsed(int accumulated, Instant resumedAt, Instant lastActiveAt) {
+        if (resumedAt == null) return accumulated;
+        Instant idle = idleEnd(resumedAt, lastActiveAt);
+        long running = Math.max(0, java.time.Duration.between(resumedAt, idle == null ? clock.now() : idle).getSeconds());
         return (int) Math.min(Integer.MAX_VALUE, accumulated + running);
     }
 
     private int elapsedSeconds(SessionRow row) {
-        long running = row.resumedAt() == null ? 0
-                : Math.max(0, java.time.Duration.between(row.resumedAt(), clock.now()).getSeconds());
-        return (int) Math.min(Integer.MAX_VALUE, row.elapsedSeconds() + running);
+        return listElapsed(row.elapsedSeconds(), row.resumedAt(), row.lastActiveAt());
     }
 
     private List<ReviewRow> questionsWithAnswers(String sessionId) {
@@ -660,7 +755,7 @@ public class MockInterviewService {
         bank.add(seed("REFLECTION", "回顾最近一年，你主动改进过哪项能力？采取了什么行动，结果如何？", "求职资料库", List.of("CAREER_LIBRARY")));
         bank.add(seed("PROFESSIONAL", "请说明你对" + position + "岗位中最重要的一项专业能力的理解，并给出实践证据。", "岗位能力模型", List.of("JD", "RESUME")));
         bank.add(seed("CAREER", "你希望入职后的前三个月完成什么目标？会如何确认自己正在创造价值？", "岗位目标", List.of("POSITION")));
-        bank.add(seed("FOLLOW_UP", "在你刚才提到的经历中，哪一个决定最难？如果重来一次会改变什么？", "动态追问", List.of("ANSWER")));
+        bank.add(seed("PRESSURE", "如果有人质疑你简历里最亮眼的那项成果其实是团队的功劳，你会怎么回应？请说清你个人的贡献边界和证据。", "压力问题", List.of("RESUME")));
         bank.add(seed("EVIDENCE", "选择一项你最有把握的成果，说明证据来源、你的贡献边界和可复核方式。", "简历 · 成果证据", List.of("RESUME", "CAREER_LIBRARY")));
         bank.add(seed("LEARNING", "遇到完全陌生的问题时，你通常如何快速学习并形成可靠判断？", "通用能力", List.of("RESUME")));
         bank.add(seed("RISK", "在这个岗位上你认为最容易被忽略的风险是什么？你会如何提前发现？", "岗位 JD", List.of("JD")));
@@ -693,7 +788,7 @@ public class MockInterviewService {
     private static QuestionSeed seed(String type, String prompt, String source, List<String> refs) { return new QuestionSeed(type, prompt, source, refs); }
     private static int behavioralRank(String value) { return Set.of("BEHAVIORAL", "COLLABORATION", "REFLECTION", "LEARNING").contains(value) ? 0 : 1; }
     private static int professionalRank(String value) { return Set.of("PROFESSIONAL", "PROJECT", "EVIDENCE", "RISK").contains(value) ? 0 : 1; }
-    private static int pressureRank(String value) { return Set.of("PRESSURE", "RISK", "BEHAVIORAL", "FOLLOW_UP").contains(value) ? 0 : 1; }
+    private static int pressureRank(String value) { return Set.of("PRESSURE", "RISK", "EVIDENCE", "BEHAVIORAL").contains(value) ? 0 : 1; }
     private static int average(List<Integer> values, int fallback) { return values.isEmpty() ? fallback : (int) Math.round(values.stream().mapToInt(Integer::intValue).average().orElse(fallback)); }
     private int count(String sql, Object... args) { Integer result = jdbc.queryForObject(sql, Integer.class, args); return result == null ? 0 : result; }
     private static int number(Object value) { return value instanceof Number number ? number.intValue() : Integer.parseInt(String.valueOf(value)); }
@@ -762,7 +857,7 @@ public class MockInterviewService {
             String languageCode, String feedbackMode, boolean followUpEnabled, String status, int currentQuestionIndex,
             int elapsedSeconds, String resumeSnapshotJson, String jdSnapshotJson, String materialsSnapshotJson,
             String settingsSnapshotJson, int version, Instant createdAt, Instant updatedAt, Instant completedAt,
-            Instant resumedAt) {}
+            Instant resumedAt, Instant lastActiveAt) {}
     private record QuestionSeed(String type, String prompt, String sourceLabel, List<String> sourceRefs) {}
     private record ReviewRow(QuestionView question, AnswerView answer, Map<String, Object> feedback,
             Map<String, Integer> scores) {}

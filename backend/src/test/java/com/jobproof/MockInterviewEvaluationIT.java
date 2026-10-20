@@ -3,6 +3,7 @@ package com.jobproof;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.nullable;
@@ -45,7 +46,7 @@ class MockInterviewEvaluationIT {
     void pendingAnswersAreEvaluatedWhenTheModelIsBack() throws Exception {
         when(ai.generateQuestions(anyString(), anyString(), nullable(String.class), anyString(), anyString(), anyInt(), anyMap(), anyMap()))
                 .thenThrow(new AiGatewayException("down", true, false));
-        when(ai.evaluateAnswer(anyString(), anyString(), any(), anyString(), anyBoolean(), anyMap(), anyMap()))
+        when(ai.evaluateAnswer(anyString(), anyString(), anyString(), any(), anyList(), anyString(), anyBoolean(), anyMap(), anyMap()))
                 .thenThrow(new AiGatewayException("down", true, false));
         MockCookie owner = registerAndLogin("mock-eval+" + System.nanoTime() + "@example.com");
         String resumeId = data(mockMvc.perform(post("/api/v1/resumes").cookie(owner)
@@ -89,7 +90,7 @@ class MockInterviewEvaluationIT {
         doReturn(new MockInterviewAiService.Evaluation(
                         Map.of("structure", 80, "relevance", 70, "evidence", 90, "expression", 60, "professional", 70, "overall", 74),
                         feedback, "test-model", "channel", 10, 10))
-                .when(ai).evaluateAnswer(anyString(), anyString(), any(), anyString(), anyBoolean(), anyMap(), anyMap());
+                .when(ai).evaluateAnswer(anyString(), anyString(), anyString(), any(), anyList(), anyString(), anyBoolean(), anyMap(), anyMap());
         mockMvc.perform(post("/api/v1/mock-interviews/sessions/{id}/evaluate", sessionId).cookie(owner))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.evaluated").value(5))
@@ -122,7 +123,7 @@ class MockInterviewEvaluationIT {
         doReturn(new MockInterviewAiService.Evaluation(
                         Map.of("structure", 70, "relevance", 70, "evidence", 70, "expression", 70, "professional", 70, "overall", 70),
                         feedback, "test-model", "channel", 10, 10))
-                .when(ai).evaluateAnswer(anyString(), anyString(), any(), anyString(), anyBoolean(), anyMap(), anyMap());
+                .when(ai).evaluateAnswer(anyString(), anyString(), anyString(), any(), anyList(), anyString(), anyBoolean(), anyMap(), anyMap());
         MockCookie owner = registerAndLogin("mock-follow+" + System.nanoTime() + "@example.com");
 
         JsonNode session = start(owner, true);
@@ -163,7 +164,46 @@ class MockInterviewEvaluationIT {
                 .andExpect(jsonPath("$.data.previous.overallScore").value(70));
     }
 
+    @Test
+    void aPressureFollowUpIsEvaluatedWithTheInterviewTypeAndTheQuestionsEarlierTurns() throws Exception {
+        when(ai.generateQuestions(anyString(), anyString(), nullable(String.class), anyString(), anyString(), anyInt(), anyMap(), anyMap()))
+                .thenThrow(new AiGatewayException("down", true, false));
+        Map<String, Object> feedback = new LinkedHashMap<>();
+        feedback.put("generationMode", "AI_MODEL");
+        feedback.put("strengths", List.of("结论有数据支撑"));
+        feedback.put("improvements", List.of("补充样本是怎么选出来的"));
+        feedback.put("suggestedFollowUp", "3,600 人是怎么来的？谁定的口径？");
+        doReturn(new MockInterviewAiService.Evaluation(
+                        Map.of("structure", 70, "relevance", 70, "evidence", 70, "expression", 70, "professional", 70, "overall", 70),
+                        feedback, "test-model", "channel", 10, 10))
+                .when(ai).evaluateAnswer(anyString(), anyString(), anyString(), any(), anyList(), anyString(), anyBoolean(), anyMap(), anyMap());
+        MockCookie owner = registerAndLogin("mock-pressure+" + System.nanoTime() + "@example.com");
+
+        JsonNode session = start(owner, true, "PRESSURE");
+        String sessionId = session.path("session").path("id").asText();
+        String original = session.path("currentQuestion").path("prompt").asText();
+        org.assertj.core.api.Assertions.assertThat(session.path("questions").findValuesAsText("sourceLabel")).doesNotContain("动态追问");
+        session = answer(owner, sessionId, session);
+        org.assertj.core.api.Assertions.assertThat(session.path("currentQuestion").path("questionType").asText()).isEqualTo("FOLLOW_UP");
+        session = answer(owner, sessionId, session);
+        // 压力面试 allows a second follow-up on the same question.
+        org.assertj.core.api.Assertions.assertThat(session.path("currentQuestion").path("questionType").asText()).isEqualTo("FOLLOW_UP");
+
+        @SuppressWarnings("unchecked")
+        org.mockito.ArgumentCaptor<List<MockInterviewAiService.ThreadTurn>> threads = org.mockito.ArgumentCaptor.forClass(List.class);
+        org.mockito.Mockito.verify(ai, org.mockito.Mockito.times(2)).evaluateAnswer(anyString(), anyString(),
+                org.mockito.ArgumentMatchers.eq("PRESSURE"), any(), threads.capture(), anyString(), anyBoolean(), anyMap(), anyMap());
+        org.assertj.core.api.Assertions.assertThat(threads.getAllValues().get(0)).isEmpty();
+        org.assertj.core.api.Assertions.assertThat(threads.getAllValues().get(1)).extracting(MockInterviewAiService.ThreadTurn::role)
+                .containsExactly("QUESTION", "ANSWER");
+        org.assertj.core.api.Assertions.assertThat(threads.getAllValues().get(1).get(0).text()).isEqualTo(original);
+    }
+
     private JsonNode start(MockCookie owner, boolean followUps) throws Exception {
+        return start(owner, followUps, "COMPREHENSIVE");
+    }
+
+    private JsonNode start(MockCookie owner, boolean followUps, String type) throws Exception {
         String resumeId = data(mockMvc.perform(post("/api/v1/resumes").cookie(owner)
                         .contentType(MediaType.APPLICATION_JSON).content("{\"mode\":\"BLANK\",\"title\":\"追问验收\"}"))
                 .andExpect(status().isOk()).andReturn()).path("id").asText();
@@ -173,7 +213,7 @@ class MockInterviewEvaluationIT {
         command.put("careerFileIds", List.of());
         command.put("positionName", "数据分析师");
         command.put("mode", "TEXT");
-        command.put("interviewType", "COMPREHENSIVE");
+        command.put("interviewType", type);
         command.put("difficulty", "STANDARD");
         command.put("durationMinutes", 20);
         command.put("questionCount", 5);

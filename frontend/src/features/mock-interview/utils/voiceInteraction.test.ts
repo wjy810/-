@@ -4,6 +4,7 @@ import {
   interviewerPitch,
   interviewerVoiceProfile,
   mergeSpeechTranscript,
+  microphoneIssue,
   pickInterviewerVoice,
 } from './voiceInteraction.ts'
 
@@ -39,4 +40,13 @@ test('speech transcript merges confirmed and interim text without broken Chinese
   )
   assert.equal(mergeSpeechTranscript('', '你好 ，世界 。', ''), '你好，世界。')
   assert.equal(mergeSpeechTranscript('同一句回答。', '同一句回答。', ''), '同一句回答。')
+})
+
+test('a microphone failure is told apart: no permission, no device, device busy, insecure page', () => {
+  assert.equal(microphoneIssue({ name: 'NotAllowedError' }), 'denied')
+  assert.equal(microphoneIssue({ name: 'NotFoundError' }), 'missing')
+  assert.equal(microphoneIssue({ name: 'NotReadableError' }), 'busy')
+  assert.equal(microphoneIssue({ name: 'SecurityError' }), 'insecure')
+  assert.equal(microphoneIssue(new TypeError('x'), false), 'insecure')
+  assert.equal(microphoneIssue(new Error('?')), 'unknown')
 })

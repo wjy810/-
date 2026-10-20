@@ -45,6 +45,17 @@ public class MockInterviewController {
         return ApiResponse.ok(service.createDraft(SecurityConfig.currentAccount()));
     }
 
+    @GetMapping("/drafts/latest")
+    public ApiResponse<DraftView> latestDraft() {
+        return ApiResponse.ok(service.latestDraft(SecurityConfig.currentAccount()));
+    }
+
+    @PostMapping("/drafts/{draftId}/discard")
+    public ApiResponse<Void> discardDraft(@PathVariable String draftId) {
+        service.discardDraft(SecurityConfig.currentAccount(), draftId);
+        return ApiResponse.ok(null);
+    }
+
     @GetMapping("/drafts/{draftId}")
     public ApiResponse<DraftView> draft(@PathVariable String draftId) {
         return ApiResponse.ok(service.getDraft(SecurityConfig.currentAccount(), draftId));
@@ -115,6 +126,11 @@ public class MockInterviewController {
     @PostMapping("/sessions/{sessionId}/switch-mode")
     public ApiResponse<SessionView> switchMode(@PathVariable String sessionId, @RequestBody ModeRequest request) {
         return ApiResponse.ok(service.switchMode(SecurityConfig.currentAccount(), sessionId, new ModeCommand(request.mode())));
+    }
+
+    @PostMapping("/sessions/{sessionId}/heartbeat")
+    public ApiResponse<SessionSummary> heartbeat(@PathVariable String sessionId) {
+        return ApiResponse.ok(service.heartbeat(SecurityConfig.currentAccount(), sessionId));
     }
 
     @PostMapping("/sessions/{sessionId}/pause")

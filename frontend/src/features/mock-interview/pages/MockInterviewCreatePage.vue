@@ -15,7 +15,9 @@ import { errorMessage } from '@/shared/api/types'
 import { useToastFeedback } from '@/shared/ui/toast'
 import UiErrorState from '@/shared/ui/UiErrorState.vue'
 import { collectPages } from '@/shared/lib/pages'
-import { createMockInterview, createMockInterviewDraft, saveMockInterviewDraft } from '../services/mockInterviewApi'
+import { createMockInterview, createMockInterviewDraft, discardMockInterviewDraft, fetchLatestMockInterviewDraft, saveMockInterviewDraft } from '../services/mockInterviewApi'
+import { formatRelative } from '@/shared/lib/datetime'
+import { MICROPHONE_ISSUE_TEXT, microphoneIssue, type MicrophoneIssue } from '../utils/voiceInteraction'
 import type { MockInterviewCreate, MockInterviewDraft, MockInterviewMode } from '../types'
 import { fetchJobMatch, fetchMatchReport } from '@/features/job-match/services/jobMatchApi'
 import type { JobMatch } from '@/features/job-match/types'
@@ -42,13 +44,22 @@ const linkedMatch = ref<JobMatch | null>(null)
 const microphoneState = ref<CheckState>('idle')
 const speakerState = ref<CheckState>('idle')
 const networkState = ref<CheckState>(navigator.onLine ? 'passed' : 'failed')
+const microphoneProblem = ref<MicrophoneIssue>('denied')
+/** Voice answers are transcribed by the browser; without that nothing said would become text. */
+const recognitionState: CheckState = typeof window !== 'undefined'
+  && ((window as Window & { SpeechRecognition?: unknown; webkitSpeechRecognition?: unknown }).SpeechRecognition
+    || (window as Window & { webkitSpeechRecognition?: unknown }).webkitSpeechRecognition) ? 'passed' : 'failed'
+/** A saved, unfinished draft from an earlier visit, offered until the user continues or starts over. */
+const offeredDraft = ref<MockInterviewDraft | null>(null)
 let testStream: MediaStream | null = null
+const TYPES = ['COMPREHENSIVE', 'BEHAVIORAL', 'PROFESSIONAL', 'PRESSURE', 'QUICK']
 
 const form = reactive<MockInterviewCreate>({
   resumeId: '', taxonomyNodeId: '', taxonomyCategoryId: '', taxonomyGroupId: '',
   careerRecordIds: [], careerFileIds: [], positionName: '', companyName: '', userNote: '',
   mode: (route.query.mode === 'VOICE' ? 'VOICE' : 'TEXT') as MockInterviewMode,
-  interviewType: 'COMPREHENSIVE', difficulty: 'STANDARD', durationMinutes: 30, questionCount: 8,
+  interviewType: typeof route.query.type === 'string' && TYPES.includes(route.query.type) ? route.query.type : 'COMPREHENSIVE',
+  difficulty: 'STANDARD', durationMinutes: 30, questionCount: 8,
   languageCode: 'zh-CN', feedbackMode: 'AFTER_SESSION', followUpEnabled: true, consentConfirmed: false,
   jobMatchId: typeof route.query.jobMatchId === 'string' ? route.query.jobMatchId : undefined,
 })
@@ -69,7 +80,7 @@ const visibleFiles = computed(() => {
 const hiddenMaterials = computed(() => records.value.length + files.value.length - visibleRecords.value.length - visibleFiles.value.length)
 const deviceReady = computed(() => form.mode === 'TEXT'
   ? networkState.value === 'passed'
-  : microphoneState.value === 'passed' && speakerState.value === 'passed' && networkState.value === 'passed')
+  : recognitionState === 'passed' && microphoneState.value === 'passed' && speakerState.value === 'passed' && networkState.value === 'passed')
 
 const steps = [
   { no: 1, label: '选择资料' }, { no: 2, label: '目标岗位' }, { no: 3, label: '面试设置' },
@@ -82,12 +93,16 @@ async function load(): Promise<void> {
   loadError.value = null
   try {
     const jobMatchId = typeof route.query.jobMatchId === 'string' ? route.query.jobMatchId : ''
-    const [resumeItems, recordPage, filePage, draftValue, matchValue, reportValue] = await Promise.all([
+    const prefilled = Boolean(jobMatchId || route.query.company || route.query.position)
+    const [resumeItems, recordPage, filePage, draftValue, matchValue, reportValue, latestDraft] = await Promise.all([
       listResumes(), collectPages((page, size) => fetchCareerRecords({ status: 'ACTIVE', page, size })),
       collectPages((page, size) => fetchCareerFiles({ status: 'ACTIVE', processingStatus: 'READY', page, size })), createMockInterviewDraft(),
       jobMatchId ? fetchJobMatch(jobMatchId) : Promise.resolve(null),
       jobMatchId ? fetchMatchReport(jobMatchId) : Promise.resolve(null),
+      // A visit that brings its own job (from 岗位匹配 or 投递追踪) starts fresh; others may pick up a draft.
+      prefilled ? Promise.resolve(null) : fetchLatestMockInterviewDraft().catch(() => null),
     ])
+    offeredDraft.value = latestDraft && latestDraft.id !== draftValue.id ? latestDraft : null
     resumes.value = resumeItems.filter((item) => item.status !== 'ARCHIVED')
     records.value = recordPage.items.filter((item) => item.confirmed)
     files.value = filePage.items.filter((item) => item.status === 'ACTIVE')
@@ -127,13 +142,61 @@ function applyApplicationPrefill(): void {
 
 function payload(): Record<string, unknown> { return JSON.parse(JSON.stringify(form)) as Record<string, unknown> }
 
+const offeredSummary = computed(() => {
+  const saved = offeredDraft.value
+  if (!saved) return ''
+  const position = typeof saved.payload.positionName === 'string' && saved.payload.positionName.trim() ? saved.payload.positionName.trim() : '还没选岗位'
+  return `${position} · 停在第 ${Math.max(1, Math.min(5, saved.step))} 步「${steps[Math.max(0, Math.min(4, saved.step - 1))]!.label}」 · ${formatRelative(saved.updatedAt)}保存`
+})
+
+/**
+ * Puts a saved draft back into the form. Only known fields are taken, and only references that still exist
+ * (a resume or library item may have been removed since); the consent is asked again.
+ */
+function continueDraft(): void {
+  const saved = offeredDraft.value
+  if (!saved) return
+  const value = saved.payload
+  const text = (key: string, max = 200) => (typeof value[key] === 'string' ? String(value[key]).slice(0, max) : '')
+  const ids = (key: string, known: Set<string>) => (Array.isArray(value[key]) ? (value[key] as unknown[]).map(String).filter(id => known.has(id)) : [])
+  if (resumes.value.some(item => item.id === value.resumeId)) form.resumeId = String(value.resumeId)
+  form.careerRecordIds = ids('careerRecordIds', new Set(records.value.map(item => item.id)))
+  form.careerFileIds = ids('careerFileIds', new Set(files.value.map(item => item.id)))
+  form.positionName = text('positionName', 160)
+  form.companyName = text('companyName', 160)
+  form.userNote = text('userNote', 2000)
+  form.taxonomyNodeId = text('taxonomyNodeId', 64)
+  form.taxonomyCategoryId = text('taxonomyCategoryId', 64)
+  form.taxonomyGroupId = text('taxonomyGroupId', 64)
+  if (value.mode === 'TEXT' || value.mode === 'VOICE') form.mode = value.mode
+  if (typeof value.interviewType === 'string' && TYPES.includes(value.interviewType)) form.interviewType = value.interviewType
+  if (typeof value.difficulty === 'string' && ['FOUNDATION', 'STANDARD', 'ADVANCED'].includes(value.difficulty)) form.difficulty = value.difficulty
+  if ([15, 30, 45, 60].includes(Number(value.durationMinutes))) form.durationMinutes = Number(value.durationMinutes)
+  if (Number(value.questionCount) >= 5 && Number(value.questionCount) <= 15) form.questionCount = Number(value.questionCount)
+  if (value.feedbackMode === 'AFTER_EACH' || value.feedbackMode === 'AFTER_SESSION') form.feedbackMode = value.feedbackMode
+  if (typeof value.followUpEnabled === 'boolean') form.followUpEnabled = value.followUpEnabled
+  form.consentConfirmed = false
+  draft.value = saved
+  // Device checks are not saved: a voice draft past them comes back to the check step.
+  step.value = Math.max(1, Math.min(form.mode === 'VOICE' ? 4 : 5, saved.step))
+  offeredDraft.value = null
+  savedNotice.value = '已恢复上次的草稿'
+}
+
+async function startOver(): Promise<void> {
+  const saved = offeredDraft.value
+  offeredDraft.value = null
+  if (!saved) return
+  try { await discardMockInterviewDraft(saved.id) } catch { /* offered again next time at worst */ }
+}
+
 async function persist(targetStep = step.value): Promise<void> {
   if (!draft.value) return
   saving.value = true
   savedNotice.value = ''
   try {
     draft.value = await saveMockInterviewDraft(draft.value.id, targetStep, payload(), draft.value.version)
-    savedNotice.value = '草稿已保存'
+    savedNotice.value = '草稿已保存，下次打开会提示继续'
   } catch (reason) {
     pageError.value = errorMessage(reason, '草稿保存失败')
   } finally {
@@ -145,7 +208,11 @@ function validateCurrent(): boolean {
   pageError.value = ''
   if (step.value === 1 && !form.resumeId) pageError.value = '请先选择一份简历作为主要资料。'
   if (step.value === 2 && !form.positionName.trim()) pageError.value = '请选择目标岗位。'
-  if (step.value === 4 && !deviceReady.value) pageError.value = form.mode === 'VOICE' ? '请完成麦克风、扬声器和网络检测。' : '当前网络不可用，请恢复连接后继续。'
+  if (step.value === 4 && !deviceReady.value) {
+    pageError.value = form.mode === 'TEXT' ? '当前网络不可用，请恢复连接后继续。'
+      : recognitionState !== 'passed' ? '当前浏览器不能把语音转成文字，请换用 Chrome 或 Edge，或改为文字模拟。'
+        : '请完成麦克风、扬声器和网络检测。'
+  }
   return !pageError.value
 }
 
@@ -202,7 +269,8 @@ async function testMicrophone(): Promise<void> {
     const track = testStream.getAudioTracks()[0]
     microphoneState.value = track?.readyState === 'live' ? 'passed' : 'failed'
     window.setTimeout(() => { testStream?.getTracks().forEach((item) => item.stop()); testStream = null }, 1800)
-  } catch {
+  } catch (reason) {
+    microphoneProblem.value = microphoneIssue(reason, Boolean(navigator.mediaDevices?.getUserMedia))
     microphoneState.value = 'failed'
   }
 }
@@ -262,6 +330,7 @@ onBeforeUnmount(() => { testStream?.getTracks().forEach((track) => track.stop())
           <li v-for="item in steps" :key="item.no" :class="{ active: step === item.no, done: step > item.no }"><span><Check v-if="step > item.no" :size="15" /><template v-else>{{ item.no }}</template></span><strong>{{ item.label }}</strong></li>
         </ol>
         <div v-if="linkedMatch" class="mi-linked-match"><ShieldCheck :size="17" /><span><strong>已关联岗位匹配报告</strong><small>{{ linkedMatch.title }}<template v-if="linkedMatch.company"> · {{ linkedMatch.company }}</template>，出题将使用已冻结的要求、优势、缺口和面试主题。</small></span></div>
+        <div v-if="offeredDraft && !loading" class="mi-draft-offer" role="status" data-testid="draft-offer"><Save :size="17" /><span><strong>有一份没完成的创建</strong><small>{{ offeredSummary }}</small></span><div><button class="mi-secondary" type="button" @click="startOver">重新开始</button><button class="mi-primary" type="button" @click="continueDraft">继续上次的</button></div></div>
         <section v-if="loading" class="mi-card mi-loading"><span><LoaderCircle class="mi-spin" :size="20" />正在准备创建流程</span></section>
         <UiErrorState v-else-if="loadError" class="mi-card" :error="loadError" title="创建面试所需的资料读取失败" @retry="load" />
 
@@ -299,8 +368,8 @@ onBeforeUnmount(() => { testStream?.getTracks().forEach((track) => track.stop())
           <section v-else-if="step === 3" class="mi-step-content">
             <header><h1>设置面试方式与难度</h1><p>配置会冻结到本次训练，可在权限失败时由语音切换为文字</p></header>
             <div class="mi-settings-layout">
-              <section class="mi-card mi-settings-modes"><h2>面试模式</h2><div class="mi-choice-grid is-two"><button type="button" :class="{ selected: form.mode === 'TEXT' }" @click="form.mode = 'TEXT'"><span class="radio"><Check v-if="form.mode === 'TEXT'" :size="11" /></span><MessageCircleIcon /><strong>文字模拟 <em>推荐</em></strong><small>纯文字问答，支持草稿、快捷键与逐题反馈</small></button><button type="button" :class="{ selected: form.mode === 'VOICE' }" @click="form.mode = 'VOICE'"><span class="radio"><Check v-if="form.mode === 'VOICE'" :size="11" /></span><Mic :size="31" /><strong>语音模拟</strong><small>口述回答，支持录音、实时转写和文字回退</small></button></div><hr /><h2>面试类型</h2><div class="mi-choice-grid is-four"><button v-for="item in [{v:'COMPREHENSIVE',n:'综合面试',d:'综合能力与岗位相关性'},{v:'BEHAVIORAL',n:'行为面试',d:'沟通动机与职业发展'},{v:'PROFESSIONAL',n:'专业面试',d:'专业技能与技术能力'},{v:'PRESSURE',n:'压力面试',d:'高压追问与稳定表达'}]" :key="item.v" type="button" :class="{ selected: form.interviewType === item.v }" @click="form.interviewType = item.v"><span class="radio"><Check v-if="form.interviewType === item.v" :size="11" /></span><BriefcaseBusiness :size="25" /><strong>{{ item.n }}</strong><small>{{ item.d }}</small></button></div></section>
-              <section class="mi-card mi-parameters"><h2>训练参数</h2><label><span>面试时长</span><UiSelect v-model="form.durationMinutes" aria-label="面试时长" placeholder="面试时长"><option :value="15">15 分钟 · 快速热身</option><option :value="30">30 分钟 · 标准训练</option><option :value="45">45 分钟 · 深度训练</option><option :value="60">60 分钟 · 完整模拟</option></UiSelect></label><label><span>问题数量</span><UiSelect v-model="form.questionCount" aria-label="问题数量" placeholder="问题数量"><option :value="5">5 题</option><option :value="8">8 题</option><option :value="10">10 题</option><option :value="15">15 题</option></UiSelect></label><fieldset><legend>面试难度</legend><div class="mi-segment"><button type="button" :class="{ active: form.difficulty === 'FOUNDATION' }" @click="form.difficulty = 'FOUNDATION'">入门</button><button type="button" :class="{ active: form.difficulty === 'STANDARD' }" @click="form.difficulty = 'STANDARD'">标准</button><button type="button" :class="{ active: form.difficulty === 'ADVANCED' }" @click="form.difficulty = 'ADVANCED'">挑战</button></div></fieldset><label><span>语言</span><UiSelect v-model="form.languageCode" aria-label="面试语言" placeholder="面试语言"><option value="zh-CN">中文</option><option value="en-US">English</option></UiSelect></label><fieldset><legend>AI 反馈时机</legend><div class="mi-segment"><button type="button" :class="{ active: form.feedbackMode === 'AFTER_EACH' }" @click="form.feedbackMode = 'AFTER_EACH'">每题后</button><button type="button" :class="{ active: form.feedbackMode === 'AFTER_SESSION' }" @click="form.feedbackMode = 'AFTER_SESSION'">全部结束后</button></div></fieldset><label class="mi-toggle"><span><strong>动态追问</strong><small>{{ form.interviewType === 'PRESSURE' ? '回答后当场追问，每题最多 2 次' : '回答后当场追问，每题最多 1 次' }}；关闭则只答原定题目</small></span><input v-model="form.followUpEnabled" type="checkbox" /><i /></label></section>
+              <section class="mi-card mi-settings-modes"><h2>面试模式</h2><div class="mi-choice-grid is-two"><button type="button" :class="{ selected: form.mode === 'TEXT' }" @click="form.mode = 'TEXT'"><span class="radio"><Check v-if="form.mode === 'TEXT'" :size="11" /></span><MessageCircleIcon /><strong>文字模拟 <em>推荐</em></strong><small>纯文字问答，支持草稿、快捷键与逐题反馈</small></button><button type="button" :class="{ selected: form.mode === 'VOICE' }" @click="form.mode = 'VOICE'"><span class="radio"><Check v-if="form.mode === 'VOICE'" :size="11" /></span><Mic :size="31" /><strong>语音模拟</strong><small>面试官用语音读题，你口述作答，浏览器实时转成文字；录音不上传</small></button></div><hr /><h2>面试类型</h2><div class="mi-choice-grid is-four"><button v-for="item in [{v:'COMPREHENSIVE',n:'综合面试',d:'综合能力与岗位相关性'},{v:'BEHAVIORAL',n:'行为面试',d:'沟通动机与职业发展'},{v:'PROFESSIONAL',n:'专业面试',d:'专业技能与技术能力'},{v:'PRESSURE',n:'压力面试',d:'高压追问与稳定表达'}]" :key="item.v" type="button" :class="{ selected: form.interviewType === item.v }" @click="form.interviewType = item.v"><span class="radio"><Check v-if="form.interviewType === item.v" :size="11" /></span><BriefcaseBusiness :size="25" /><strong>{{ item.n }}</strong><small>{{ item.d }}</small></button></div></section>
+              <section class="mi-card mi-parameters"><h2>训练参数</h2><label><span>面试时长</span><UiSelect v-model="form.durationMinutes" aria-label="面试时长" placeholder="面试时长"><option :value="15">15 分钟 · 快速热身</option><option :value="30">30 分钟 · 标准训练</option><option :value="45">45 分钟 · 深度训练</option><option :value="60">60 分钟 · 完整模拟</option></UiSelect></label><label><span>问题数量</span><UiSelect v-model="form.questionCount" aria-label="问题数量" placeholder="问题数量"><option :value="5">5 题</option><option :value="8">8 题</option><option :value="10">10 题</option><option :value="15">15 题</option></UiSelect></label><fieldset><legend>面试难度</legend><div class="mi-segment"><button type="button" :class="{ active: form.difficulty === 'FOUNDATION' }" @click="form.difficulty = 'FOUNDATION'">入门</button><button type="button" :class="{ active: form.difficulty === 'STANDARD' }" @click="form.difficulty = 'STANDARD'">标准</button><button type="button" :class="{ active: form.difficulty === 'ADVANCED' }" @click="form.difficulty = 'ADVANCED'">挑战</button></div></fieldset><label><span>语言</span><UiSelect v-model="form.languageCode" aria-label="面试语言" placeholder="面试语言"><option value="zh-CN">中文</option><option value="en-US">English</option></UiSelect></label><fieldset><legend>AI 反馈时机</legend><div class="mi-segment"><button type="button" :class="{ active: form.feedbackMode === 'AFTER_EACH' }" @click="form.feedbackMode = 'AFTER_EACH'">每题后</button><button type="button" :class="{ active: form.feedbackMode === 'AFTER_SESSION' }" @click="form.feedbackMode = 'AFTER_SESSION'">全部结束后</button></div></fieldset><label class="mi-toggle"><span><strong>动态追问</strong><small>{{ form.interviewType === 'PRESSURE' ? '回答后当场追问，每题最多 2 次，紧追证据、数字来源和取舍' : '回答后当场追问，每题最多 1 次' }}；关闭则只答原定题目</small></span><input v-model="form.followUpEnabled" type="checkbox" /><i /></label></section>
             </div>
             <div class="mi-config-preview"><MessageCircleIcon v-if="form.mode === 'TEXT'" /><Mic v-else :size="17" /><strong>{{ modeLabel() }}</strong><span>·</span><BriefcaseBusiness :size="16" /><strong>{{ typeLabel(form.interviewType) }}</strong><span>·</span><Gauge :size="16" /><strong>{{ form.difficulty === 'ADVANCED' ? '挑战' : form.difficulty === 'FOUNDATION' ? '入门' : '标准' }}</strong><span>·</span><Clock3Icon /><strong>{{ form.durationMinutes }} 分钟</strong><span>·</span><FileText :size="16" /><strong>{{ form.questionCount }} 题</strong></div>
           </section>
@@ -308,8 +377,8 @@ onBeforeUnmount(() => { testStream?.getTracks().forEach((track) => track.stop())
           <section v-else-if="step === 4" class="mi-step-content">
             <header><h1>{{ form.mode === 'VOICE' ? '检查语音设备' : '检查文字模拟环境' }}</h1><p>{{ form.mode === 'VOICE' ? '仅申请麦克风权限，不会请求摄像头' : '确认浏览器与网络状态，回答会同时保存在本地和服务端' }}</p></header>
             <div class="mi-device-layout">
-              <section class="mi-card mi-device-card"><span class="mi-device-hero"><MonitorCheck v-if="form.mode === 'TEXT'" :size="48" /><Mic v-else :size="48" /></span><h2>{{ form.mode === 'TEXT' ? '文字回答环境' : '语音回答环境' }}</h2><p>{{ form.mode === 'TEXT' ? '可使用 Ctrl + Enter 提交；断网时继续保留本地草稿。' : '录音采用分片上传；转写失败时可以校正字幕或切换文字回答。' }}</p><div v-if="form.mode === 'VOICE'" class="mi-device-actions"><button class="mi-primary" type="button" :disabled="microphoneState === 'checking'" @click="testMicrophone"><Mic :size="17" />{{ microphoneState === 'passed' ? '重新检测麦克风' : '检测麦克风' }}</button><button class="mi-secondary" type="button" :disabled="speakerState === 'checking'" @click="testSpeaker"><Volume2 :size="17" />测试扬声器</button></div></section>
-              <section class="mi-card mi-check-list"><h2>环境检测结果</h2><div><span><MonitorCheck :size="20" /></span><p><strong>浏览器能力</strong><small>自动保存、键盘操作与本地恢复可用</small></p><em class="passed">通过</em></div><div v-if="form.mode === 'VOICE'"><span><Mic :size="20" /></span><p><strong>麦克风权限</strong><small>只采集音频，不请求相机或视频</small></p><em :class="microphoneState">{{ checkLabel(microphoneState) }}</em></div><div v-if="form.mode === 'VOICE'"><span><Headphones :size="20" /></span><p><strong>扬声器播放</strong><small>用于播放提示音和检测输出设备</small></p><em :class="speakerState">{{ checkLabel(speakerState) }}</em></div><div><span><Gauge :size="20" /></span><p><strong>网络连接</strong><small>断网时保留本地草稿，恢复后自动同步</small></p><em :class="networkState">{{ checkLabel(networkState) }}</em></div><p v-if="form.mode === 'VOICE' && microphoneState === 'failed'" class="mi-device-warning">浏览器未授权麦克风。你可以在地址栏权限设置中重新允许，或返回上一步改为文字模拟。</p></section>
+              <section class="mi-card mi-device-card"><span class="mi-device-hero"><MonitorCheck v-if="form.mode === 'TEXT'" :size="48" /><Mic v-else :size="48" /></span><h2>{{ form.mode === 'TEXT' ? '文字回答环境' : '语音回答环境' }}</h2><p>{{ form.mode === 'TEXT' ? '可使用 Ctrl + Enter 提交；断网时继续保留本地草稿。' : '语音由浏览器转成文字，录音不会上传或保存；转写不准时可以直接修改文字，或随时改用文字作答。' }}</p><div v-if="form.mode === 'VOICE'" class="mi-device-actions"><button class="mi-primary" type="button" :disabled="microphoneState === 'checking'" @click="testMicrophone"><Mic :size="17" />{{ microphoneState === 'passed' ? '重新检测麦克风' : '检测麦克风' }}</button><button class="mi-secondary" type="button" :disabled="speakerState === 'checking'" @click="testSpeaker"><Volume2 :size="17" />测试扬声器</button></div></section>
+              <section class="mi-card mi-check-list"><h2>环境检测结果</h2><div><span><MonitorCheck :size="20" /></span><p><strong>浏览器能力</strong><small>自动保存、键盘操作与本地恢复可用</small></p><em class="passed">通过</em></div><div v-if="form.mode === 'VOICE'"><span><Mic :size="20" /></span><p><strong>麦克风权限</strong><small>只采集音频，不请求相机或视频</small></p><em :class="microphoneState">{{ checkLabel(microphoneState) }}</em></div><div v-if="form.mode === 'VOICE'" data-testid="recognition-check"><span><Languages :size="20" /></span><p><strong>浏览器语音转写</strong><small>{{ recognitionState === 'passed' ? '说的话会在本机转成文字' : '当前浏览器不支持，Chrome 或 Edge 可以' }}</small></p><em :class="recognitionState">{{ recognitionState === 'passed' ? '支持' : '不支持' }}</em></div><div v-if="form.mode === 'VOICE'"><span><Headphones :size="20" /></span><p><strong>扬声器播放</strong><small>用于播放提示音和检测输出设备</small></p><em :class="speakerState">{{ checkLabel(speakerState) }}</em></div><div><span><Gauge :size="20" /></span><p><strong>网络连接</strong><small>断网时保留本地草稿，恢复后自动同步</small></p><em :class="networkState">{{ checkLabel(networkState) }}</em></div><p v-if="form.mode === 'VOICE' && (recognitionState === 'failed' || microphoneState === 'failed')" class="mi-device-warning">{{ recognitionState === 'failed' ? '当前浏览器不能把语音转成文字。' : `${MICROPHONE_ISSUE_TEXT[microphoneProblem].title}。${MICROPHONE_ISSUE_TEXT[microphoneProblem].detail}` }}<button class="mi-link-button" type="button" data-testid="switch-to-text" @click="form.mode = 'TEXT'">改为文字模拟</button></p></section>
             </div>
           </section>
 
@@ -337,5 +406,7 @@ export default { components: { MessageCircleIcon: MessageCircle, Clock3Icon: Clo
 @media(max-width:1100px){.mi-stepper{padding:0}.mi-material-layout,.mi-job-layout,.mi-settings-layout,.mi-device-layout,.mi-confirm-layout{grid-template-columns:1fr}.mi-use-note{display:none}.mi-source-grid{grid-template-columns:1fr 1fr}.mi-choice-grid.is-four{grid-template-columns:1fr 1fr}}
 @media(max-width:900px){.mi-create-footer{left:64px}}
 @media(max-width:700px){.mi-create-shell{width:calc(100% - 28px)}.mi-create-top{padding:0 14px}.mi-stepper{height:64px;grid-template-columns:repeat(5,1fr)}.mi-stepper strong{display:none}.mi-stepper li:not(:last-child)::after{left:calc(50% + 20px);right:calc(-50% + 20px)}.mi-source-grid,.mi-choice-grid.is-two,.mi-choice-grid.is-four{grid-template-columns:1fr}.mi-job-layout{display:block}.mi-job-layout>*{margin-bottom:12px}.mi-settings-layout,.mi-device-layout,.mi-confirm-layout{gap:12px}.mi-parameters>label:not(.mi-toggle),.mi-parameters fieldset{grid-template-columns:1fr;gap:6px}.mi-parameters legend,.mi-parameters fieldset>.mi-segment{grid-column:1}.mi-config-preview{overflow:auto;white-space:nowrap}.mi-confirm-main dl{grid-template-columns:1fr}.mi-create-footer{left:64px;height:70px;padding:0 14px}.mi-create-footer .mi-secondary:nth-child(1){padding:0 10px}.mi-create-footer>div>.mi-secondary{display:none}}
+.mi-draft-offer{margin:0 0 14px;padding:10px 14px;display:flex;align-items:center;gap:10px;border:1px solid var(--color-primary-border);border-radius:7px;background:var(--surface-2)}.mi-draft-offer>svg{flex:none;color:var(--color-primary-text)}.mi-draft-offer>span{min-width:0;flex:1;display:grid}.mi-draft-offer small{margin-top:2px;color:var(--text-secondary)}.mi-draft-offer>div{display:flex;gap:8px;flex-wrap:wrap}.mi-draft-offer button{min-height:34px;padding:0 12px;font-size:13px}.mi-link-button{margin-left:6px;padding:0;border:0;color:var(--color-primary-text);background:transparent;font:inherit;font-weight:600;text-decoration:underline;cursor:pointer}
+@media(max-width:700px){.mi-draft-offer{flex-wrap:wrap}.mi-draft-offer>div{width:100%;justify-content:flex-end}}
 .mi-linked-match{min-height:52px;margin:0 0 14px;padding:10px 14px;display:flex;align-items:center;gap:10px;border:1px solid var(--color-primary-border);border-radius:7px;color:var(--color-primary-text);background:var(--surface-2)}.mi-linked-match>span{display:grid}.mi-linked-match small{margin-top:2px;color:var(--text-secondary)}
 </style>

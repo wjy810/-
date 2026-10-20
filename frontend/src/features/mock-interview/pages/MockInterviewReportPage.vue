@@ -206,7 +206,7 @@ onMounted(load)
           <article class="mi-card">
             <small>用时</small>
             <strong>{{ elapsedMinutes }}<em>分钟</em></strong>
-            <p>计划 {{ report.session.durationMinutes ?? '—' }} 分钟，暂停期间不计</p>
+            <p>计划 {{ report.session.durationMinutes ?? "—" }} 分钟；暂停、切到其他页面和离开期间不计</p>
           </article>
         </section>
 

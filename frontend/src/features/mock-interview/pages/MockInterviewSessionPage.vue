@@ -3,6 +3,9 @@
  * The interview room. Everything shown here is real: the clock is the server's active time,
  * scores appear only after the model evaluated an answer, and voice answers are transcribed by
  * the browser's speech recognition (no audio leaves the device).
+ *
+ * The clock only runs while this page is open and in front: hiding or leaving it pauses the
+ * interview, and the page reports in every minute so the server can stop a clock whose page is gone.
  */
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -14,15 +17,18 @@ import { errorMessage } from '@/shared/api/types'
 import { createDraftSaveQueue } from '@/shared/lib/draftSaveQueue'
 import { useToastFeedback } from '@/shared/ui/toast'
 import {
-  abandonMockInterview, completeMockInterview, fetchMockInterview, pauseMockInterview, resumeMockInterview,
+  abandonMockInterview, completeMockInterview, fetchMockInterview, heartbeatMockInterview, pauseMockInterview, resumeMockInterview,
   saveMockInterviewTextDraft, saveMockInterviewTranscript, submitMockInterviewAnswer, switchMockInterviewMode,
 } from '../services/mockInterviewApi'
 import type { MockInterviewAnswer, MockInterviewSession } from '../types'
 import {
+  MICROPHONE_ISSUE_TEXT,
   interviewerPitch,
   interviewerVoiceProfile,
   mergeSpeechTranscript,
+  microphoneIssue,
   pickInterviewerVoice,
+  type MicrophoneIssue,
 } from '../utils/voiceInteraction'
 
 type MicrophoneState = 'idle' | 'requesting' | 'recording' | 'finishing' | 'failed'
@@ -59,6 +65,7 @@ const STATUS_LABELS: Record<string, string> = {
   READY: '准备中', PAUSED: '已暂停', COMPLETED: '已完成', ABANDONED: '已放弃',
 }
 const WAVE_BARS = 32
+const HEARTBEAT_MS = 60_000
 
 const route = useRoute()
 const router = useRouter()
@@ -79,6 +86,10 @@ const pauseOpen = ref(false)
 const endOpen = ref(false)
 const abandonConfirmOpen = ref(false)
 const permissionOpen = ref(false)
+const microphoneProblem = ref<MicrophoneIssue>('denied')
+/** Why the pause dialog opened by itself, when it did. */
+const pauseReason = ref('')
+const timeUpOpen = ref(false)
 const offline = ref(!navigator.onLine)
 const elapsed = ref(0)
 const microphoneState = ref<MicrophoneState>('idle')
@@ -88,6 +99,7 @@ const recordingSeconds = ref(0)
 const waveform = ref<number[]>(Array.from({ length: WAVE_BARS }, () => 6))
 const liveTranscript = ref('')
 let timer = 0
+let heartbeatTimer = 0
 let recordingTimer = 0
 let waveformTimer = 0
 let mediaStream: MediaStream | null = null
@@ -102,6 +114,8 @@ let questionSpeechTimer = 0
 let questionSpeechGeneration = 0
 let activeUtterance: SpeechSynthesisUtterance | null = null
 let disposed = false
+/** The interview was finished or abandoned from this page; leaving it then needs no pause. */
+let ended = false
 let recordingGeneration = 0
 let hydratingAnswer = false
 
@@ -122,6 +136,12 @@ const limitMinutes = computed(() => Number(summary.value?.durationMinutes ?? dat
 const overTime = computed(() => elapsed.value > limitMinutes.value * 60)
 const clockRunning = computed(() => !['PAUSED', 'COMPLETED', 'ABANDONED'].includes(status.value) && !pauseOpen.value)
 const canSubmit = computed(() => answer.value.trim().length >= 2 && !submitting.value)
+/** A typed answer can be submitted after the microphone failed; only an active recording blocks it. */
+const microphoneBusy = computed(() => ['requesting', 'recording', 'finishing'].includes(microphoneState.value))
+/** Without the browser's speech recognition nothing said would become text, so recording is not offered. */
+const recognitionSupported = speechRecognitionConstructor() !== null
+const microphoneIssueText = computed(() => MICROPHONE_ISSUE_TEXT[microphoneProblem.value])
+const timeUpKey = computed(() => `jobproof:mock-interview:${sessionId.value}:time-up`)
 const questionNumber = computed(() => current.value?.orderNo ?? Math.min((summary.value?.answeredCount ?? 0) + 1, summary.value?.questionCount ?? 1))
 const interviewerProfile = computed(() => interviewerVoiceProfile(questionNumber.value))
 const interviewerLabel = computed(() => interviewerProfile.value === 'FEMALE' ? '女声面试官' : '男声面试官')
@@ -490,6 +510,16 @@ function releaseMicrophone(): void {
 /** The microphone only drives the level meter and the browser's recognizer; nothing is recorded. */
 async function startRecording(): Promise<void> {
   if (disposed || !current.value || mode.value !== 'VOICE' || !['idle', 'failed'].includes(microphoneState.value)) return
+  if (!recognitionSupported) {
+    transcriptionState.value = 'unsupported'
+    return
+  }
+  if (!navigator.mediaDevices?.getUserMedia) {
+    microphoneProblem.value = microphoneIssue(null, false)
+    microphoneState.value = 'failed'
+    permissionOpen.value = true
+    return
+  }
   const generation = ++recordingGeneration
   const recordingKey = localKey.value
   stopQuestionSpeech('done')
@@ -507,10 +537,11 @@ async function startRecording(): Promise<void> {
     recordingTimer = window.setInterval(() => { recordingSeconds.value += 1 }, 1000)
     startWaveform(stream)
     startLiveTranscription()
-  } catch {
+  } catch (reason) {
     if (disposed || generation !== recordingGeneration) return
     abortLiveTranscription()
     releaseMicrophone()
+    microphoneProblem.value = microphoneIssue(reason)
     microphoneState.value = 'failed'
     permissionOpen.value = true
   }
@@ -555,25 +586,80 @@ async function switchToText(): Promise<void> {
   } catch (reason) { pageError.value = errorMessage(reason, '切换文字模式失败') }
 }
 
-async function pauseSession(): Promise<void> {
+async function pauseSession(reason = ''): Promise<void> {
   stopQuestionSpeech()
   await stopRecording()
-  try { data.value = await pauseMockInterview(sessionId.value); pauseOpen.value = true }
-  catch (reason) { pageError.value = errorMessage(reason, '暂停失败') }
+  try {
+    data.value = await pauseMockInterview(sessionId.value, { keepalive: Boolean(reason) })
+    pauseReason.value = reason
+    pauseOpen.value = true
+  } catch (cause) { pageError.value = errorMessage(cause, '暂停失败') }
+}
+
+/** The clock is running on the server and this page could pause it. */
+function pausable(): boolean {
+  return !ended && Boolean(data.value && current.value) && !['PAUSED', 'COMPLETED', 'ABANDONED'].includes(status.value) && !submitting.value
+}
+
+/** Hidden (another tab, minimised, locked screen): the interview pauses until the user is back. */
+function onVisibilityChange(): void {
+  if (document.visibilityState === 'hidden') {
+    if (pausable() && !pauseOpen.value) void pauseSession('你切换到了其他页面，计时已自动暂停。')
+  } else if (!pauseOpen.value && pausable()) {
+    void reportIn()
+  }
+}
+
+/** Closing or reloading the tab: the pause is sent with keepalive so it still arrives. */
+function onPageHide(): void {
+  if (pausable() && !pauseOpen.value) void pauseMockInterview(sessionId.value, { keepalive: true }).catch(() => undefined)
+}
+
+async function reportIn(): Promise<void> {
+  if (!pausable() || document.visibilityState === 'hidden') return
+  try {
+    const summaryNow = await heartbeatMockInterview(sessionId.value)
+    if (disposed || !data.value || data.value.session.id !== summaryNow.id) return
+    data.value = { ...data.value, session: summaryNow }
+    if (summaryNow.status === 'PAUSED' && !pauseOpen.value) {
+      // The server stopped the clock because this page went quiet for a while.
+      stopQuestionSpeech()
+      await stopRecording()
+      pauseReason.value = '页面有一段时间没有响应，计时已在那时暂停。'
+      pauseOpen.value = true
+    }
+  } catch {
+    // A missed report is harmless: the next one, or any answer, keeps the clock running.
+  }
 }
 
 async function continueSession(): Promise<void> {
   try {
     if (status.value === 'PAUSED') data.value = await resumeMockInterview(sessionId.value)
     pauseOpen.value = false
+    pauseReason.value = ''
     scheduleQuestionSpeech()
   } catch (reason) { pageError.value = errorMessage(reason, '恢复失败') }
+}
+
+function remembersTimeUp(): boolean {
+  try { return window.sessionStorage.getItem(timeUpKey.value) === '1' } catch { return false }
+}
+
+/** The set length is reached once: say so and offer to finish; continuing does not ask again. */
+watch(overTime, (over) => {
+  if (over && clockRunning.value && !remembersTimeUp() && !timeUpOpen.value) timeUpOpen.value = true
+})
+
+function keepGoingAfterTimeUp(): void {
+  timeUpOpen.value = false
+  try { window.sessionStorage.setItem(timeUpKey.value, '1') } catch { /* asked again after a reload, at most */ }
 }
 
 async function finishEarly(): Promise<void> {
   stopQuestionSpeech()
   await stopRecording()
-  try { await completeMockInterview(sessionId.value); await openReport() }
+  try { await completeMockInterview(sessionId.value); ended = true; await openReport() }
   catch (reason) { pageError.value = errorMessage(reason, '阶段报告生成失败') }
 }
 
@@ -601,7 +687,7 @@ function continueAfterFeedback(): void {
 async function abandon(): Promise<void> {
   stopQuestionSpeech()
   await stopRecording(false)
-  try { await abandonMockInterview(sessionId.value); await router.replace({ name: 'mock-interviews' }) }
+  try { await abandonMockInterview(sessionId.value); ended = true; await router.replace({ name: 'mock-interviews' }) }
   catch (reason) { pageError.value = errorMessage(reason, '放弃记录失败') }
 }
 
@@ -610,7 +696,7 @@ function questionState(question: { id: string; status: string }): 'done' | 'curr
   return question.id === current.value?.id ? 'current' : 'upcoming'
 }
 
-function onOnline(): void { offline.value = false; void persistDraft() }
+function onOnline(): void { offline.value = false; void persistDraft(); void reportIn() }
 function onOffline(): void { offline.value = true; saveState.value = 'local' }
 function list(value: unknown): string[] { return Array.isArray(value) ? value.map(String).filter(Boolean) : [] }
 function formatSeconds(value: number): string { const minutes = Math.floor(value / 60); const seconds = value % 60; return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}` }
@@ -618,15 +704,22 @@ function formatSeconds(value: number): string { const minutes = Math.floor(value
 onMounted(() => {
   window.addEventListener('online', onOnline)
   window.addEventListener('offline', onOffline)
+  document.addEventListener('visibilitychange', onVisibilityChange)
+  window.addEventListener('pagehide', onPageHide)
   timer = window.setInterval(() => { if (data.value && clockRunning.value) elapsed.value += 1 }, 1000)
+  heartbeatTimer = window.setInterval(() => void reportIn(), HEARTBEAT_MS)
   void load()
 })
 onBeforeUnmount(() => {
+  // Leaving the room (back link, another page) pauses the interview instead of leaving its clock running.
+  if (pausable() && !pauseOpen.value) void pauseMockInterview(sessionId.value, { keepalive: true }).catch(() => undefined)
   disposed = true
   answerSaver.dispose()
   recordingGeneration += 1
-  window.clearInterval(timer); window.clearTimeout(questionSpeechTimer)
+  window.clearInterval(timer); window.clearInterval(heartbeatTimer); window.clearTimeout(questionSpeechTimer)
   window.removeEventListener('online', onOnline); window.removeEventListener('offline', onOffline)
+  document.removeEventListener('visibilitychange', onVisibilityChange)
+  window.removeEventListener('pagehide', onPageHide)
   stopQuestionSpeech(); abortLiveTranscription()
   releaseMicrophone()
 })
@@ -642,11 +735,11 @@ onBeforeUnmount(() => {
         <span class="mi-chip" :class="status === 'PAUSED' ? 'mi-chip--warning' : 'mi-chip--live'">{{ statusLabel }}</span>
       </div>
       <div class="mi-stage__tools">
-        <span class="mi-clock" :class="{ 'is-over': overTime }" title="服务端计时，暂停期间不计入">
+        <span class="mi-clock" :class="{ 'is-over': overTime }" title="服务端计时；暂停、切到其他页面或离开时不计入">
           <Clock3 :size="16" />{{ formatSeconds(elapsed) }}<small>/ {{ limitMinutes }} 分钟</small>
         </span>
         <span class="mi-stage__count">第 {{ questionNumber }} / {{ summary?.questionCount ?? 0 }} 题</span>
-        <button class="mi-tool" type="button" :disabled="!data || !current" @click="pauseSession"><Pause :size="16" /><span>暂停</span></button>
+        <button class="mi-tool" type="button" :disabled="!data || !current" @click="pauseSession()"><Pause :size="16" /><span>暂停</span></button>
         <button class="mi-tool mi-tool--danger" type="button" :disabled="!data || !current" @click="endOpen = true"><Square :size="13" /><span>结束</span></button>
       </div>
     </header>
@@ -701,26 +794,32 @@ onBeforeUnmount(() => {
         <section v-else class="mi-voice">
           <div class="mi-voice__states">
             <span :class="`is-${microphoneState}`"><Mic :size="14" />{{ microphoneLabel }}</span>
-            <span :class="`is-${transcriptionState}`"><FileText :size="14" />浏览器转写 · {{ transcriptionLabel }}</span>
+            <span :class="`is-${recognitionSupported ? transcriptionState : 'unsupported'}`"><FileText :size="14" />浏览器转写 · {{ recognitionSupported ? transcriptionLabel : '当前浏览器不支持' }}</span>
           </div>
+          <p v-if="!recognitionSupported" class="mi-voice__unsupported" role="status" data-testid="recognition-unsupported">
+            <AlertTriangle :size="15" />当前浏览器不能把语音转成文字（Chrome 或 Edge 可以），所以这里不开启录音。可以直接在下面输入回答，或改用文字作答。
+          </p>
+          <p v-else-if="microphoneState === 'failed'" class="mi-voice__unsupported" role="status" data-testid="microphone-failed">
+            <AlertTriangle :size="15" />{{ microphoneIssueText.title }}。可以直接在下面输入回答并提交，或修好后点麦克风重新检测。
+          </p>
           <button
             class="mi-record-button"
             :class="{ recording: microphoneState === 'recording' }"
             type="button"
             :aria-label="microphoneState === 'recording' ? '结束录音' : '开始录音'"
-            :disabled="microphoneState === 'requesting' || microphoneState === 'finishing'"
+            :disabled="!recognitionSupported || microphoneState === 'requesting' || microphoneState === 'finishing'"
             @click="toggleRecording"
           >
             <MicOff v-if="microphoneState === 'recording'" :size="30" /><Mic v-else :size="30" />
           </button>
           <div class="mi-waveform" aria-hidden="true"><i v-for="(height, index) in waveform" :key="index" :style="{ height: `${height}px` }" /></div>
           <label class="sr-only" for="mi-transcript">语音回答转写文本</label>
-          <textarea id="mi-transcript" v-model="liveTranscript" placeholder="开始录音后，浏览器识别出的文字会显示在这里；提交前可以手动校正。" @input="answer = liveTranscript" />
+          <textarea id="mi-transcript" v-model="liveTranscript" maxlength="3000" :placeholder="recognitionSupported ? '开始录音后，浏览器识别出的文字会显示在这里；也可以直接输入，提交前可以手动校正。' : '在这里输入你的回答。'" @input="answer = liveTranscript" />
           <p class="mi-voice__privacy"><Shield :size="13" />语音由浏览器的语音识别转成文字，录音不会上传或保存。提交的是这里的文字。</p>
           <div class="mi-answer-status"><span :class="saveState"><Lock :size="13" />{{ saveText }}</span><em>{{ answer.length }} / 3000</em></div>
           <footer>
             <button class="mi-btn mi-btn--ghost" type="button" @click="switchToText"><MessageCircle :size="15" />改用文字作答</button>
-            <button class="mi-btn mi-btn--primary submit" type="button" :disabled="!canSubmit || offline || microphoneState !== 'idle'" @click="submit">
+            <button class="mi-btn mi-btn--primary submit" type="button" :disabled="!canSubmit || offline || microphoneBusy" @click="submit">
               <LoaderCircle v-if="submitting" class="mi-spin" :size="16" /><Send v-else :size="16" />完成回答
             </button>
           </footer>
@@ -784,7 +883,7 @@ onBeforeUnmount(() => {
       </footer>
     </aside>
 
-    <div v-if="pauseOpen || endOpen || abandonConfirmOpen || permissionOpen" class="mi-scrim">
+    <div v-if="pauseOpen || endOpen || abandonConfirmOpen || permissionOpen || timeUpOpen" class="mi-scrim">
       <section v-if="abandonConfirmOpen" class="mi-modal mi-modal--compact" role="dialog" aria-modal="true" aria-labelledby="mi-abandon-title">
         <h2 id="mi-abandon-title">确认放弃本次训练？</h2>
         <p>本次训练会标记为已放弃，不生成报告，也不计入完成统计。</p>
@@ -797,6 +896,7 @@ onBeforeUnmount(() => {
       <section v-else-if="pauseOpen" class="mi-modal" role="dialog" aria-modal="true" aria-labelledby="mi-pause-title">
         <button class="mi-icon-button mi-modal__close" type="button" aria-label="继续面试" @click="continueSession"><X :size="18" /></button>
         <h2 id="mi-pause-title">已暂停</h2>
+        <p v-if="pauseReason" class="mi-modal__reason" data-testid="pause-reason">{{ pauseReason }}</p>
         <p>第 {{ questionNumber }} / {{ summary?.questionCount }} 题 · 已用时 {{ formatSeconds(elapsed) }}，暂停期间不计时。</p>
         <div class="mi-modal__options">
           <article>
@@ -818,6 +918,15 @@ onBeforeUnmount(() => {
         <footer><button class="mi-btn mi-btn--primary" type="button" @click="continueSession">继续面试</button></footer>
       </section>
 
+      <section v-else-if="timeUpOpen" class="mi-modal mi-modal--compact" role="dialog" aria-modal="true" aria-labelledby="mi-time-up-title" data-testid="time-up">
+        <h2 id="mi-time-up-title"><Clock3 :size="20" />已到设定的 {{ limitMinutes }} 分钟</h2>
+        <p>已用时 {{ formatSeconds(elapsed) }}，答了 {{ summary?.answeredCount ?? 0 }} / {{ summary?.questionCount ?? 0 }} 题。可以现在结束并生成报告，也可以把剩下的题答完，之后不再提醒。</p>
+        <footer>
+          <button class="mi-btn mi-btn--ghost" type="button" @click="keepGoingAfterTimeUp">继续作答</button>
+          <button class="mi-btn mi-btn--primary" type="button" @click="timeUpOpen = false; finishEarly()">结束并生成报告</button>
+        </footer>
+      </section>
+
       <section v-else-if="endOpen" class="mi-modal mi-modal--compact" role="dialog" aria-modal="true" aria-labelledby="mi-end-title">
         <h2 id="mi-end-title">提前结束本次面试？</h2>
         <p>已提交的回答会进入阶段报告，未提交的草稿不会被评估。</p>
@@ -829,9 +938,9 @@ onBeforeUnmount(() => {
 
       <section v-else class="mi-modal mi-modal--compact" role="dialog" aria-modal="true" aria-labelledby="mi-permission-title">
         <button class="mi-icon-button mi-modal__close" type="button" aria-label="关闭" @click="permissionOpen = false"><X :size="18" /></button>
-        <h2 id="mi-permission-title"><AlertTriangle :size="20" />无法使用麦克风</h2>
-        <p>浏览器没有授予麦克风权限。当前进度已保存。</p>
-        <ol class="mi-modal__steps">
+        <h2 id="mi-permission-title"><AlertTriangle :size="20" />{{ microphoneIssueText.title }}</h2>
+        <p>{{ microphoneIssueText.detail }}当前进度已保存；也可以关掉这个提示，直接输入回答并提交。</p>
+        <ol v-if="microphoneProblem === 'denied'" class="mi-modal__steps">
           <li>点击地址栏左侧的权限图标</li>
           <li>允许此网站使用麦克风</li>
           <li>回到这里重新检测</li>
@@ -1152,6 +1261,8 @@ kbd {
 .mi-waveform { height: 52px; display: flex; align-items: center; justify-content: center; gap: 3px; }
 .mi-waveform i { width: 3px; border-radius: 2px; background: var(--stage-accent); opacity: 0.75; transition: height 90ms linear; }
 .mi-voice__privacy { margin: 0; display: flex; align-items: center; gap: 6px; color: var(--stage-text-tertiary); font-size: var(--fs-xs); }
+.mi-voice__unsupported { margin: 0; padding: 10px 12px; display: flex; align-items: flex-start; gap: 8px; border: 1px solid color-mix(in srgb, var(--stage-warning) 40%, transparent); border-radius: var(--radius-md); color: var(--stage-text-secondary); background: var(--stage-warning-soft); font-size: var(--fs-sm); line-height: 1.55; }
+.mi-voice__unsupported svg { flex: none; margin-top: 2px; color: var(--stage-warning); }
 
 /* ---------- Buttons ---------- */
 .mi-btn {
@@ -1288,6 +1399,7 @@ kbd {
 .mi-modal__options p { flex: 1; margin: 0; color: var(--stage-text-tertiary); font-size: var(--fs-xs); line-height: var(--lh-xs); }
 .mi-modal__options .is-danger h3 { color: var(--stage-danger); }
 .mi-modal__steps { margin: 16px 0 0; padding-left: 20px; display: grid; gap: 6px; color: var(--stage-text-secondary); font-size: var(--fs-sm); }
+.mi-modal__reason { margin-top: 6px; padding: 8px 12px; border-radius: var(--radius-md); color: var(--stage-text); background: var(--stage-warning-soft); font-size: var(--fs-sm); }
 .mi-modal footer { margin-top: 22px; display: flex; justify-content: flex-end; gap: 10px; }
 
 .mi-spin { animation: mi-spin 0.9s linear infinite; }

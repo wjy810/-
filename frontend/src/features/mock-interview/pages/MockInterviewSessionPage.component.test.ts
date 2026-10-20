@@ -8,6 +8,9 @@ const api = vi.hoisted(() => ({
   saveMockInterviewTextDraft: vi.fn(),
   saveMockInterviewTranscript: vi.fn(),
   submitMockInterviewAnswer: vi.fn(),
+  pauseMockInterview: vi.fn(),
+  heartbeatMockInterview: vi.fn(),
+  resumeMockInterview: vi.fn(),
 }))
 vi.mock('../services/mockInterviewApi', async () => ({
   ...(await vi.importActual<typeof import('../services/mockInterviewApi')>('../services/mockInterviewApi')),
@@ -39,6 +42,24 @@ function session(mode: 'TEXT' | 'VOICE' = 'TEXT'): MockInterviewSession {
   }
 }
 
+/** A browser whose speech recognition exists but never hears anything. */
+class FakeRecognition {
+  continuous = false
+  interimResults = false
+  lang = ''
+  onstart: (() => void) | null = null
+  onresult = null
+  onerror = null
+  onend: (() => void) | null = null
+  start() { this.onstart?.() }
+  stop() { this.onend?.() }
+  abort() {}
+}
+
+function paused(loaded: MockInterviewSession): MockInterviewSession {
+  return { ...loaded, session: { ...loaded.session, status: 'PAUSED' } }
+}
+
 function mountSession() {
   return mount(MockInterviewSessionPage, { global: { stubs: { RouterLink: true, ChevronRightIcon: true } } })
 }
@@ -50,6 +71,9 @@ describe('interview draft persistence', () => {
     Object.defineProperty(navigator, 'onLine', { configurable: true, value: true })
     Object.values(api).forEach((mock) => mock.mockReset())
     api.fetchMockInterview.mockResolvedValue(session())
+    api.pauseMockInterview.mockImplementation(async () => paused(session()))
+    api.heartbeatMockInterview.mockImplementation(async () => session().session)
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' })
   })
   afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals() })
 
@@ -82,6 +106,7 @@ describe('interview draft persistence', () => {
 
   it('stops a microphone permission result that arrives after leaving the session, without starting', async () => {
     api.fetchMockInterview.mockResolvedValue(session('VOICE'))
+    vi.stubGlobal('webkitSpeechRecognition', FakeRecognition)
     const permission = deferred<MediaStream>()
     const stop = vi.fn()
     const start = vi.fn()
@@ -162,6 +187,7 @@ describe('interview draft persistence', () => {
 
   it('uses the microphone only for the level meter and browser transcription, never recording audio', async () => {
     api.fetchMockInterview.mockResolvedValue(session('VOICE'))
+    vi.stubGlobal('webkitSpeechRecognition', FakeRecognition)
     const stopTrack = vi.fn()
     const recorder = vi.fn()
     Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: {
@@ -224,5 +250,92 @@ describe('interview draft persistence', () => {
     expect(wrapper.get('.mi-question__source').text()).toContain('针对你刚才的回答')
     expect(wrapper.text()).toContain('你提到的样本是怎么选出来的')
     wrapper.unmount()
+  })
+
+  it('does not offer recording where the browser cannot transcribe, and a typed answer can be submitted', async () => {
+    api.fetchMockInterview.mockResolvedValue(session('VOICE'))
+    api.submitMockInterviewAnswer.mockResolvedValue({ ...session('VOICE'), session: { ...session('VOICE').session, answeredCount: 1 } })
+    api.saveMockInterviewTranscript.mockImplementation(async (_s: string, _q: string, text: string) => ({ ...savedAnswer(text, 2), mode: 'VOICE' }))
+    const getUserMedia = vi.fn()
+    Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: { getUserMedia } })
+    const wrapper = mountSession()
+    await flushPromises()
+    expect(wrapper.get('[data-testid="recognition-unsupported"]').text()).toContain('可以直接在下面输入回答')
+    expect(wrapper.get('.mi-record-button').attributes('disabled')).toBeDefined()
+    await wrapper.get('#mi-transcript').setValue('我负责了订单服务的接口重构')
+    await wrapper.get('.mi-voice button.submit').trigger('click')
+    await flushPromises()
+    expect(getUserMedia).not.toHaveBeenCalled()
+    expect(api.submitMockInterviewAnswer).toHaveBeenCalledWith('session-1', 'question-1', '我负责了订单服务的接口重构', expect.anything())
+  })
+
+  it('says which microphone problem it is, and still submits what was typed after it failed', async () => {
+    api.fetchMockInterview.mockResolvedValue(session('VOICE'))
+    vi.stubGlobal('webkitSpeechRecognition', FakeRecognition)
+    api.submitMockInterviewAnswer.mockResolvedValue({ ...session('VOICE'), session: { ...session('VOICE').session, answeredCount: 1 } })
+    api.saveMockInterviewTranscript.mockImplementation(async (_s: string, _q: string, text: string) => ({ ...savedAnswer(text, 2), mode: 'VOICE' }))
+    Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: {
+      getUserMedia: vi.fn().mockRejectedValue(Object.assign(new Error('none'), { name: 'NotFoundError' })),
+    } })
+    const wrapper = mountSession()
+    await flushPromises()
+    await wrapper.get('.mi-record-button').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('#mi-permission-title').text()).toContain('没有找到可用的麦克风')
+    expect(wrapper.find('.mi-modal__steps').exists()).toBe(false)
+    await wrapper.get('.mi-modal__close').trigger('click')
+    await wrapper.get('#mi-transcript').setValue('麦克风坏了，我直接打字回答')
+    const submit = wrapper.get('.mi-voice button.submit')
+    expect(submit.attributes('disabled')).toBeUndefined()
+    await submit.trigger('click')
+    await flushPromises()
+    expect(api.submitMockInterviewAnswer).toHaveBeenCalledWith('session-1', 'question-1', '麦克风坏了，我直接打字回答', expect.anything())
+  })
+
+  it('pauses the interview when the page is hidden, and says why when the user is back', async () => {
+    const wrapper = mountSession()
+    await flushPromises()
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' })
+    document.dispatchEvent(new Event('visibilitychange'))
+    await flushPromises()
+    expect(api.pauseMockInterview).toHaveBeenCalledWith('session-1', { keepalive: true })
+    expect(wrapper.get('[data-testid="pause-reason"]').text()).toContain('切换到了其他页面')
+  })
+
+  it('reports in every minute, and shows the pause the server made after the page went quiet', async () => {
+    api.heartbeatMockInterview.mockResolvedValueOnce({ ...session().session, elapsedSeconds: 300 })
+      .mockResolvedValueOnce({ ...session().session, status: 'PAUSED', elapsedSeconds: 320 })
+    const wrapper = mountSession()
+    await flushPromises()
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(api.heartbeatMockInterview).toHaveBeenCalledTimes(1)
+    expect(wrapper.get('.mi-clock').text()).toContain('05:0')
+    await vi.advanceTimersByTimeAsync(60_000)
+    await flushPromises()
+    expect(wrapper.get('[data-testid="pause-reason"]').text()).toContain('页面有一段时间没有响应')
+    expect(wrapper.get('.mi-clock').text()).toContain('05:20')
+  })
+
+  it('asks once when the set length is reached, offering to finish', async () => {
+    const loaded = session()
+    loaded.session.durationMinutes = 15
+    loaded.session.elapsedSeconds = 15 * 60 - 2
+    api.fetchMockInterview.mockResolvedValue(loaded)
+    window.sessionStorage.clear()
+    const wrapper = mountSession()
+    await flushPromises()
+    expect(wrapper.find('[data-testid="time-up"]').exists()).toBe(false)
+    await vi.advanceTimersByTimeAsync(3_000)
+    expect(wrapper.get('[data-testid="time-up"]').text()).toContain('已到设定的 15 分钟')
+    await wrapper.findAll('[data-testid="time-up"] button').find((button) => button.text() === '继续作答')!.trigger('click')
+    expect(wrapper.find('[data-testid="time-up"]').exists()).toBe(false)
+    expect(window.sessionStorage.getItem('jobproof:mock-interview:session-1:time-up')).toBe('1')
+  })
+
+  it('pauses a running interview when leaving the room', async () => {
+    const wrapper = mountSession()
+    await flushPromises()
+    wrapper.unmount()
+    expect(api.pauseMockInterview).toHaveBeenCalledWith('session-1', { keepalive: true })
   })
 })

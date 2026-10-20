@@ -36,6 +36,8 @@ public class MockInterviewAiService {
             只生成训练题，不作招聘决定，不给录用概率，不询问或推断年龄、性别、婚育、民族、外貌、口音、残障等受保护特征。
             不得虚构用户的公司、学校、项目、日期、技能或数字。资料不足时提出开放式追问，不把缺失信息写成既定事实。
             题目要互不重复，覆盖自我介绍、岗位动机、经历证据、专业判断、协作复盘和风险意识，并匹配指定题型与难度。
+            interviewType 为 PRESSURE（压力面试）时，题目更尖锐：要求量化结果并说明数字来源，质疑关键假设，追问失败、
+            取舍与个人贡献边界，并包含时间或资源受限下的决策题；尖锐只针对经历与判断，不贬低人，不涉及受保护特征。
             每题 18 至 180 个可见字符。sourceRefs 只能使用 RESUME、JD、CAREER_LIBRARY、POSITION、ANSWER。
             仅返回 JSON：{"questions":[{"type":"PROJECT","prompt":"问题","sourceLabel":"简历 · 项目经历","sourceRefs":["RESUME"]}]}
             """;
@@ -46,6 +48,10 @@ public class MockInterviewAiService {
             每项分数为 0 至 100 的整数。strengths 与 improvements 各 1 至 3 条，每条 6 至 120 个字符。
             suggestedFollowUp：followUpEnabled 为 true 时，针对回答里含糊、缺少证据或值得深挖的一点，用面试官的口吻提一个具体追问，
             不超过 80 字；回答已经完整、没有可追问之处时返回空字符串。followUpEnabled 为 false 时返回空字符串。
+            interviewType 为 PRESSURE（压力面试）时，追问用压力面试官的口吻：直接点出回答里最站不住的一点（证据缺失、数字来源不明、
+            前后矛盾、回避取舍或把团队成果说成个人成果），要求对方当场给出证据或解释；语气克制但紧追不放，不贬低、不人身攻击。
+            其他类型用平和、好奇的口吻追问。thread 是本题此前的问答（原题、回答，以及已经问过的追问和回答），followUpRound 是本题
+            已经追问的次数：追问必须在 thread 的基础上再深入一层，不得重复已经问过的问题。
             answerDirection：40 至 160 字，说明这道题更好的回答思路（先讲什么、用哪段经历、补什么证据）。只能提到 resumeSnapshot、
             jdSnapshot 或回答里已经出现的经历和名称，不得编造公司、项目或数字。
             仅返回 JSON：{"scores":{"structure":70,"relevance":70,"evidence":70,"expression":70,"professional":70},"feedback":{"headline":"简短结论","strengths":["优点"],"improvements":["改进点"],"suggestedFollowUp":"","answerDirection":"回答思路"}}
@@ -113,13 +119,16 @@ public class MockInterviewAiService {
     }
 
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
-    public Evaluation evaluateAnswer(String accountId, String position, QuestionInput question, String answer,
-            boolean followUpEnabled, Map<String, Object> resume, Map<String, Object> jd) {
+    public Evaluation evaluateAnswer(String accountId, String position, String interviewType, QuestionInput question,
+            List<ThreadTurn> thread, String answer, boolean followUpEnabled, Map<String, Object> resume, Map<String, Object> jd) {
         Map<String, Object> input = new LinkedHashMap<>();
         input.put("task", "EVALUATE_MOCK_INTERVIEW_ANSWER");
         input.put("position", position);
+        input.put("interviewType", interviewType);
         input.put("question", Map.of(
                 "type", question.type(), "prompt", question.prompt(), "sourceRefs", question.sourceRefs()));
+        input.put("thread", thread == null ? List.of() : thread);
+        input.put("followUpRound", thread == null ? 0 : thread.stream().filter(turn -> "FOLLOW_UP".equals(turn.role())).count());
         input.put("answer", answer);
         input.put("followUpEnabled", followUpEnabled);
         input.put("resumeSnapshot", boundedJson(resume, 8_000));
@@ -164,18 +173,77 @@ public class MockInterviewAiService {
 
     /**
      * The suggested way to answer, kept only if it stays within what the user gave: every number it mentions
-     * must appear in the answer, the resume or the JD. A made-up "提升 30%" drops the suggestion, not the evaluation.
+     * must be a number the user can see in the answer, the resume or the JD. A made-up "提升 30%" drops the
+     * suggestion, not the evaluation. Numbers are matched whole (18 is not found inside 2018) and only in text a
+     * reader sees: ids, hashes, versions and timestamps in the snapshots are skipped, since their digits would
+     * otherwise vouch for almost any number.
      */
     String answerDirection(String value, String answer, Map<String, Object> resume, Map<String, Object> jd) {
         String clean = value == null ? "" : value.trim();
         int size = visibleCharacters(clean);
         if (size < 10 || size > 240 || forbidden(clean)) return null;
-        String sources = (answer == null ? "" : answer) + boundedJson(resume, 50_000) + boundedJson(jd, 50_000);
-        java.util.regex.Matcher numbers = java.util.regex.Pattern.compile("\\d+(?:\\.\\d+)?").matcher(clean);
-        while (numbers.find()) {
-            if (!sources.contains(numbers.group())) return null;
+        StringBuilder visible = new StringBuilder(answer == null ? "" : answer).append('\n');
+        visibleText(resume, visible);
+        visibleText(jd, visible);
+        Set<String> known = sourceNumbers(visible.toString());
+        for (String number : numbers(clean)) {
+            if (!known.contains(number)) return null;
         }
         return clean;
+    }
+
+    private static final java.util.regex.Pattern NUMBER = java.util.regex.Pattern.compile("(?<!\\d)(?<!\\d\\.)\\d+(?:\\.\\d+)?(?!\\d|\\.\\d)");
+    private static final java.util.regex.Pattern HIDDEN_KEY = java.util.regex.Pattern.compile(
+            "(?i)^(id|.*_id|.*Id|.*Ids|version|versionNo|version_no|hash|.*Hash|.*_hash|schemaVersion|source|sourceRefs|.*At|.*_at|confidence|sequence|sequenceNo|order|orderNo|hard_gate|hardGate)$");
+    private static final java.util.regex.Pattern IDENTIFIER = java.util.regex.Pattern.compile(
+            "(?i)^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$|^[0-9a-f]{32,}$");
+
+    /** Whole numbers in {@code text}, with trailing zeros of a decimal ignored (1.50 and 1.5 are the same). */
+    private static Set<String> numbers(String text) {
+        Set<String> found = new LinkedHashSet<>();
+        java.util.regex.Matcher matcher = NUMBER.matcher(text);
+        while (matcher.find()) found.add(normalizeNumber(matcher.group()));
+        return found;
+    }
+
+    /** As {@link #numbers}, plus each part of a dotted value: "2019.09" in a resume also vouches for 2019. */
+    private static Set<String> sourceNumbers(String text) {
+        Set<String> found = numbers(text);
+        for (String number : List.copyOf(found)) {
+            if (number.contains(".")) for (String part : number.split("\\.")) found.add(normalizeNumber(part));
+        }
+        return found;
+    }
+
+    private static String normalizeNumber(String number) {
+        String value = number;
+        if (value.contains(".")) value = value.replaceAll("0+$", "").replaceAll("\\.$", "");
+        return value.replaceFirst("^0+(?=\\d)", "");
+    }
+
+    /** The text a reader sees in a snapshot: values, not keys, and not the identifiers or bookkeeping around them. */
+    private void visibleText(Object value, StringBuilder out) {
+        if (value instanceof Map<?, ?> map) {
+            map.forEach((key, child) -> {
+                if (!HIDDEN_KEY.matcher(String.valueOf(key)).matches()) visibleText(child, out);
+            });
+        } else if (value instanceof Iterable<?> items) {
+            items.forEach(item -> visibleText(item, out));
+        } else if (value instanceof String text) {
+            String trimmed = text.trim();
+            if (IDENTIFIER.matcher(trimmed).matches()) return;
+            if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+                try {
+                    visibleText(mapper.readValue(trimmed, Object.class), out);
+                    return;
+                } catch (Exception ignored) {
+                    // Not JSON after all: it is text the user wrote.
+                }
+            }
+            out.append(trimmed).append('\n');
+        } else if (value instanceof Number number) {
+            out.append(number).append('\n');
+        }
     }
 
     private JsonNode jsonRoot(Response response) {
@@ -244,6 +312,8 @@ public class MockInterviewAiService {
     public record GeneratedQuestions(List<GeneratedQuestion> questions, String model, String channelId,
             long inputTokens, long outputTokens) {}
     public record QuestionInput(String type, String prompt, List<String> sourceRefs) {}
+    /** One earlier turn on the same question: role QUESTION, FOLLOW_UP or ANSWER. */
+    public record ThreadTurn(String role, String text) {}
     public record Evaluation(Map<String, Integer> scores, Map<String, Object> feedback, String model,
             String channelId, long inputTokens, long outputTokens) {}
 }

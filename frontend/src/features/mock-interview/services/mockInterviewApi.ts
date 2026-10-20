@@ -23,6 +23,9 @@ function query(values: Record<string, string | number | undefined>): string {
 export const fetchMockInterviewDashboard = () => api<MockInterviewDashboard>(`${ROOT}/dashboard`)
 export const createMockInterviewDraft = () => api<MockInterviewDraft>(`${ROOT}/drafts`, { method: 'POST' })
 export const fetchMockInterviewDraft = (id: string) => api<MockInterviewDraft>(`${ROOT}/drafts/${encodeURIComponent(id)}`)
+/** The most recent saved, unfinished draft (null when there is none), to offer "继续上次的". */
+export const fetchLatestMockInterviewDraft = () => api<MockInterviewDraft | null>(`${ROOT}/drafts/latest`)
+export const discardMockInterviewDraft = (id: string) => api<null>(`${ROOT}/drafts/${encodeURIComponent(id)}/discard`, { method: 'POST' })
 export const saveMockInterviewDraft = (id: string, step: number, payload: Record<string, unknown>, expectedVersion: number) =>
   api<MockInterviewDraft>(`${ROOT}/drafts/${encodeURIComponent(id)}`, {
     method: 'PATCH', body: JSON.stringify({ step, payload, expectedVersion }),
@@ -48,7 +51,12 @@ export const submitMockInterviewAnswer = (sessionId: string, questionId: string,
   })
 export const switchMockInterviewMode = (id: string, mode: 'TEXT' | 'VOICE') =>
   api<MockInterviewSession>(`${ROOT}/sessions/${encodeURIComponent(id)}/switch-mode`, { method: 'POST', body: JSON.stringify({ mode }) })
-export const pauseMockInterview = (id: string) => api<MockInterviewSession>(`${ROOT}/sessions/${encodeURIComponent(id)}/pause`, { method: 'POST' })
+/** {@code keepalive}: the page is going away; the request still reaches the server after it unloads. */
+export const pauseMockInterview = (id: string, options: { keepalive?: boolean } = {}) =>
+  api<MockInterviewSession>(`${ROOT}/sessions/${encodeURIComponent(id)}/pause`, { method: 'POST', keepalive: options.keepalive })
+/** The interview page is open and visible; a page that stops reporting has its clock stopped at the last report. */
+export const heartbeatMockInterview = (id: string) =>
+  api<MockInterviewSessionSummary>(`${ROOT}/sessions/${encodeURIComponent(id)}/heartbeat`, { method: 'POST' })
 export const resumeMockInterview = (id: string) => api<MockInterviewSession>(`${ROOT}/sessions/${encodeURIComponent(id)}/resume`, { method: 'POST' })
 export const completeMockInterview = (id: string) => api<MockInterviewReport>(`${ROOT}/sessions/${encodeURIComponent(id)}/complete`, { method: 'POST' })
 export const abandonMockInterview = (id: string) => api<MockInterviewSession>(`${ROOT}/sessions/${encodeURIComponent(id)}/abandon`, { method: 'POST' })

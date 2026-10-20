@@ -80,8 +80,8 @@ async function load(): Promise<void> {
   }
 }
 
-function create(mode?: 'TEXT' | 'VOICE'): void {
-  void router.push({ name: 'mock-interview-create', query: mode ? { mode } : {} })
+function create(mode?: 'TEXT' | 'VOICE', type?: string): void {
+  void router.push({ name: 'mock-interview-create', query: { ...(mode ? { mode } : {}), ...(type ? { type } : {}) } })
 }
 
 function open(item: MockInterviewSessionSummary): void {
@@ -124,7 +124,7 @@ onMounted(load)
             </article>
             <article class="mi-card mi-mode-card">
               <span class="mi-mode-icon is-green"><JobProofIcon name="interview-voice-mode" :size="45" /></span>
-              <div><h2>语音模拟</h2><p>真实口述回答，支持录音、转写与语音反馈</p><button class="mi-secondary" type="button" @click="create('VOICE')">开始语音模拟</button></div>
+              <div><h2>语音模拟</h2><p>面试官读题，你口述作答，浏览器把语音转成文字；录音不上传，反馈为文字</p><button class="mi-secondary" type="button" @click="create('VOICE')">开始语音模拟</button></div>
             </article>
           </section>
 
@@ -134,10 +134,10 @@ onMounted(load)
 
           <section class="mi-home-bottom">
             <aside class="mi-card mi-suggestions">
-              <h2>训练建议</h2>
-              <div><span class="is-blue"><JobProofIcon name="interview-expression-structure" :size="18" /></span><p><strong>文字表达结构</strong><small>优化回答结构，提升逻辑清晰度与表达完整性。</small></p></div>
-              <div><span class="is-green"><JobProofIcon name="interview-evidence-quantification" :size="18" /></span><p><strong>证据量化</strong><small>用数据与案例支撑观点，增强说服力与可信度。</small></p></div>
-              <div><span class="is-orange"><JobProofIcon name="interview-pressure-followup" :size="18" /></span><p><strong>压力追问</strong><small>针对薄弱追问点提前准备，练习稳定表达。</small></p></div>
+              <h2>按目标练习</h2>
+              <button type="button" data-testid="practice-behavioral" @click="create(undefined, 'BEHAVIORAL')"><span class="is-blue"><JobProofIcon name="interview-expression-structure" :size="18" /></span><p><strong>表达结构</strong><small>行为面试：讲清情境、任务、行动和结果，每题都有回答思路。</small></p><ChevronRight :size="16" /></button>
+              <button type="button" data-testid="practice-professional" @click="create(undefined, 'PROFESSIONAL')"><span class="is-green"><JobProofIcon name="interview-evidence-quantification" :size="18" /></span><p><strong>证据量化</strong><small>专业面试：围绕岗位要求，用数据和案例说明你的判断。</small></p><ChevronRight :size="16" /></button>
+              <button type="button" data-testid="practice-pressure" @click="create(undefined, 'PRESSURE')"><span class="is-orange"><JobProofIcon name="interview-pressure-followup" :size="18" /></span><p><strong>压力追问</strong><small>压力面试：每题最多追问 2 次，紧追证据、数字来源和取舍。</small></p><ChevronRight :size="16" /></button>
             </aside>
 
             <section class="mi-card mi-recent">
@@ -184,7 +184,7 @@ onMounted(load)
 .mi-continue{color:var(--text-primary);text-align:left;grid-template-columns:42px 1fr auto;align-items:center;gap:14px;width:100%;min-height:70px;padding:13px 20px;display:grid}
 .mi-continue>span{color:var(--color-primary-text);background:var(--surface-2);border-radius:8px;place-items:center;width:42px;height:42px;display:grid}.mi-continue strong{font-size:15px}.mi-continue p{color:var(--text-secondary);font-size:12px}.mi-continue em{color:var(--color-primary-text);align-items:center;gap:4px;font-style:normal;font-weight:600;display:flex}
 .mi-home-bottom{grid-template-columns:330px minmax(0,1fr);gap:16px;margin-top:16px;display:grid}
-.mi-suggestions{padding:18px}.mi-suggestions h2,.mi-recent h2{font-size:15px}.mi-suggestions>div{border:1px solid var(--border-subtle);border-radius:7px;gap:11px;margin-top:10px;padding:10px;display:flex}.mi-suggestions>div>span{border-radius:7px;flex:none;place-items:center;width:38px;height:38px;display:grid}.mi-suggestions p{display:grid}.mi-suggestions small{color:var(--text-secondary);font-size:12px;line-height:1.5}
+.mi-suggestions{padding:18px}.mi-suggestions h2,.mi-recent h2{font-size:15px}.mi-suggestions>button{width:100%;color:var(--text-primary);text-align:left;background:var(--surface-1);border:1px solid var(--border-subtle);border-radius:7px;align-items:center;gap:11px;margin-top:10px;padding:10px;display:flex;cursor:pointer;transition:border-color .15s ease}.mi-suggestions>button:hover{border-color:var(--color-primary-border)}.mi-suggestions>button:focus-visible{outline:none;box-shadow:var(--focus-ring)}.mi-suggestions>button>svg{flex:none;color:var(--text-tertiary)}.mi-suggestions>button>span{border-radius:7px;flex:none;place-items:center;width:38px;height:38px;display:grid}.mi-suggestions p{flex:1;display:grid}.mi-suggestions small{color:var(--text-secondary);font-size:12px;line-height:1.5}
 .mi-recent{min-width:0;overflow:hidden}.mi-recent>header{justify-content:space-between;align-items:center;gap:12px;padding:17px 18px 11px;display:flex}.mi-recent>header p{color:var(--text-secondary);font-size:12px}.mi-recent .mi-secondary{min-height:32px;padding:0 12px;font-size:12px}
 .mi-filters{grid-template-columns:minmax(220px,1.5fr) repeat(3,minmax(120px,.7fr));gap:8px;padding:8px 18px 14px;display:grid}.mi-filters label{color:var(--text-secondary);border:1px solid var(--border-default);border-radius:6px;align-items:center;gap:7px;height:42px;padding:0 11px;display:flex}.mi-filters input{color:var(--text-primary);background:0 0;border:0;outline:0;width:100%;min-width:0}.mi-table-wrap{overflow:auto}.mi-history-table{border-collapse:collapse;width:100%;font-size:12px}.mi-history-table th{color:var(--text-secondary);text-align:left;white-space:nowrap;background:var(--surface-2);border-top:1px solid var(--border-subtle);border-bottom:1px solid var(--border-subtle);padding:9px 13px}.mi-history-table td{white-space:nowrap;border-bottom:1px solid var(--border-subtle);padding:10px 13px}.mi-history-table td:first-child{min-width:150px}.mi-history-table td strong,.mi-history-table td small{display:block}.mi-history-table td small{color:var(--text-secondary)}.mi-history-table td button{color:var(--color-primary-text);background:var(--surface-1);border:1px solid var(--color-primary-border);border-radius:4px;padding:4px 9px}.mi-terminal-action{color:var(--text-tertiary)}.mi-more{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 18px;color:var(--text-tertiary);font-size:12px}.mi-more button{height:32px;padding:0 14px;border:1px solid var(--border-default);border-radius:6px;color:var(--color-primary-text);background:var(--surface-1);cursor:pointer}.mi-more button:disabled{opacity:.6;cursor:default}.mi-history-table .is-score{color:var(--color-success-text);font-weight:700}
 @media (width<=1100px){.mi-home-bottom{grid-template-columns:1fr}.mi-suggestions{display:none}.mi-filters{grid-template-columns:1fr 1fr}.mi-mode-card{gap:18px;padding:22px}.mi-mode-icon{width:82px;height:82px}}

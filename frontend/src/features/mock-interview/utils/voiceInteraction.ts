@@ -41,3 +41,24 @@ export function mergeSpeechTranscript(...parts: Array<string | null | undefined>
     .replace(/\s+/g, ' ')
     .trim()
 }
+
+export type MicrophoneIssue = 'denied' | 'missing' | 'busy' | 'insecure' | 'unknown'
+
+/** Why getUserMedia failed, from the DOMException name browsers use (or the API missing outside HTTPS). */
+export function microphoneIssue(error: unknown, hasMediaDevices = true): MicrophoneIssue {
+  if (!hasMediaDevices) return 'insecure'
+  const name = error && typeof error === 'object' && 'name' in error ? String((error as { name: unknown }).name) : ''
+  if (name === 'NotAllowedError' || name === 'PermissionDeniedError') return 'denied'
+  if (name === 'SecurityError') return 'insecure'
+  if (name === 'NotFoundError' || name === 'DevicesNotFoundError' || name === 'OverconstrainedError') return 'missing'
+  if (name === 'NotReadableError' || name === 'TrackStartError' || name === 'AbortError') return 'busy'
+  return 'unknown'
+}
+
+export const MICROPHONE_ISSUE_TEXT: Record<MicrophoneIssue, { title: string; detail: string }> = {
+  denied: { title: '浏览器没有允许使用麦克风', detail: '点击地址栏左侧的权限图标，允许此网站使用麦克风，再回来重新检测。' },
+  missing: { title: '没有找到可用的麦克风', detail: '请连接耳机或麦克风后重新检测。' },
+  busy: { title: '麦克风正被其他应用占用', detail: '请关闭正在使用麦克风的应用（如会议软件）后重新检测。' },
+  insecure: { title: '当前连接不安全，浏览器不允许使用麦克风', detail: '请通过 https 地址打开 JobProof 后再使用语音作答。' },
+  unknown: { title: '麦克风暂时无法使用', detail: '可以稍后重新检测。' },
+}

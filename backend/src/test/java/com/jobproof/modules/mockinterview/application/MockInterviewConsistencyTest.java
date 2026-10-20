@@ -38,7 +38,8 @@ class MockInterviewConsistencyTest {
         otherConnection = new JdbcTemplate(new DriverManagerDataSource(url, "sa", ""));
         new ResourceDatabasePopulator(new ClassPathResource("db/migration/V30__mock_interview_training.sql"),
                 new ClassPathResource("db/migration/V69__mock_interview_honest_scoring.sql"),
-                new ClassPathResource("db/migration/V81__mock_interview_follow_ups.sql")).execute(source);
+                new ClassPathResource("db/migration/V81__mock_interview_follow_ups.sql"),
+                new ClassPathResource("db/migration/V82__mock_interview_activity.sql")).execute(source);
         DataSourceTransactionManager transactionManager = new DataSourceTransactionManager(source);
         tx = new TransactionTemplate(transactionManager);
         service = new MockInterviewService(jdbc, new ObjectMapper(), () -> {
