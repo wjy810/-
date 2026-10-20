@@ -5,7 +5,7 @@
  * overflow and one-click compaction use the same numbers the PDF renderer will produce.
  */
 import { computed, ref, shallowRef, watch } from 'vue'
-import { errorMessage } from '@/shared/api/types'
+import { errorMessage, isApiClientError } from '@/shared/api/types'
 import { createDraftSaveQueue } from '@/shared/lib/draftSaveQueue'
 import { fetchCurrentResumeLayout } from '@/features/resume/services/resumeApi'
 import type { LayoutResult } from '@/resume-render/components/ResumeDocument.vue'
@@ -19,6 +19,7 @@ import { loadTemplate } from '@/resume-render/templates/registry'
 import { regionFor } from '@/resume-render/layout/blocks'
 import { saveAiResumeDesign, selectAiResumeTemplate } from '../services/aiResumeApi'
 import { reorder } from './structured'
+import type { AiResumeConversation } from '../types'
 import type { DraftState } from './types'
 import type { WorkbenchSession } from './useWorkbenchSession'
 
@@ -37,6 +38,36 @@ function parseManifest(json: string | null | undefined): TemplateManifest | null
     return value && Array.isArray(value.palettes) && Array.isArray(value.regions) ? value : null
   } catch {
     return null
+  }
+}
+
+/**
+ * Settings the server refused because another tab or page saved this template's design first. The
+ * latest settings are shown; the refused ones wait here until the user picks one.
+ */
+export interface DesignConflict {
+  templateId: string
+  settings: ResumeDesignV2
+  refusedAt: string
+}
+
+const conflictKey = (identity: string) => `jobproof:ai-resume:design-conflict:${identity}`
+
+function readConflict(identity: string): DesignConflict | null {
+  try {
+    const value = JSON.parse(window.localStorage.getItem(conflictKey(identity)) ?? 'null') as DesignConflict | null
+    return value?.settings?.schemaVersion === 'resume-design-v2' && typeof value.templateId === 'string' ? value : null
+  } catch {
+    return null
+  }
+}
+
+function writeConflict(identity: string, value: DesignConflict | null): void {
+  try {
+    if (value) window.localStorage.setItem(conflictKey(identity), JSON.stringify(value))
+    else window.localStorage.removeItem(conflictKey(identity))
+  } catch {
+    // The refused copy then lives only as long as this page; the latest design is safe either way.
   }
 }
 
@@ -61,6 +92,7 @@ export function useDesignDraft(session: WorkbenchSession, options: { isExporting
   const compacting = ref(false)
   const templateModule = shallowRef<TemplateModule | null>(null)
   const templateLoadError = ref('')
+  const conflict = shallowRef<DesignConflict | null>(null)
   let identity = ''
 
   const conversation = session.conversation
@@ -167,24 +199,23 @@ export function useDesignDraft(session: WorkbenchSession, options: { isExporting
       }
     },
     onState: (state) => { saveState.value = state },
-    onError: reason => session.fail(errorMessage(reason, '设计保存失败，当前修改仍保留，请重试后再导出')),
+    onError: (reason) => {
+      if (isApiClientError(reason) && reason.category === 'CONFLICT') void keepRefusedDesign()
+      else session.fail(errorMessage(reason, '设计保存失败，当前修改仍保留，请重试后再导出'))
+    },
     onRecoveryError: (operation) => {
       if (operation === 'read') session.fail('无法读取本地设计副本，请确认浏览器允许本地存储。')
       if (operation === 'write') session.fail('浏览器无法保留本地设计副本，请在离开前确认服务端保存成功。')
     },
   })
 
-  session.onApply((next) => {
-    const nextIdentity = `${next.id}:${next.layout?.templateId ?? next.activeDesign?.templateId ?? ''}`
-    // Keep unsaved edits of the same template; re-seed when the template changes or nothing is pending.
-    if (identity === nextIdentity && (saver.dirty || saver.saving)) return
-    if (identity !== nextIdentity) compactUndo.value = null
-    identity = nextIdentity
-    saver.reset()
+  /** Draft and version from the server copy; `recover` re-applies unsaved edits kept in localStorage. */
+  function seed(next: AiResumeConversation, recover: boolean): void {
     const settings = next.activeDesign?.settings ?? next.layout?.design ?? null
     draft.value = settings && manifest.value ? coerceDesign(manifest.value, settings) : null
     version.value = next.activeDesign?.versionNo ?? 0
     saveState.value = 'idle'
+    if (!recover) return
     try {
       const local = saver.readRecovery()
       if (local && settings && manifest.value) {
@@ -198,7 +229,78 @@ export function useDesignDraft(session: WorkbenchSession, options: { isExporting
     } catch {
       session.fail('无法读取本地设计副本，请确认浏览器允许本地存储。')
     }
+  }
+
+  session.onApply((next) => {
+    const nextIdentity = `${next.id}:${next.layout?.templateId ?? next.activeDesign?.templateId ?? ''}`
+    // Keep unsaved edits of the same template; re-seed when the template changes or nothing is pending.
+    if (identity === nextIdentity && (saver.dirty || saver.saving)) return
+    if (identity !== nextIdentity) {
+      compactUndo.value = null
+      conflict.value = null
+    }
+    identity = nextIdentity
+    saver.reset()
+    seed(next, true)
+    reconcileConflict()
   })
+
+  /** Offers a refusal again (also one kept from an earlier visit) unless the design now matches it. */
+  function reconcileConflict(): void {
+    const refused = conflict.value ?? readConflict(identity)
+    if (!refused) return
+    if (refused.templateId !== activeTemplate.value?.templateId || sameDesign(refused.settings, activeDesign.value)) {
+      conflict.value = null
+      writeConflict(identity, null)
+      return
+    }
+    conflict.value = refused
+  }
+
+  function sameDesign(left: ResumeDesignV2, right: ResumeDesignV2 | null): boolean {
+    const value = manifest.value
+    return Boolean(value && right) && JSON.stringify(coerceDesign(value!, left)) === JSON.stringify(coerceDesign(value!, right))
+  }
+
+  /**
+   * The design was saved elsewhere since this page read it, so every retry with the old version would
+   * be refused. Read the latest copy, show it, and keep the refused settings aside instead of
+   * re-sending them over the other change.
+   */
+  async function keepRefusedDesign(): Promise<void> {
+    const refused = draft.value ? clone(draft.value) : null
+    const templateId = activeTemplate.value?.templateId ?? ''
+    if (refused) saver.discardRecovery(JSON.stringify({ settings: refused }))
+    saver.reset()
+    await session.load()
+    const current = conversation.value
+    if (session.isDisposed() || !current) return
+    seed(current, false)
+    if (!refused) return
+    if (activeTemplate.value?.templateId !== templateId) {
+      session.warn('这份简历刚在别处换了模板，已显示最新版式；刚才的设计修改属于原模板，没有保存。')
+      return
+    }
+    if (sameDesign(refused, activeDesign.value)) return
+    conflict.value = { templateId, settings: refused, refusedAt: new Date().toISOString() }
+    writeConflict(identity, conflict.value)
+    session.warn('设计刚在别处保存过，已显示最新设置；你的修改另存着，可以在「设计」里改用。')
+  }
+
+  /** Re-applies the refused settings on top of the latest version and saves them. */
+  function applyRefusedDesign(): void {
+    const refused = conflict.value
+    conflict.value = null
+    writeConflict(identity, null)
+    if (!refused || activeTemplate.value?.templateId !== refused.templateId) return
+    commit(refused.settings)
+    void persist()
+  }
+
+  function keepLatestDesign(): void {
+    conflict.value = null
+    writeConflict(identity, null)
+  }
 
   function commit(next: ResumeDesignV2): void {
     if (templatePending.value || session.isDisposed() || !manifest.value) return
@@ -348,6 +450,9 @@ export function useDesignDraft(session: WorkbenchSession, options: { isExporting
     compacting,
     compactUndo,
     orderedSections,
+    conflict,
+    applyRefusedDesign,
+    keepLatestDesign,
     isDirty: () => saver.dirty,
     sectionTitle,
     update,

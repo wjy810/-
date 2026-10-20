@@ -5,7 +5,7 @@
  */
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { Download, GitCompareArrows, LinkIcon, Lock, PenLine, RefreshCw, RotateCcw } from 'lucide-vue-next'
+import { ArchiveRestore, Download, GitCompareArrows, LinkIcon, Lock, PenLine, RefreshCw, RotateCcw } from 'lucide-vue-next'
 import AppIcon from '@/shared/ui/AppIcon.vue'
 import ForbidState from '@/shared/ui/ForbidState.vue'
 import PageState from '@/shared/ui/PageState.vue'
@@ -63,6 +63,7 @@ import {
   linkOutcomeEvidence,
   markResumeReady,
   restoreResume,
+  unarchiveResumeVersion,
   waiveOutcome,
 } from '../services/resumeApi'
 import type { CurrentResumeLayout, KeyOutcome, ResumeMasterView, ResumeTemplateDetail, ResumeVersionView } from '../types'
@@ -328,7 +329,7 @@ async function onConfirmArchive(): Promise<void> {
       notice.value = '简历已归档，可以随时恢复。'
     } else {
       await archiveResumeVersion(target.id, target.version)
-      notice.value = '版本已归档。'
+      notice.value = '版本已归档，随时可以在这里取消归档。'
       await reload()
     }
     archiveTarget.value = null
@@ -370,6 +371,21 @@ async function onRestoreVersion(item: ResumeVersionView): Promise<void> {
     await reload()
   } catch (error) {
     handleWriteError(error, '恢复版本失败')
+  } finally {
+    pending.value = ''
+  }
+}
+
+async function onUnarchiveVersion(item: ResumeVersionView): Promise<void> {
+  pending.value = `${item.id}-unarchive`
+  try {
+    const restored = await unarchiveResumeVersion(item.id, item.version)
+    notice.value = restored.status === 'FROZEN'
+      ? `${versionLabel(item)}已取消归档，可以继续导出和用于投递。`
+      : `${versionLabel(item)}已取消归档，确认后即可导出。`
+    await reload()
+  } catch (error) {
+    handleWriteError(error, '取消归档失败')
   } finally {
     pending.value = ''
   }
@@ -578,6 +594,17 @@ onUnmounted(stopPoll)
                     >
                       归档
                     </button>
+                    <UiButton
+                      v-else
+                      variant="secondary"
+                      :icon="ArchiveRestore"
+                      :disabled="Boolean(pending) && pending !== `${item.id}-unarchive`"
+                      :pending="pending === `${item.id}-unarchive`"
+                      data-testid="unarchive-version"
+                      @click="onUnarchiveVersion(item)"
+                    >
+                      取消归档
+                    </UiButton>
                   </div>
                 </div>
               </div>

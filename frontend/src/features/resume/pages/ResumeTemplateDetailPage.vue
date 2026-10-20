@@ -14,7 +14,7 @@ import UiSegmented from '@/shared/ui/UiSegmented.vue'
 import UiSelect from '@/shared/ui/UiSelect.vue'
 import UiSkeleton from '@/shared/ui/UiSkeleton.vue'
 import ForbidState from '@/shared/ui/ForbidState.vue'
-import { useToastFeedback } from '@/shared/ui/toast'
+import { toast, useToastFeedback } from '@/shared/ui/toast'
 import { errorMessage, isForbidden, isNotFound } from '@/shared/api/types'
 import { useLoadState } from '@/shared/lib/useLoadState'
 import ResumeDocument from '@/resume-render/components/ResumeDocument.vue'
@@ -23,7 +23,8 @@ import type { FontPairing } from '@/resume-render/theme/design'
 import type { TemplateManifest } from '@/resume-render/templates/manifest'
 import { manifestOf } from '@/resume-render/templates/manifests'
 import { loadTemplate } from '@/resume-render/templates/registry'
-import { ensureAiResume, selectAiResumeTemplate } from '@/features/ai-resume/services/aiResumeApi'
+import { ensureAiResume } from '@/features/ai-resume/services/aiResumeApi'
+import { applyTemplateChoice, choiceToQuery, type TemplateChoice } from '@/features/ai-resume/utils/templateChoice'
 import { fetchResumeTemplate, listResumes } from '../services/resumeApi'
 import { templateFacts } from '../templateFacts'
 
@@ -56,6 +57,8 @@ const fontPairing = ref<FontPairing>('sans')
 const headerVariant = ref('')
 const paperSize = ref<'A4' | 'LETTER'>('A4')
 const pageCount = ref(0)
+/** Only what the user changed here is carried into the workbench; the rest keeps the resume's own settings. */
+const touched = ref(new Set<keyof TemplateChoice>())
 
 const design = computed(() => ({
   paletteId: paletteId.value,
@@ -72,7 +75,32 @@ function reset(value: TemplateManifest): void {
   fontPairing.value = value.fontPairings[0]!
   headerVariant.value = value.headerVariants[0]?.id ?? ''
   paperSize.value = value.paperSizes[0]!
+  touched.value = new Set()
 }
+
+function pick<K extends keyof TemplateChoice>(key: K, value: NonNullable<TemplateChoice[K]>): void {
+  if (key === 'paletteId') paletteId.value = value as string
+  else if (key === 'fontPairing') fontPairing.value = value as FontPairing
+  else if (key === 'headerVariant') headerVariant.value = value as string
+  else paperSize.value = value as 'A4' | 'LETTER'
+  touched.value = new Set(touched.value).add(key)
+}
+
+/** The picks the user changed on this page. */
+const choice = computed<TemplateChoice>(() => {
+  const all: TemplateChoice = { ...design.value }
+  return Object.fromEntries(Object.entries(all).filter(([key]) => touched.value.has(key as keyof TemplateChoice))) as TemplateChoice
+})
+const choiceSummary = computed(() => {
+  const value = manifest.value
+  if (!value) return ''
+  const parts: string[] = []
+  if (touched.value.has('paletteId')) parts.push(`配色「${value.palettes.find(item => item.id === paletteId.value)?.name ?? paletteId.value}」`)
+  if (touched.value.has('fontPairing')) parts.push(`字体「${FONT_LABELS[fontPairing.value]}」`)
+  if (touched.value.has('headerVariant')) parts.push(`页头「${value.headerVariants.find(item => item.id === headerVariant.value)?.name ?? headerVariant.value}」`)
+  if (touched.value.has('paperSize')) parts.push(paperSize.value === 'LETTER' ? '纸张 US Letter' : '纸张 A4')
+  return parts.join('、')
+})
 
 function load(): void {
   if (!manifest.value) return
@@ -81,7 +109,7 @@ function load(): void {
 }
 
 function start(): void {
-  void router.push({ path: '/ai-resume/new', query: { template: templateId.value } })
+  void router.push({ path: '/ai-resume/new', query: { template: templateId.value, ...choiceToQuery(choice.value) } })
 }
 
 /** Applies the template through the resume's AI workbench conversation, then opens it there. */
@@ -91,9 +119,8 @@ async function applyToResume(): Promise<void> {
   error.value = ''
   try {
     const conversation = await ensureAiResume(targetMasterId.value)
-    if (conversation.layout?.templateId !== templateId.value) {
-      await selectAiResumeTemplate(conversation.id, templateId.value, conversation.layout?.version)
-    }
+    const result = await applyTemplateChoice(conversation, templateId.value, choice.value)
+    if (!result.designSaved) toast.warning(`已换成「${manifest.value?.name ?? '所选模板'}」，但${choiceSummary.value}没有保存成功；可以在工作台「设计」里重新选择。`)
     await router.push({ name: 'ai-resume-workbench', params: { conversationId: conversation.id } })
   } catch (cause) {
     error.value = errorMessage(cause, '应用模板失败，原简历版式保持不变')
@@ -159,7 +186,7 @@ onMounted(() => { load(); void resumeState.load() })
               role="radio"
               :aria-checked="paletteId === palette.id"
               :style="{ '--swatch': palette.accent }"
-              @click="paletteId = palette.id"
+              @click="pick('paletteId', palette.id)"
             >
               <i aria-hidden="true"><Check v-if="paletteId === palette.id" :size="13" :stroke-width="3" /></i>{{ palette.name }}
             </button>
@@ -168,17 +195,17 @@ onMounted(() => { load(); void resumeState.load() })
 
         <section v-if="manifest.fontPairings.length > 1" class="tpl-detail__section">
           <h2>字体组合</h2>
-          <UiSegmented v-model="fontPairing" :items="manifest.fontPairings.map(value => ({ value, label: FONT_LABELS[value] }))" aria-label="字体组合" size="sm" />
+          <UiSegmented :model-value="fontPairing" :items="manifest.fontPairings.map(value => ({ value, label: FONT_LABELS[value] }))" aria-label="字体组合" size="sm" @update:model-value="pick('fontPairing', $event as FontPairing)" />
         </section>
 
         <section v-if="manifest.headerVariants.length > 1" class="tpl-detail__section">
           <h2>页头样式</h2>
-          <UiSegmented v-model="headerVariant" :items="manifest.headerVariants.map(item => ({ value: item.id, label: item.name }))" aria-label="页头样式" size="sm" />
+          <UiSegmented :model-value="headerVariant" :items="manifest.headerVariants.map(item => ({ value: item.id, label: item.name }))" aria-label="页头样式" size="sm" @update:model-value="pick('headerVariant', $event)" />
         </section>
 
         <section v-if="manifest.paperSizes.length > 1" class="tpl-detail__section">
           <h2>纸张</h2>
-          <UiSegmented v-model="paperSize" :items="manifest.paperSizes.map(value => ({ value, label: value === 'LETTER' ? 'US Letter' : 'A4' }))" aria-label="纸张" size="sm" />
+          <UiSegmented :model-value="paperSize" :items="manifest.paperSizes.map(value => ({ value, label: value === 'LETTER' ? 'US Letter' : 'A4' }))" aria-label="纸张" size="sm" @update:model-value="pick('paperSize', $event as 'A4' | 'LETTER')" />
         </section>
 
         <section class="tpl-detail__section">
@@ -202,7 +229,9 @@ onMounted(() => { load(); void resumeState.load() })
             你的简历列表没有读取成功，暂时不能直接应用到已有简历。
             <UiButton size="sm" variant="link" :icon="RotateCcw" :pending="resumeState.loading.value" @click="resumeState.load">重试</UiButton>
           </p>
-          <p class="tpl-detail__hint">换模板只改变版式，内容、字号与间距等通用设置会保留；工作台中 10 秒内可撤销。</p>
+          <p class="tpl-detail__hint" data-testid="choice-hint">{{ choiceSummary
+            ? `会一起带上${choiceSummary}。`
+            : '' }}内容和字号、间距等设置保持不变，进入工作台后随时可以再调整或换回原来的模板。</p>
         </div>
       </aside>
     </div>

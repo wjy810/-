@@ -213,6 +213,14 @@ public class ResumeController {
                 SecurityConfig.currentAccount(), versionId, request == null ? null : request.expectedVersion()));
     }
 
+    @PostMapping("/versions/{versionId}/unarchive")
+    public ApiResponse<VersionView> unarchiveVersion(
+            @PathVariable String versionId,
+            @RequestBody(required = false) VersionedRequest request) {
+        return ApiResponse.ok(resumeService.unarchiveVersion(
+                SecurityConfig.currentAccount(), versionId, request == null ? null : request.expectedVersion()));
+    }
+
     @GetMapping("/versions/{versionId}/compare")
     public ApiResponse<CompareView> compare(
             @PathVariable String versionId,

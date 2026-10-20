@@ -4,7 +4,7 @@ import { ApiClientError } from '@/shared/api/types'
 import type { ResumeMasterView } from '../types'
 
 const api = vi.hoisted(() => ({
-  fetchResume: vi.fn(), fetchCurrentResumeLayout: vi.fn(), fetchResumeTemplate: vi.fn(),
+  fetchResume: vi.fn(), fetchCurrentResumeLayout: vi.fn(), fetchResumeTemplate: vi.fn(), unarchiveResumeVersion: vi.fn(),
 }))
 const career = vi.hoisted(() => ({ fetchCareerRecords: vi.fn() }))
 vi.mock('../services/resumeApi', async (importOriginal) => ({
@@ -115,6 +115,19 @@ describe('ResumeEditorPage (版本与导出)', () => {
     expect(dialogs.confirm).toHaveBeenCalledWith(expect.objectContaining({ title: '把简历内容恢复到版本 2？' }))
     expect(ai.ensureAiResume).toHaveBeenCalledWith('resume-1')
     expect(ai.restoreAiResumeVersion).toHaveBeenCalledWith('conv-1', 'v-full', 7)
+    expect(api.fetchResume).toHaveBeenCalledTimes(2)
+  })
+
+  it('takes an archived version out of the archive instead of only offering to delete it', async () => {
+    api.fetchResume.mockResolvedValue(master({ versions: [
+      { id: 'v-old', masterId: 'resume-1', status: 'ARCHIVED', source: 'USER_FREEZE', immutable: true, version: 2, createdAt: '2026-09-01T08:00:00Z', frozenAt: '2026-09-01T08:00:00Z' },
+    ] }))
+    api.unarchiveResumeVersion.mockResolvedValue({ id: 'v-old', masterId: 'resume-1', status: 'FROZEN', immutable: true, version: 3 })
+    const wrapper = mount(ResumeEditorPage, { global: { stubs } })
+    await flushPromises()
+    await wrapper.get('[data-testid="unarchive-version"]').trigger('click')
+    await flushPromises()
+    expect(api.unarchiveResumeVersion).toHaveBeenCalledWith('v-old', 2)
     expect(api.fetchResume).toHaveBeenCalledTimes(2)
   })
 })

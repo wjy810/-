@@ -167,6 +167,10 @@ export function usePdfExport(session: WorkbenchSession, deps: {
         error.value = '设计设置尚未成功保存，本次没有生成 PDF。'
         return
       }
+      if (design.conflict.value) {
+        error.value = '设计刚在别处保存过，请先在「设计」里选择保留哪一份，再导出。'
+        return
+      }
       if (overflowBlocked.value) {
         error.value = `${overflowSummary.value}，本次没有生成 PDF。`
         return

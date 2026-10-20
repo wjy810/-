@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { Check, ChevronDown, ChevronUp, GripVertical, Palette, RotateCcw } from 'lucide-vue-next'
+import { Check, ChevronDown, ChevronUp, GitMerge, GripVertical, Palette, RotateCcw } from 'lucide-vue-next'
 import UiButton from '@/shared/ui/UiButton.vue'
 import UiIconButton from '@/shared/ui/UiIconButton.vue'
 import UiSegmented from '@/shared/ui/UiSegmented.vue'
 import UiSwitch from '@/shared/ui/UiSwitch.vue'
 import { useScrollSurface } from '@/shared/composables/useScrollSurface'
 import { useSortableList } from '@/shared/composables/useSortableList'
+import { formatRelative } from '@/shared/lib/datetime'
 import { DATE_FORMATS } from '@/resume-render/model/dates'
 import type { SectionKey } from '@/resume-render/model/types'
 import type { FontPairing, ResumeDesignV2 } from '@/resume-render/theme/design'
@@ -108,6 +109,18 @@ function set2<K extends keyof ResumeDesignV2>(key: K, next: ResumeDesignV2[K]): 
           <div><strong>{{ manifest?.name ?? '当前模板' }} · 设计</strong><span>修改即时预览并自动保存；配色与版式按模板分别记忆</span></div>
           <SaveIndicator :state="design.saveState.value" @retry="design.persist()" />
         </header>
+
+        <div v-if="design.conflict.value" class="design-conflict" role="status" data-testid="design-conflict">
+          <GitMerge class="design-conflict__icon" :size="17" aria-hidden="true" />
+          <p>
+            <strong>设计刚在别处保存过</strong>
+            <span>下面是最新的设置；你{{ formatRelative(design.conflict.value.refusedAt) }}的修改另存着，没有被覆盖。</span>
+          </p>
+          <div class="design-conflict__actions">
+            <UiButton size="sm" variant="secondary" @click="design.applyRefusedDesign()">改用我的修改</UiButton>
+            <UiButton size="sm" variant="ghost" @click="design.keepLatestDesign()">保留最新设置</UiButton>
+          </div>
+        </div>
 
         <p v-if="!settings || !manifest" class="design-panel__empty">正在读取模板设计…</p>
 
@@ -296,6 +309,50 @@ function set2<K extends keyof ResumeDesignV2>(key: K, next: ResumeDesignV2[K]): 
 .design-panel__head span {
   color: var(--text-tertiary);
   font-size: var(--fs-xs);
+}
+
+.design-conflict {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 4px var(--space-3);
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--color-warning) 38%, var(--border-subtle));
+  border-radius: var(--radius-md);
+  background: var(--color-warning-soft);
+  animation: design-conflict-in var(--dur-base, 200ms) var(--ease-out);
+}
+
+.design-conflict__icon {
+  margin-top: 2px;
+  color: var(--color-warning-text);
+}
+
+.design-conflict p {
+  display: grid;
+  gap: 2px;
+  font-size: var(--fs-sm);
+  line-height: 1.55;
+}
+
+.design-conflict strong {
+  color: var(--color-warning-text);
+  font-weight: 650;
+}
+
+.design-conflict span {
+  color: var(--text-secondary);
+}
+
+.design-conflict__actions {
+  grid-column: 2;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: 6px;
+}
+
+@keyframes design-conflict-in {
+  from { opacity: 0; transform: translateY(-4px); }
 }
 
 .design-panel__empty {
@@ -578,5 +635,9 @@ function set2<K extends keyof ResumeDesignV2>(key: K, next: ResumeDesignV2[K]): 
     flex-direction: column;
     gap: 6px;
   }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .design-conflict { animation: none; }
 }
 </style>

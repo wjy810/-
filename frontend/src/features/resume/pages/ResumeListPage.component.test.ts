@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiClientError } from '@/shared/api/types'
 import type { ResumeMasterSummary, ResumeMasterView } from '../types'
 
-const api = vi.hoisted(() => ({ listResumes: vi.fn(), fetchResume: vi.fn(), updateResume: vi.fn() }))
+const api = vi.hoisted(() => ({ listResumes: vi.fn(), fetchResume: vi.fn(), updateResume: vi.fn(), unarchiveResumeVersion: vi.fn() }))
 vi.mock('../services/resumeApi', async (importOriginal) => ({
   ...await importOriginal<typeof import('../services/resumeApi')>(),
   ...api,
@@ -128,5 +128,24 @@ describe('ResumeListPage', () => {
     expect(titles[master + 1]).toContain('快照2')
     expect(titles[master + 2]).toContain('快照1')
     expect(list.findAll('th').map((cell) => cell.text())).not.toContain('证据覆盖度')
+  })
+
+  it('restores an archived version from the archive tab with its current version', async () => {
+    localStorage.setItem('jp:resumes:view', 'list')
+    const items = [summary('a', 'Java 后端简历')]
+    api.listResumes.mockResolvedValue(items)
+    api.fetchResume.mockResolvedValue({
+      ...detail(items[0]!),
+      versions: [{ id: 'v1', masterId: 'a', status: 'ARCHIVED', immutable: true, version: 2, createdAt: '2026-09-11T08:00:00Z', frozenAt: '2026-09-11T08:00:00Z', archivedAt: '2026-09-12T08:00:00Z', snapshot: { title: 'Java 后端简历 快照1' } }],
+    })
+    api.unarchiveResumeVersion.mockResolvedValue({ id: 'v1', masterId: 'a', status: 'FROZEN', immutable: true, version: 3 })
+    const wrapper = mountList()
+    await flushPromises()
+    await wrapper.findAll('[role="tab"]').find((tab) => tab.text() === '已归档')!.trigger('click')
+    const row = wrapper.findAll('[data-testid="resume-row"]').find((item) => item.text().includes('快照1'))!
+    await row.get('[data-testid="restore-version"]').trigger('click')
+    await flushPromises()
+    expect(api.unarchiveResumeVersion).toHaveBeenCalledWith('v1', 2)
+    expect(api.listResumes).toHaveBeenCalledTimes(2)
   })
 })

@@ -270,6 +270,13 @@ export function archiveResumeVersion(versionId: string, expectedVersion?: number
   })
 }
 
+export function unarchiveResumeVersion(versionId: string, expectedVersion?: number): Promise<ResumeVersionView> {
+  return api<ResumeVersionView>(`/api/v1/resumes/versions/${versionId}/unarchive`, {
+    method: 'POST',
+    body: versioned(expectedVersion),
+  })
+}
+
 export function compareResumeVersions(versionId: string, otherId: string): Promise<ResumeCompareView> {
   return api<ResumeCompareView>(withQuery(`/api/v1/resumes/versions/${versionId}/compare`, { with: otherId }))
 }

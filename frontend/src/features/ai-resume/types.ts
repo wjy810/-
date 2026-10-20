@@ -118,6 +118,7 @@ export type AiResumePhoto = {
 export type ResumeImportSession = {
   id: string
   sourceType: 'PASTED_TEXT' | 'CAREER_FILE' | string
+  sourceFilename?: string | null
   status: 'PENDING' | 'PARSING' | 'READY_FOR_CONFIRMATION' | 'CONFIRMED' | 'FAILED' | string
   structuredDraft?: Record<string, unknown> | null
   task?: TaskView | null

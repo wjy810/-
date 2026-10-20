@@ -549,6 +549,29 @@ public class ResumeService implements DeletionModuleHandler, AccountExportContri
         return toVersionView(version);
     }
 
+    /** Brings an archived version back as it was: frozen when it had been frozen, otherwise awaiting confirmation. */
+    @Transactional
+    public VersionView unarchiveVersion(CurrentAccount current, String versionId, Integer expectedVersion) {
+        assertSeeker(current);
+        ResumeVersionEntity version = requireOwnVersion(current.accountId(), versionId);
+        Versions.assertExpected(expectedVersion, version.getVersionNo());
+        if (!ResumeVersionStatus.ARCHIVED.name().equals(version.getStatus())) {
+            throw AppException.conflict("RESUME_VERSION_NOT_ARCHIVED", "这个版本没有归档，无需恢复");
+        }
+        Instant now = clock.now();
+        ResumeVersionStatus restored = version.getFrozenAt() != null
+                ? ResumeVersionStatus.FROZEN
+                : ResumeVersionStatus.PENDING_USER_CONFIRMATION;
+        version.setStatus(restored.name());
+        version.setArchivedAt(null);
+        version.setVersionNo(version.getVersionNo() + 1);
+        version.setUpdatedAt(now);
+        versions.save(version);
+        auditService.append(current.accountId(), "RESUME_VERSION_RESTORED", "RESUME_VERSION", version.getId(),
+                "版本从归档恢复为" + restored.label());
+        return toVersionView(version);
+    }
+
     @Transactional(readOnly = true)
     public CompareView compare(CurrentAccount current, String leftId, String rightId) {
         assertSeeker(current);

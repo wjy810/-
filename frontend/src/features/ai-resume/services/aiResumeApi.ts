@@ -385,6 +385,13 @@ export function startResumeTextImport(pastedText: string): Promise<ResumeImportS
   })
 }
 
+/** Starts parsing a PDF or DOCX already in the career library (category RESUME, safety checks passed). */
+export function startResumeFileImport(careerFileId: string): Promise<ResumeImportStart> {
+  return api<ResumeImportStart>('/api/v1/resume-imports', {
+    method: 'POST', body: JSON.stringify({ careerFileId }),
+  })
+}
+
 export function fetchResumeImport(importId: string): Promise<ResumeImportSession> {
   return api<ResumeImportSession>(`/api/v1/resume-imports/${encodeURIComponent(importId)}`)
 }

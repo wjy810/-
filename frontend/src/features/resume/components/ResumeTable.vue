@@ -85,7 +85,10 @@ const emit = defineEmits<{
                 <button v-else class="text-link" type="button" :disabled="busy" @click="emit('restore', row)">恢复</button>
                 <button class="text-link text-link--danger" type="button" :disabled="busy" @click="emit('delete', row)">永久删除</button>
               </template>
-              <button v-else-if="row.rowType === '冻结版本'" class="text-link text-link--danger" type="button" :disabled="busy" @click="emit('delete', row)">永久删除</button>
+              <template v-else>
+                <button v-if="row.archived" class="text-link" type="button" :disabled="busy" data-testid="restore-version" @click="emit('restore', row)">恢复</button>
+                <button v-if="row.rowType === '冻结版本'" class="text-link text-link--danger" type="button" :disabled="busy" @click="emit('delete', row)">永久删除</button>
+              </template>
             </div>
           </td>
         </tr>

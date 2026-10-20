@@ -44,6 +44,7 @@ import {
   fetchResume,
   listResumes,
   restoreResume,
+  unarchiveResumeVersion,
   updateResume,
 } from '../services/resumeApi'
 import { RESUME_TITLE_MAX, normalizeResumeTitle, resumeTitleIssue, titleMatches } from '../utils/resumeTitle'
@@ -182,9 +183,13 @@ function openCreate(): void {
 
 function rowMenu(row: ResumeRow): MenuItem[] {
   if (row.kind === 'VERSION') {
-    return row.rowType === '冻结版本'
-      ? [{ label: '永久删除', icon: Trash2, danger: true, onSelect: () => openPermanentDelete(row) }]
-      : []
+    const items: MenuItem[] = []
+    if (row.archived) items.push({ label: '恢复', icon: ArchiveRestore, onSelect: () => void onRestoreVersion(row) })
+    if (row.rowType === '冻结版本') {
+      if (items.length) items.push({ type: 'separator' })
+      items.push({ label: '永久删除', icon: Trash2, danger: true, onSelect: () => openPermanentDelete(row) })
+    }
+    return items
   }
   const items: MenuItem[] = []
   if (!row.archived) items.push({ label: '重命名', icon: PenLine, onSelect: () => openRename(row) })
@@ -288,11 +293,27 @@ async function onArchiveConfirm(): Promise<void> {
 }
 
 async function onRestore(row: ResumeRow): Promise<void> {
+  if (row.kind === 'VERSION') return onRestoreVersion(row)
   pending.value = `${row.key}-restore`
   pageError.value = ''
   try {
     const restored = await restoreResume(row.masterId, row.expectedVersion)
     notice.value = `「${restored.title}」已恢复为${glossMasterStatus(restored.status)}。`
+    await load()
+  } catch (error) {
+    handleError(error)
+  } finally {
+    pending.value = ''
+  }
+}
+
+async function onRestoreVersion(row: ResumeRow): Promise<void> {
+  if (!row.versionId) return
+  pending.value = `${row.key}-restore`
+  pageError.value = ''
+  try {
+    const restored = await unarchiveResumeVersion(row.versionId, row.expectedVersion)
+    notice.value = `「${row.title}」已恢复为${restored.status === 'FROZEN' ? '冻结版本' : '待确认的版本'}。`
     await load()
   } catch (error) {
     handleError(error)

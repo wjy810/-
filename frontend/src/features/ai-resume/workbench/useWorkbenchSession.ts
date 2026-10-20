@@ -25,6 +25,7 @@ export type ChatScrollRequest = { smooth: boolean; force: boolean; anchor: 'bott
 const LIVE_EVENTS = [
   'card.confirmed', 'message.completed', 'message.failed', 'message.cancelled',
   'change-set.created', 'change-item.applied', 'change-item.rejected', 'change-item.stale', 'change-item.undone',
+  'layout.confirmed',
 ]
 const NOTICE_KEY = 'ai-resume-workbench-notice'
 const ERROR_KEY = 'ai-resume-workbench-error'
@@ -148,11 +149,26 @@ export function useWorkbenchSession(conversationId: () => string) {
     eventSource?.close()
     const url = `/api/v1/ai-resume/conversations/${encodeURIComponent(conversation.value.id)}/events?afterSequence=${conversation.value.lastSequence}`
     eventSource = new EventSource(url)
-    for (const type of LIVE_EVENTS) {
-      eventSource.addEventListener(type, () => {
-        clearTimeout(reloadTimer)
-        reloadTimer = setTimeout(() => void load(), 180)
-      })
+    for (const type of LIVE_EVENTS) eventSource.addEventListener(type, scheduleReload)
+    // Design saved in another tab or on the template page; this tab's own saves are already applied.
+    eventSource.addEventListener('design.saved', (event) => {
+      if (!isKnownDesignSave((event as MessageEvent).data)) scheduleReload()
+    })
+  }
+
+  function scheduleReload(): void {
+    clearTimeout(reloadTimer)
+    reloadTimer = setTimeout(() => void load(), 180)
+  }
+
+  function isKnownDesignSave(data: unknown): boolean {
+    try {
+      const saved = JSON.parse(String(data)) as { templateId?: string; versionNo?: number }
+      const known = conversation.value?.activeDesign
+      return Boolean(known) && known!.templateId === saved.templateId && typeof saved.versionNo === 'number'
+        && known!.versionNo >= saved.versionNo
+    } catch {
+      return false
     }
   }
 

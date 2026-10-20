@@ -56,6 +56,23 @@ class ResumePdfExportIT {
                         .cookie(owner))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.error.reason").value("RESUME_VERSION_NOT_EXPORTABLE"));
+        mockMvc.perform(post("/api/v1/resumes/versions/{versionId}/unarchive", frozen.resumeVersionId())
+                        .cookie(stranger)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(post("/api/v1/resumes/versions/{versionId}/unarchive", frozen.resumeVersionId())
+                        .cookie(owner)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("FROZEN"));
+        mockMvc.perform(post("/api/v1/resumes/versions/{versionId}/unarchive", frozen.resumeVersionId())
+                        .cookie(owner)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.reason").value("RESUME_VERSION_NOT_ARCHIVED"));
 
         FrozenResume exportable = freezeReadyResume(owner, "第二份可导出");
         MvcResult started = mockMvc.perform(post("/api/v1/resumes/versions/{versionId}/export-pdf",

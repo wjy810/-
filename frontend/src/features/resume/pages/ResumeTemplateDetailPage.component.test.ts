@@ -5,6 +5,9 @@ import { ApiClientError } from '@/shared/api/types'
 
 const api = vi.hoisted(() => ({ template: vi.fn(), resumes: vi.fn(), load: vi.fn() }))
 const route = vi.hoisted(() => ({ value: null as unknown as { params: Record<string, string> } }))
+const router = vi.hoisted(() => ({ push: vi.fn() }))
+const ai = vi.hoisted(() => ({ ensureAiResume: vi.fn(), selectAiResumeTemplate: vi.fn(), saveAiResumeDesign: vi.fn() }))
+vi.mock('@/features/ai-resume/services/aiResumeApi', () => ai)
 vi.mock('../services/resumeApi', async (importOriginal) => ({
   ...await importOriginal<typeof import('../services/resumeApi')>(),
   fetchResumeTemplate: api.template,
@@ -13,11 +16,13 @@ vi.mock('../services/resumeApi', async (importOriginal) => ({
 vi.mock('@/resume-render/templates/registry', () => ({ loadTemplate: api.load }))
 vi.mock('vue-router', () => ({
   useRoute: () => route.value,
-  useRouter: () => ({ push: vi.fn() }),
+  useRouter: () => router,
   RouterLink: { name: 'RouterLink', props: ['to'], template: '<a><slot /></a>' },
 }))
 
 import ResumeTemplateDetailPage from './ResumeTemplateDetailPage.vue'
+import { manifestOf } from '@/resume-render/templates/manifests'
+import { defaultDesign } from '@/resume-render/theme/tokens'
 
 const failure = new ApiClientError({ category: 'SYSTEM_FAILURE', reason: 'X', message: '服务暂时不可用' }, 503, 'req-tpl')
 const stubs = { UiIllustration: true, ResumeDocument: true, UiSelect: true, UiSegmented: true }
@@ -27,6 +32,8 @@ beforeEach(() => {
   api.template.mockResolvedValue({ id: 'classic' })
   api.resumes.mockResolvedValue([])
   api.load.mockResolvedValue({})
+  router.push.mockReset()
+  Object.values(ai).forEach(mock => mock.mockReset())
 })
 
 describe('ResumeTemplateDetailPage', () => {
@@ -60,5 +67,36 @@ describe('ResumeTemplateDetailPage', () => {
     expect(wrapper.text()).toContain('返回模板中心')
     expect(wrapper.text()).not.toContain('重试')
     expect(api.template).not.toHaveBeenCalled()
+  })
+
+  it('carries only the picks changed here into a new resume', async () => {
+    const palette = manifestOf('classic')!.palettes[1]!
+    const wrapper = mount(ResumeTemplateDetailPage, { global: { stubs } })
+    await flushPromises()
+    await wrapper.findAll('button').find(button => button.text() === '用此模板创建简历')!.trigger('click')
+    expect(router.push).toHaveBeenLastCalledWith({ path: '/ai-resume/new', query: { template: 'classic' } })
+
+    await wrapper.get(`[aria-label="配色"] button[style*="${palette.accent}"]`).trigger('click')
+    expect(wrapper.get('[data-testid="choice-hint"]').text()).toContain(`配色「${palette.name}」`)
+    await wrapper.findAll('button').find(button => button.text() === '用此模板创建简历')!.trigger('click')
+    expect(router.push).toHaveBeenLastCalledWith({ path: '/ai-resume/new', query: { template: 'classic', palette: palette.id } })
+  })
+
+  it('saves the picked palette over the resume\'s design when applying the template to it', async () => {
+    const manifest = manifestOf('classic')!
+    const palette = manifest.palettes[1]!
+    api.resumes.mockResolvedValue([{ id: 'm1', title: '我的简历', status: 'ACTIVE' }])
+    ai.ensureAiResume.mockResolvedValue({ id: 'c1', layout: { templateId: 'classic', version: 3, design: defaultDesign(manifest) },
+      activeDesign: { templateId: 'classic', variantCode: 'DEFAULT', settings: { ...defaultDesign(manifest), fontSize: 'L' }, versionNo: 4 } })
+    ai.saveAiResumeDesign.mockResolvedValue({ templateId: 'classic', variantCode: 'DEFAULT', settings: defaultDesign(manifest), versionNo: 5 })
+    const wrapper = mount(ResumeTemplateDetailPage, { global: { stubs } })
+    await flushPromises()
+    await wrapper.get(`[aria-label="配色"] button[style*="${palette.accent}"]`).trigger('click')
+    await wrapper.findAll('button').find(button => button.text() === '应用到这份简历')!.trigger('click')
+    await flushPromises()
+    expect(ai.selectAiResumeTemplate).not.toHaveBeenCalled()
+    // Font size and everything else the resume already had stay as they were.
+    expect(ai.saveAiResumeDesign).toHaveBeenCalledWith('c1', 'classic', 'DEFAULT', expect.objectContaining({ paletteId: palette.id, fontSize: 'L' }), 4)
+    expect(router.push).toHaveBeenCalledWith({ name: 'ai-resume-workbench', params: { conversationId: 'c1' } })
   })
 })
