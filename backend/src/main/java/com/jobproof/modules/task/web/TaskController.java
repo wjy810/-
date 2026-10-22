@@ -31,7 +31,8 @@ public class TaskController {
     }
 
     @PostMapping("/{id}/retry")
-    public ApiResponse<TaskView> retry(@PathVariable String id) {
+    public ApiResponse<TaskView> retry(@PathVariable String id,
+            @org.springframework.web.bind.annotation.RequestBody(required = false) com.fasterxml.jackson.databind.JsonNode input) {
         return ApiResponse.ok(taskService.retryManually(SecurityConfig.currentAccount().accountId(), id));
     }
 }

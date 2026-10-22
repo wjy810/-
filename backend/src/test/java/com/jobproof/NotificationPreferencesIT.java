@@ -34,6 +34,8 @@ import org.springframework.test.web.servlet.MvcResult;
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
+// The one-shot failing mail adapter must not consume unrelated pending mail from other suites.
+@org.springframework.test.annotation.DirtiesContext(classMode = org.springframework.test.annotation.DirtiesContext.ClassMode.BEFORE_CLASS)
 class NotificationPreferencesIT {
     @Autowired MockMvc mockMvc;
     @Autowired ObjectMapper mapper;
@@ -103,7 +105,9 @@ class NotificationPreferencesIT {
         assertThat(count("SELECT COUNT(*) FROM notification_emails WHERE account_id=?", unverified.id())).isZero();
 
         notifications.request(verified.id(), NotificationType.APPLICATION_ACTIVITY, "first-open:l2", "星图数据打开了你的简历", "飞书 · 电脑", null);
-        Instant now = Instant.now();
+        // Use the persisted deadline: TIMESTAMP precision can round enqueue time ahead of Instant.now().
+        Instant now = jdbc.queryForObject("SELECT next_attempt_at FROM notification_emails WHERE account_id=?",
+                (rs, index) -> rs.getTimestamp(1).toInstant(), verified.id());
         mailer.failNext();
         outbox.sendDue(now);
         Map<String, Object> row = jdbc.queryForMap("SELECT status,attempts,last_error FROM notification_emails WHERE account_id=?", verified.id());

@@ -15,7 +15,7 @@ const overview: OperationsOverview = {
   // The API leaves out nulls, so rates can be missing entirely.
   membership: { pro: 129, proShare: 1, redeemed30: 20, codesIssued: 500, codesRedeemed: 210, activeBatches: 3 },
   modules: [{ key: 'applications', label: '投递记录', total: 640, last7: 0 }],
-  ai: { period: '2026-10', usedUnits: 4200, accounts: 88 },
+  ai: { period: '2026-10', usedUnits: 4200, accounts: 88, quotaUnits: 4000, walletUnits: 150, personalUnits: 50 },
   funnel: [
     { key: 'registered', label: '注册', accounts: 12_900 },
     { key: 'resume', label: '写了简历', accounts: 9000, rate: 70 },
@@ -36,6 +36,7 @@ describe('operations overview', () => {
     expect(charts[0]!.props('points')).toHaveLength(14)
     expect(wrapper.findAll('.funnel__rate').map(rate => rate.text())).toEqual(['起点', '较上一步 70%', '占注册 1%'])
     expect(wrapper.text()).not.toContain('undefined')
+    expect(wrapper.text()).toContain('额度 4000 / 余额 150 / 个人 50')
     expect(wrapper.findAll('.ops__table tbody tr')).toHaveLength(14)
     expect(wrapper.get('.modules tbody td:last-child').text()).toBe('0')
   })

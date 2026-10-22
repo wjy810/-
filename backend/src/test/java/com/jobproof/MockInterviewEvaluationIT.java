@@ -45,9 +45,15 @@ class MockInterviewEvaluationIT {
     @Test
     void pendingAnswersAreEvaluatedWhenTheModelIsBack() throws Exception {
         when(ai.generateQuestions(anyString(), anyString(), nullable(String.class), anyString(), anyString(), anyInt(), anyMap(), anyMap()))
-                .thenThrow(new AiGatewayException("down", true, false));
+                .thenAnswer(invocation -> {
+                    org.assertj.core.api.Assertions.assertThat(org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
+                    throw new AiGatewayException("down", true, false);
+                });
         when(ai.evaluateAnswer(anyString(), anyString(), anyString(), any(), anyList(), anyString(), anyBoolean(), anyMap(), anyMap()))
-                .thenThrow(new AiGatewayException("down", true, false));
+                .thenAnswer(invocation -> {
+                    org.assertj.core.api.Assertions.assertThat(org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
+                    throw new AiGatewayException("down", true, false);
+                });
         MockCookie owner = registerAndLogin("mock-eval+" + System.nanoTime() + "@example.com");
         String resumeId = data(mockMvc.perform(post("/api/v1/resumes").cookie(owner)
                         .contentType(MediaType.APPLICATION_JSON).content("{\"mode\":\"BLANK\",\"title\":\"评估验收\"}"))

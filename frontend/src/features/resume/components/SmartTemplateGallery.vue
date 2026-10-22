@@ -211,6 +211,7 @@ onMounted(load)
 
 .smart-card__title {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-2);
@@ -218,9 +219,11 @@ onMounted(load)
 
 .smart-card__body h3 {
   min-width: 0;
+  flex: 1 1 130px;
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
-  gap: 6px;
+  gap: 2px 6px;
   font-size: var(--fs-body);
   font-weight: 700;
 }
@@ -234,6 +237,7 @@ onMounted(load)
 
 .smart-card__palettes {
   display: inline-flex;
+  flex: none;
   gap: 5px;
 }
 

@@ -9,6 +9,7 @@ import ResumeDocument, { type LayoutResult } from '@/resume-render/components/Re
 import type { TemplateModule } from '@/resume-render/templates/manifest'
 import { loadTemplate } from '@/resume-render/templates/registry'
 import { SAMPLES, type SampleId } from '@/resume-render/samples'
+import { imagesReady } from './imagesReady'
 
 interface PrintPayload {
   templateId: string
@@ -37,10 +38,6 @@ function setPaper(size: string): void {
   if (style) style.textContent = `@page { size: ${size === 'LETTER' ? 'letter' : 'A4'}; margin: 0 }`
 }
 
-async function imagesReady(): Promise<void> {
-  await Promise.all(Array.from(document.images).map(image => (image.complete ? Promise.resolve() : image.decode().catch(() => undefined))))
-}
-
 async function render(payload: PrintPayload) {
   const module = await loadTemplate(payload.templateId)
   const layout = new Promise<LayoutResult>((resolve) => { settle = resolve })
@@ -50,7 +47,7 @@ async function render(payload: PrintPayload) {
   const result = await layout
   await nextTick()
   await document.fonts.ready
-  await imagesReady()
+  await imagesReady(document.querySelector('.rr-pages') ?? document)
   const paperSize = (payload.design as { paperSize?: string } | undefined)?.paperSize === 'LETTER' && module.manifest.paperSizes.includes('LETTER') ? 'LETTER' : 'A4'
   setPaper(paperSize)
   document.title = payload.title || 'Resume'

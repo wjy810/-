@@ -10,6 +10,24 @@ import java.time.Instant;
 @Table(name = "async_tasks")
 public class AsyncTaskEntity {
 
+    @Column(name = "ai_quote_id") private String aiQuoteId;
+    @Column(name = "ai_request_path") private String aiRequestPath;
+    @Column(name = "ai_payload_hash") private String aiPayloadHash;
+    @Column(name = "ai_payment_confirmed") private boolean aiPaymentConfirmed;
+    @Column(name = "ai_reservation_id") private String aiReservationId;
+    @Column(name = "ai_personal_channel_id") private String aiPersonalChannelId;
+
+    public com.jobproof.shared.ai.AiExecutionContext.State aiContext() {
+        return new com.jobproof.shared.ai.AiExecutionContext.State(aiQuoteId, aiRequestPath, aiPayloadHash,
+                aiPaymentConfirmed, accountId, aiReservationId, aiPersonalChannelId, id);
+    }
+    public void captureAiContext(com.jobproof.shared.ai.AiExecutionContext.State context) {
+        if (context == null) return;
+        aiQuoteId = context.quoteId(); aiRequestPath = context.path(); aiPayloadHash = context.payloadHash();
+        aiPaymentConfirmed = context.paymentConfirmed(); aiReservationId = context.reservationId();
+        aiPersonalChannelId = context.personalChannelId();
+    }
+
     @Id
     private String id;
 

@@ -8,6 +8,11 @@ server:
       force: true
 
 spring:
+  datasource:
+    hikari:
+      # Account/row locks and unique keys serialize wallet mutations and retries.
+      # READ_COMMITTED avoids missing-key gap-lock deadlocks across distinct accounts.
+      transaction-isolation: TRANSACTION_READ_COMMITTED
   application:
     name: jobproof-api
   threads:
@@ -197,6 +202,8 @@ jobproof:
       read-timeout-ms: 15000
       chunk-bytes: 8192
   ai:
+    # "auto" uses the working model selected on each enabled platform channel.
+    resume-model: ${JOBPROOF_RESUME_MODEL:auto}
     llm-parse-enabled: false
     api-key: ""
     auto-retry-limit: 2
@@ -232,7 +239,7 @@ jobproof:
       active-links: ${JOBPROOF_PRO_ACTIVE_LINKS:20}
   job-match:
     enabled: ${JOBPROOF_JOB_MATCH_ENABLED:false}
-    model: ${JOBPROOF_JOB_MATCH_MODEL:qwen-plus}
+    model: ${JOBPROOF_JOB_MATCH_MODEL:auto}
     prompt-version: ${JOBPROOF_JOB_MATCH_PROMPT_VERSION:job-match-v3}
     ocr:
       executable: ${JOBPROOF_TESSERACT_EXECUTABLE:C:/Program Files/Tesseract-OCR/tesseract.exe}
@@ -242,7 +249,7 @@ jobproof:
       max-pages: ${JOBPROOF_OCR_MAX_PAGES:20}
   career-planning:
     enabled: ${JOBPROOF_CAREER_PLANNING_ENABLED:false}
-    model: ${JOBPROOF_CAREER_PLANNING_MODEL:qwen-plus}
+    model: ${JOBPROOF_CAREER_PLANNING_MODEL:auto}
 
 logging:
   pattern:

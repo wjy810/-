@@ -54,11 +54,11 @@ public class OperationsOverviewService {
                 count("SELECT COUNT(DISTINCT s.account_id) FROM sessions s JOIN accounts a ON a.id=s.account_id WHERE a.role='SEEKER' AND s.last_seen_at>=?", week),
                 count("SELECT COUNT(DISTINCT s.account_id) FROM sessions s JOIN accounts a ON a.id=s.account_id WHERE a.role='SEEKER' AND s.last_seen_at>=?", month));
 
-        long pro = count("SELECT COUNT(*) FROM account_memberships WHERE plan='PRO' AND expires_at>?", now);
+        long pro = count("SELECT COUNT(*) FROM account_memberships WHERE account_id IN (" + SEEKERS + ") AND plan='PRO' AND expires_at>?", now);
         Membership membership = new Membership(
                 pro,
                 share(pro, users.total()),
-                count("SELECT COUNT(*) FROM membership_events WHERE created_at>=?", month),
+                count("SELECT COUNT(*) FROM membership_events WHERE plan='PRO' AND event_type IN ('REDEEMED','PURCHASED') AND account_id IN (" + SEEKERS + ") AND created_at>=?", month),
                 count("SELECT COALESCE(SUM(quantity),0) FROM redeem_code_batches"),
                 count("SELECT COALESCE(SUM(redeemed_count),0) FROM redeem_code_batches"),
                 count("SELECT COUNT(*) FROM redeem_code_batches WHERE revoked_at IS NULL AND redeemed_count<quantity AND (redeem_before IS NULL OR redeem_before>?)", now));
@@ -68,15 +68,20 @@ public class OperationsOverviewService {
                 module("applications", "投递记录", "job_applications", "created_at", week),
                 module("links", "专属链接", "resume_share_links", "created_at", week),
                 new Module("opens", "简历被打开",
-                        count("SELECT COUNT(*) FROM resume_share_views"),
-                        count("SELECT COUNT(*) FROM resume_share_views WHERE started_at>=?", week)),
+                        count("SELECT COUNT(*) FROM resume_share_views v JOIN resume_share_links l ON l.id=v.link_id WHERE l.account_id IN (" + SEEKERS + ")"),
+                        count("SELECT COUNT(*) FROM resume_share_views v JOIN resume_share_links l ON l.id=v.link_id WHERE l.account_id IN (" + SEEKERS + ") AND v.started_at>=?", week)),
                 module("matches", "岗位匹配", "job_match_tasks", "created_at", week),
                 module("interviews", "模拟面试", "mock_interview_sessions", "created_at", week));
 
         String period = PERIOD.format(now.atZone(ZONE));
+        Instant monthStart = now.atZone(ZONE).withDayOfMonth(1).toLocalDate().atStartOfDay(ZONE).toInstant();
+        long quotaUnits = count("SELECT COALESCE(SUM(q.used_units),0) FROM ai_quota_accounts q JOIN accounts a ON a.id=q.account_id WHERE a.role='SEEKER' AND q.period_key=?", period);
+        long walletUnits = count("SELECT COALESCE(SUM(r.settled_units),0) FROM ai_quota_reservations r JOIN accounts a ON a.id=r.account_id WHERE a.role='SEEKER' AND r.payment_source='WALLET' AND r.status='SETTLED' AND r.updated_at>=?", monthStart);
+        long personalUnits = count("SELECT COALESCE(SUM(r.settled_units),0) FROM ai_quota_reservations r JOIN accounts a ON a.id=r.account_id WHERE a.role='SEEKER' AND r.payment_source='PERSONAL' AND r.status='SETTLED' AND r.updated_at>=?", monthStart);
         Ai ai = new Ai(period,
-                count("SELECT COALESCE(SUM(q.used_units),0) FROM ai_quota_accounts q JOIN accounts a ON a.id=q.account_id WHERE a.role='SEEKER' AND q.period_key=?", period),
-                count("SELECT COUNT(*) FROM ai_quota_accounts q JOIN accounts a ON a.id=q.account_id WHERE a.role='SEEKER' AND q.period_key=? AND q.used_units>0", period));
+                quotaUnits + walletUnits + personalUnits,
+                count("SELECT COUNT(*) FROM accounts a WHERE a.role='SEEKER' AND (EXISTS(SELECT 1 FROM ai_quota_accounts q WHERE q.account_id=a.id AND q.period_key=? AND q.used_units>0) OR EXISTS(SELECT 1 FROM ai_quota_reservations r WHERE r.account_id=a.id AND r.settled_units>0 AND r.updated_at>=?))", period, monthStart),
+                quotaUnits, walletUnits, personalUnits);
 
         List<FunnelStep> funnel = funnel(users.total());
         return new Overview(now, users, membership, modules, ai, funnel, days(now));
@@ -86,7 +91,7 @@ public class OperationsOverviewService {
         long resumes = count("SELECT COUNT(DISTINCT account_id) FROM resume_masters WHERE account_id IN (" + SEEKERS + ")");
         long applied = count("SELECT COUNT(DISTINCT account_id) FROM job_applications WHERE account_id IN (" + SEEKERS + ")");
         long opened = count("SELECT COUNT(DISTINCT account_id) FROM resume_share_links WHERE view_count>0 AND account_id IN (" + SEEKERS + ")");
-        long pro = count("SELECT COUNT(DISTINCT account_id) FROM membership_events WHERE account_id IN (" + SEEKERS + ")");
+        long pro = count("SELECT COUNT(DISTINCT account_id) FROM membership_events WHERE plan='PRO' AND event_type IN ('REDEEMED','PURCHASED') AND account_id IN (" + SEEKERS + ")");
         List<FunnelStep> steps = new ArrayList<>();
         steps.add(new FunnelStep("registered", "注册", registered, null));
         steps.add(new FunnelStep("resume", "写了简历", resumes, share(resumes, registered)));
@@ -100,24 +105,30 @@ public class OperationsOverviewService {
     private List<Day> days(Instant now) {
         LocalDate today = now.atZone(ZONE).toLocalDate();
         LocalDate first = today.minusDays(DAYS - 1);
-        Instant from = first.atStartOfDay(ZONE).toInstant();
         Map<LocalDate, long[]> buckets = new LinkedHashMap<>();
         for (int i = 0; i < DAYS; i++) buckets.put(first.plusDays(i), new long[3]);
-        bucket(buckets, "SELECT created_at FROM accounts WHERE role='SEEKER' AND created_at>=?", from, 0);
-        bucket(buckets, "SELECT created_at FROM job_applications WHERE created_at>=?", from, 1);
-        bucket(buckets, "SELECT started_at FROM resume_share_views WHERE started_at>=?", from, 2);
+        bucket(buckets, "accounts", "created_at", "role='SEEKER'", 0);
+        bucket(buckets, "job_applications", "created_at", "account_id IN (" + SEEKERS + ")", 1);
+        bucket(buckets, "resume_share_views v JOIN resume_share_links l ON l.id=v.link_id", "v.started_at", "l.account_id IN (" + SEEKERS + ")", 2);
         List<Day> days = new ArrayList<>();
         buckets.forEach((day, values) -> days.add(new Day(day.toString(), values[0], values[1], values[2])));
         return days;
     }
 
-    private void bucket(Map<LocalDate, long[]> buckets, String sql, Instant from, int index) {
-        jdbc.query(sql + " LIMIT 200000", rs -> {
-            Timestamp at = rs.getTimestamp(1);
-            if (at == null) return;
-            long[] values = buckets.get(at.toInstant().atZone(ZONE).toLocalDate());
-            if (values != null) values[index]++;
-        }, Timestamp.from(from));
+    private void bucket(Map<LocalDate, long[]> buckets, String table, String column, String filter, int index) {
+        // Explicit Shanghai boundaries work on MySQL and H2 without session-dependent DATE conversion.
+        List<String> sums = new ArrayList<>();
+        List<Object> args = new ArrayList<>();
+        for (LocalDate day : buckets.keySet()) {
+            sums.add("COALESCE(SUM(CASE WHEN " + column + ">=? AND " + column + "<? THEN 1 ELSE 0 END),0)");
+            args.add(Timestamp.from(day.atStartOfDay(ZONE).toInstant()));
+            args.add(Timestamp.from(day.plusDays(1).atStartOfDay(ZONE).toInstant()));
+        }
+        args.add(args.get(0));
+        jdbc.query("SELECT " + String.join(",", sums) + " FROM " + table + " WHERE " + filter + " AND " + column + ">=?", rs -> {
+            int col = 1;
+            for (long[] values : buckets.values()) values[index] = rs.getLong(col++);
+        }, args.toArray());
     }
 
     private Module module(String key, String label, String table, String column, Instant since) {
@@ -149,7 +160,7 @@ public class OperationsOverviewService {
     public record Module(String key, String label, long total, long last7) {
     }
 
-    public record Ai(String period, long usedUnits, long accounts) {
+    public record Ai(String period, long usedUnits, long accounts, long quotaUnits, long walletUnits, long personalUnits) {
     }
 
     public record FunnelStep(String key, String label, long accounts, Integer rate) {

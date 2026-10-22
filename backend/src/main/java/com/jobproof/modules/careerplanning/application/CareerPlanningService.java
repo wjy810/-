@@ -135,12 +135,13 @@ public class CareerPlanningService {
     private final AuditService audit;
     private final CareerPlanningEventService events;
     private final TransactionTemplate transactions;
+    private final com.jobproof.modules.task.application.TaskService tasks;
     private final boolean enabled;
 
     public CareerPlanningService(JdbcTemplate jdbc, ObjectMapper mapper, ClockPort clock,
             CareerLibraryService careerLibrary, JobTaxonomyService taxonomy, CareerPlanningAiService ai,
             AiQuotaService quota, AuditService audit, CareerPlanningEventService events,
-            PlatformTransactionManager transactionManager,
+            PlatformTransactionManager transactionManager, com.jobproof.modules.task.application.TaskService tasks,
             @Value("${jobproof.career-planning.enabled:false}") boolean enabled) {
         this.jdbc = jdbc;
         this.mapper = mapper;
@@ -152,6 +153,7 @@ public class CareerPlanningService {
         this.audit = audit;
         this.events = events;
         this.transactions = new TransactionTemplate(transactionManager);
+        this.tasks = tasks;
         this.enabled = enabled;
     }
 
@@ -584,7 +586,7 @@ public class CareerPlanningService {
                 throw AppException.conflict("CP_AI_TASK_CANCELLED", "AI 访谈已取消，未创建问题轮次");
             }
             return persisted;
-        });
+        }, false);
     }
 
     @Transactional
@@ -972,10 +974,18 @@ public class CareerPlanningService {
     }
 
     private <T> T persistAiResult(CurrentAccount current, AiResult<?> result, Supplier<T> persistence) {
+        return persistAiResult(current, result, persistence, true);
+    }
+
+    private <T> T persistAiResult(CurrentAccount current, AiResult<?> result, Supplier<T> persistence,
+            boolean completeTask) {
         try {
             return transactions.execute(status -> {
+                jdbc.queryForList("SELECT id FROM accounts WHERE id=? FOR UPDATE", String.class, current.accountId());
+                tasks.fenceAiCompletion(current.accountId());
                 T saved = persistence.get();
                 ai.settle(current.accountId(), result);
+                if (completeTask) tasks.completeAiResult(current.accountId());
                 return saved;
             });
         } catch (RuntimeException exception) {

@@ -184,7 +184,7 @@ function onComboOpen(open: boolean): void {
       >
         <div class="ui-select-search">
           <Search :size="15" aria-hidden="true" />
-          <ComboboxInput v-model="query" class="ui-select-search__input" :placeholder="searchPlaceholder" :aria-label="searchPlaceholder" auto-focus />
+          <ComboboxInput v-model="query" :display-value="() => ''" class="ui-select-search__input" :placeholder="searchPlaceholder" :aria-label="searchPlaceholder" auto-focus />
         </div>
         <ComboboxViewport class="ui-select-viewport">
           <ComboboxEmpty class="ui-select-empty">{{ emptyText }}</ComboboxEmpty>

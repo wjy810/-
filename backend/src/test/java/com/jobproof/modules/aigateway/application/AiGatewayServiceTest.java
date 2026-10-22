@@ -150,6 +150,32 @@ class AiGatewayServiceTest {
         assertEquals(1, rejected.size(), "a 400 will not pass on a second try");
     }
 
+    @Test
+    void usagePersistenceFailureDoesNotRepeatASuccessfulProviderCall() throws Exception {
+        ObjectMapper mapper = new ObjectMapper();
+        ApiKeyCipher cipher = new ApiKeyCipher(Base64.getEncoder().encodeToString(new byte[32]));
+        Channel channel = new Channel("channel-1", AiProtocol.OPENAI_CHAT, URI.create("https://provider.example/v1"),
+                cipher.encrypt("test-key"), "model", 0, 100, true);
+        var calls = new java.util.concurrent.atomic.AtomicInteger();
+        AiTransportPort transport = (uri, method, headers, body, timeout) -> {
+            calls.incrementAndGet();
+            return new AiTransportPort.TransportResponse(200, Map.of(), mapper.createObjectNode()
+                    .put("id", "r").set("choices", mapper.createArrayNode().add(mapper.createObjectNode()
+                            .set("message", mapper.createObjectNode().put("content", "OK")))));
+        };
+        AiChannelPort channels = new AiChannelPort() {
+            public List<Channel> findEligible(String accountId, String model) { return List.of(channel); }
+            public void recordSuccess(String id, long latency) {}
+            public void recordFailure(String id, String code) {}
+        };
+        SsrfGuard ssrf = new SsrfGuard(host -> new InetAddress[]{InetAddress.getByAddress(new byte[]{93,(byte)184,(byte)216,34})});
+        var service = new AiGatewayService(channels, transport, cipher, ssrf, new WeightedChannelRouter(new Random(1)), mapper,
+                (id, model, usage, failure) -> { throw new IllegalStateException("Database unavailable"); });
+        org.junit.jupiter.api.Assertions.assertThrows(RuntimeException.class, () -> service.execute("a",
+                new Request("model", List.of(new Message("user", "hello")), false, Map.of())));
+        assertEquals(1, calls.get());
+    }
+
     private static AiGatewayService service(Channel channel, AiTransportPort transport, ApiKeyCipher cipher,
             ObjectMapper mapper) throws Exception {
         AiChannelPort channels = new AiChannelPort() {

@@ -13,15 +13,22 @@ public final class AiGatewayService {
     private final SsrfGuard ssrf;
     private final WeightedChannelRouter router;
     private final ObjectMapper json;
+    private final AiCallObserver observer;
 
     public AiGatewayService(AiChannelPort channels, AiTransportPort transport, ApiKeyCipher cipher,
                             SsrfGuard ssrf, WeightedChannelRouter router, ObjectMapper json) {
+        this(channels, transport, cipher, ssrf, router, json, AiCallObserver.NONE);
+    }
+
+    public AiGatewayService(AiChannelPort channels, AiTransportPort transport, ApiKeyCipher cipher,
+                            SsrfGuard ssrf, WeightedChannelRouter router, ObjectMapper json, AiCallObserver observer) {
         this.channels = channels;
         this.transport = transport;
         this.cipher = cipher;
         this.ssrf = ssrf;
         this.router = router;
         this.json = json;
+        this.observer = observer;
     }
 
     public Response execute(String accountId, Request request) {
@@ -52,14 +59,19 @@ public final class AiGatewayService {
                 }
                 channels.recordSuccess(channel.id(), (System.nanoTime() - start) / 1_000_000);
                 Response parsed=adapter.parse(response.body());
+                recordAttempt(channel.id(), parsed.model() == null ? providerRequest.model() : parsed.model(), parsed.usage(), null);
                 return new Response(parsed.id(),channel.id(),parsed.model(),parsed.text(),parsed.usage(),parsed.raw());
+            } catch (ObservationFailure e) {
+                throw e;
             } catch (AiGatewayException e) {
+                recordAttempt(channel.id(), channel.resolvedModel(request.model()), null, "UPSTREAM_FAILURE");
                 channels.recordFailure(channel.id(), "UPSTREAM_FAILURE");
                 last = e;
                 if (!e.retryable() || e.outputStarted() || request.stream()) {
                     throw e;
                 }
             } catch (RuntimeException e) {
+                recordAttempt(channel.id(), channel.resolvedModel(request.model()), null, "TRANSPORT_FAILURE");
                 channels.recordFailure(channel.id(), "TRANSPORT_FAILURE");
                 last = new AiGatewayException("AI channel request failed", e, true, false);
                 if (request.stream()) {
@@ -126,19 +138,37 @@ public final class AiGatewayService {
                 if (!done.get()) throw new AiGatewayException("AI stream ended before [DONE]", true, outputStarted.get());
                 channels.recordSuccess(channel.id(), (System.nanoTime() - start) / 1_000_000);
                 Usage usage = new Usage(inputTokens.get(), outputTokens.get(), totalTokens.get());
+                recordAttempt(channel.id(), responseModel.get() == null ? providerRequest.model() : responseModel.get(), usage, null);
                 return new Response(responseId.get(), channel.id(), responseModel.get(), text.toString(), usage, raw.get());
+            } catch (ObservationFailure exception) {
+                throw exception;
             } catch (AiGatewayException exception) {
+                recordAttempt(channel.id(), channel.resolvedModel(request.model()), new Usage(inputTokens.get(), outputTokens.get(), totalTokens.get()), "UPSTREAM_STREAM_FAILURE");
                 channels.recordFailure(channel.id(), "UPSTREAM_STREAM_FAILURE");
                 last = exception.outputStarted() || !outputStarted.get() ? exception
                         : new AiGatewayException(exception.getMessage(), exception, exception.retryable(), true);
                 if (!last.retryable() || last.outputStarted()) throw last;
             } catch (RuntimeException exception) {
+                recordAttempt(channel.id(), channel.resolvedModel(request.model()), new Usage(inputTokens.get(), outputTokens.get(), totalTokens.get()), "STREAM_TRANSPORT_FAILURE");
                 channels.recordFailure(channel.id(), "STREAM_TRANSPORT_FAILURE");
                 last = new AiGatewayException("AI streaming request failed", exception, true, outputStarted.get());
                 if (last.outputStarted()) throw last;
             }
         }
         throw last == null ? new AiGatewayException("AI streaming request failed", false, false) : last;
+    }
+
+    /** Persistence errors must never be interpreted as permission to repeat an upstream call. */
+    private void recordAttempt(String channelId, String model, Usage usage, String failureCode) {
+        try {
+            observer.record(channelId, model, usage, failureCode);
+        } catch (RuntimeException exception) {
+            throw new ObservationFailure(exception);
+        }
+    }
+
+    private static final class ObservationFailure extends RuntimeException {
+        ObservationFailure(RuntimeException cause) { super("Could not persist AI call usage", cause); }
     }
 
     private static Channel channelFor(List<Channel> ordered, int attempt) {

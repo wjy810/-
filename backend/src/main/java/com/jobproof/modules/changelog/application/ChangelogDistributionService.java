@@ -30,7 +30,7 @@ public class ChangelogDistributionService {
 
     @Transactional
     public void enqueue(String releaseId) {
-        Boolean enabled = jdbc.query("SELECT send_notification FROM changelog_releases WHERE id=? AND status='PUBLISHED'",
+        Boolean enabled = jdbc.query("SELECT send_notification FROM changelog_publication_snapshots WHERE release_id=?",
                 rs -> rs.next() ? rs.getBoolean(1) : null, releaseId);
         if (!Boolean.TRUE.equals(enabled)) return;
         Instant now = clock.now();
@@ -49,7 +49,7 @@ public class ChangelogDistributionService {
         if (job == null) return false;
         Instant now = clock.now();
         jdbc.update("UPDATE changelog_distribution_jobs SET status='RUNNING',attempts=attempts+1,updated_at=? WHERE id=?", now, job.id());
-        Release release = jdbc.query("SELECT version_label,title,summary,slug FROM changelog_releases WHERE id=? AND status='PUBLISHED'",
+        Release release = jdbc.query("SELECT version_label,title,summary,slug FROM changelog_publication_snapshots WHERE release_id=?",
                 rs -> rs.next() ? new Release(rs.getString(1), rs.getString(2), rs.getString(3), rs.getString(4)) : null,
                 job.releaseId());
         if (release == null) {

@@ -443,6 +443,7 @@ public class AiResumeWorkbenchService {
             String text) {
         assertSeeker(current);
         ConversationRow conversation = requireConversation(current.accountId(), conversationId);
+        if (generation.completedRequest(current.accountId(), conversationId, clientMessageId, text) != null) return view(current, conversation);
         if (!"GRANTED".equals(consent(current.accountId()).status())) {
             throw AppException.conflict("AI_CONSENT_REQUIRED", "请先阅读并同意 AI 简历授权说明");
         }
@@ -562,6 +563,8 @@ public class AiResumeWorkbenchService {
             String text) {
         assertSeeker(current);
         ConversationRow conversation = requireConversation(current.accountId(), conversationId);
+        PreparedRequest replay = generation.completedRequest(current.accountId(), conversationId, requestId, text);
+        if (replay != null) return new StreamPreparation(replay, null);
         if (!"GRANTED".equals(consent(current.accountId()).status())) {
             throw AppException.conflict("AI_CONSENT_REQUIRED", "请先阅读并同意 AI 简历授权说明");
         }

@@ -1,0 +1,43 @@
+{
+  "model": "gpt-image-2.5-flare",
+  "quality": "high",
+  "constraints": "Original print ornaments only. No text, letters, numbers, logos, watermark or signature. Keep resume body area empty.",
+  "assets": [
+    {
+      "name": "botanical-sprig",
+      "bg": "transparent",
+      "size": "1024x1536",
+      "prompt": "An elegant sparse eucalyptus and fern sprig entering from the upper right edge. Fine muted sage-green botanical line drawing with a few very pale leaves, natural hand-drawn line variation. Isolated on a genuinely transparent background. The left two thirds remain completely empty. A stationery corner ornament, not a scene."
+    },
+    {
+      "name": "paper-cotton",
+      "bg": "opaque",
+      "size": "1024x1536",
+      "prompt": "A flat scan of premium warm white cotton writing paper, color close to #FCFAF6. Extremely subtle evenly distributed fine fibres, perfectly uniform lighting and brightness across the full surface. No visible stains, shadows, vignette, objects or creases. Quiet high-end stationery texture."
+    },
+    {
+      "name": "woven-strip",
+      "bg": "opaque",
+      "size": "1024x1536",
+      "prompt": "A flat macro scan of very fine ivory silk and linen cross-woven fabric. Extremely subtle warm grey threads on off-white #F5F2EC, even illumination, flat woven surface, barely visible texture. No folds, shadows, fringe, objects, embroidery, stains or vignette. Understated luxury stationery material."
+    },
+    {
+      "name": "shoreline-waves",
+      "bg": "transparent",
+      "size": "1536x1024",
+      "prompt": "An airy minimal coastal ornament: two delicate seafoam lines and a faint muted teal wash, flowing horizontally along the bottom quarter of the canvas. Transparent background, upper three quarters completely empty. Calm refined hand-painted ocean edge, no horizon, sand, boats or objects. The paint should be pale and sparse, not a solid ocean photograph."
+    },
+    {
+      "name": "porcelain-branch",
+      "bg": "transparent",
+      "size": "1024x1536",
+      "prompt": "A delicate blue-and-white porcelain inspired botanical branch, sparse tiny blossoms and curved leaves, entering from the right edge. Fine desaturated cobalt blue linework and translucent pale blue washes. Left two thirds fully transparent. Elegant contemporary ceramic illustration, no vase, frame or decorative border, no emblem."
+    },
+    {
+      "name": "paper-cut",
+      "bg": "transparent",
+      "size": "1024x1024",
+      "prompt": "One small abstract torn-paper corner composition: three overlapping soft-edged pieces of handmade paper, muted clay, oatmeal and dusty pale sage. Concentrated only in the upper right third. True transparent background elsewhere. Flat top-down scan, delicate paper fibres, no cast shadows, no text, no objects. Professional minimalist stationery collage."
+    }
+  ]
+}

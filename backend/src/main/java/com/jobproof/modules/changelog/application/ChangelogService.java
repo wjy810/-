@@ -239,7 +239,14 @@ public class ChangelogService {
 
     @Transactional
     public ReleaseDetail schedule(CurrentAccount current, String id, int expectedVersion, Instant scheduledAt) {
+        return schedule(current, id, expectedVersion, scheduledAt, null, false);
+    }
+
+    @Transactional
+    public ReleaseDetail schedule(CurrentAccount current, String id, int expectedVersion, Instant scheduledAt,
+            Boolean sendNotification, boolean notificationConfirmed) {
         assertAdmin(current);
+        preparePublication(current, id, expectedVersion, sendNotification, notificationConfirmed);
         assertPublishable(current, id);
         if (scheduledAt == null || !scheduledAt.isAfter(clock.now()))
             throw AppException.user("CHANGELOG_SCHEDULE_INVALID", "定时发布时间必须晚于当前时间");
@@ -262,12 +269,43 @@ public class ChangelogService {
 
     @Transactional
     public ReleaseDetail publish(CurrentAccount current, String id, int expectedVersion) {
+        return publish(current, id, expectedVersion, null, false);
+    }
+
+    @Transactional
+    public ReleaseDetail publish(CurrentAccount current, String id, int expectedVersion,
+            Boolean sendNotification, boolean notificationConfirmed) {
         assertAdmin(current);
+        preparePublication(current, id, expectedVersion, sendNotification, notificationConfirmed);
         assertPublishable(current, id);
         publishInternal(id, current.accountId(), expectedVersion, Set.of("DRAFT", "SCHEDULED"), clock.now(),
                 "CHANGELOG_PUBLISHED");
         return detail(id, false, current);
     }
+
+    @Transactional(readOnly = true)
+    public PublicationPreview publicationPreview(CurrentAccount current, String id) {
+        assertAdmin(current);
+        ReleaseSummary release = summary(id);
+        Long recipients = jdbc.queryForObject("SELECT COUNT(*) FROM accounts WHERE status='ACTIVE'", Long.class);
+        return new PublicationPreview(release.versionNo(), release.versionLabel(), release.title(),
+                release.audience(), recipients == null ? 0 : recipients, release.sendNotification(), release.showWhatsNew());
+    }
+
+    private void preparePublication(CurrentAccount current, String id, int version, Boolean requestedNotification, boolean confirmed) {
+        ReleaseSummary release = summary(id);
+        if (release.versionNo() != version) throw AppException.conflict("VERSION_CONFLICT", "内容已变更，请重新确认发布");
+        boolean notify = requestedNotification == null ? release.sendNotification() : requestedNotification;
+        if (notify && !confirmed) throw AppException.conflict("CHANGELOG_NOTIFICATION_CONFIRMATION_REQUIRED", "发送全站通知前，请确认受众及发布版本");
+        int changed = jdbc.update("UPDATE changelog_releases SET send_notification=?,notification_confirmed_version=? WHERE id=? AND version_no=? AND status IN ('DRAFT','SCHEDULED')",
+                notify, notify ? version + 1 : null, id, version);
+        if (changed != 1) throw AppException.conflict("VERSION_CONFLICT", "版本状态已发生变化");
+        audit.append(current.accountId(), "CHANGELOG_PUBLICATION_CONFIRMED", "CHANGELOG_RELEASE", id,
+                "version=" + version + ", notification=" + notify);
+    }
+
+    public record PublicationPreview(int versionNo, String versionLabel, String title, String audience,
+            long recipientCount, boolean sendNotification, boolean showWhatsNew) {}
 
     @Transactional
     public ReleaseDetail publishHistorical(CurrentAccount current, String id, int expectedVersion, Instant publishedAt) {
@@ -303,7 +341,7 @@ public class ChangelogService {
                 current.accountId(), now, id, expectedVersion);
         if (changed != 1) throw AppException.conflict("VERSION_CONFLICT", "版本已被其他操作修改");
         insertRevision(id, revision, valid, clean(reason, 500), current.accountId(), now);
-        audit.append(current.accountId(), "CHANGELOG_REVISED", "CHANGELOG_RELEASE", id, "revision=" + revision + ", reason=" + clean(reason, 200));
+        audit.append(current.accountId(), "CHANGELOG_REVISED", "CHANGELOG_RELEASE", id, "revision=" + revision + ", reasonProvided=true");
         return detail(id, false, current);
     }
 
@@ -386,6 +424,10 @@ public class ChangelogService {
         int published = 0;
         for (ReleaseSummary release : due) {
             try {
+                if (release.sendNotification()) {
+                    Integer confirmed = jdbc.queryForObject("SELECT notification_confirmed_version FROM changelog_releases WHERE id=?", Integer.class, release.id());
+                    if (confirmed == null || confirmed != release.versionNo()) continue;
+                }
                 assertPublishable(null, release.id());
                 publishInternal(release.id(), release.updatedBy(), release.versionNo(), Set.of("SCHEDULED"), now,
                         "CHANGELOG_PUBLISHED");
@@ -405,6 +447,7 @@ public class ChangelogService {
         int changed = jdbc.update("UPDATE changelog_releases SET status='PUBLISHED',scheduled_at=NULL,published_at=COALESCE(published_at,?),updated_by=?,updated_at=?,version_no=version_no+1 WHERE id=? AND status=? AND version_no=?",
                 publishedAt, actorId, now, id, existing.status(), expectedVersion);
         if (changed != 1) throw AppException.conflict("VERSION_CONFLICT", "版本状态已发生变化");
+        jdbc.update("INSERT INTO changelog_publication_snapshots(release_id,revision_no,send_notification,version_label,title,summary,slug,audience,published_at) SELECT id,current_revision,send_notification,version_label,title,summary,slug,audience,? FROM changelog_releases WHERE id=?", publishedAt, id);
         outbox.enqueue(EventTypes.CHANGELOG_PUBLISHED, Map.of("releaseId", id));
         audit.append(actorId, auditAction, "CHANGELOG_RELEASE", id,
                 "version=" + existing.versionLabel() + ", publishedAt=" + publishedAt);

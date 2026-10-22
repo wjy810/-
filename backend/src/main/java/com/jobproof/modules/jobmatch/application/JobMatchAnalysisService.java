@@ -103,13 +103,15 @@ public class JobMatchAnalysisService {
     private final ResumeWritingQualityPolicy writingQuality;
     private final String model;
     private final String promptVersion;
+    private final org.springframework.transaction.support.TransactionTemplate transactions;
 
     public JobMatchAnalysisService(JdbcTemplate jdbc, ObjectMapper mapper, ClockPort clock, TaskService tasks,
             JobMatchService matches, JobMatchSseService events, AiGatewayService gateway, AiQuotaService quota,
-            AuditService audit, ResumeWritingQualityPolicy writingQuality,
+            AuditService audit, ResumeWritingQualityPolicy writingQuality, org.springframework.transaction.PlatformTransactionManager transactionManager,
             @Value("${jobproof.job-match.model:qwen-plus}") String model,
             @Value("${jobproof.job-match.prompt-version:job-match-v3}") String promptVersion) {
         this.jdbc = jdbc;
+        this.transactions = new org.springframework.transaction.support.TransactionTemplate(transactionManager);
         this.mapper = mapper;
         this.clock = clock;
         this.tasks = tasks;
@@ -131,6 +133,7 @@ public class JobMatchAnalysisService {
         }
         String runId = null;
         try {
+            quota.restoreReservation(accountId, row.quotaReservationId());
             stage(row, 62, "RULE_GATE", "analysis.progress", "正在整理岗位要求与简历证据");
             Map<String, Object> input = matches.internalInput(row);
             JobMatchScoring.Result preview = rulePreview(input);
@@ -155,17 +158,25 @@ public class JobMatchAnalysisService {
                 return;
             }
             stage(row, 88, "FACT_VALIDATION", "analysis.progress", "正在校验事实来源与建议质量");
-            Finalized finalized = finalizeReport(row, provisionalReportId, input, ai, response, runId);
+            Response finalResponse = response;
+            String finalRunId = runId;
+            transactions.executeWithoutResult(status -> {
+                jdbc.queryForList("SELECT id FROM accounts WHERE id=? FOR UPDATE", String.class, accountId);
+                tasks.fenceAiCompletion(accountId);
+                MatchRow locked = matches.internalOwned(accountId, matchId, true);
+                if (!"ANALYZING".equals(locked.status())) throw AppException.conflict("AI_TASK_CANCELLED", "分析状态已更新");
+            Finalized finalized = finalizeReport(row, provisionalReportId, input, ai, finalResponse, finalRunId);
             if (finalized.needsClarification()) {
                 int moved = jdbc.update("UPDATE job_match_tasks SET status='NEEDS_CLARIFICATION',current_report_id=?,progress_percent=82,checkpoint_code='NEEDS_CLARIFICATION',error_code=NULL,version_no=version_no+1,updated_at=? WHERE id=? AND account_id=? AND status='ANALYZING'",
                         provisionalReportId, clock.now(), matchId, accountId);
-                if (moved == 0) return;
+                if (moved == 0) throw AppException.conflict("AI_TASK_CANCELLED", "分析状态已更新");
                 events.append(accountId, matchId, "clarification.required", Map.of("count", finalized.clarificationCount()));
-                tasks.markSucceeded(asyncTaskId, "job-match-clarification-v2", json(Map.of("matchId", matchId,
-                        "reportId", provisionalReportId, "status", "NEEDS_CLARIFICATION")));
+                if (!tasks.markSucceeded(asyncTaskId, "job-match-clarification-v2", json(Map.of("matchId", matchId,
+                        "reportId", provisionalReportId, "status", "NEEDS_CLARIFICATION")))) throw AppException.conflict("AI_TASK_CANCELLED", "任务已结束");
                 return;
             }
-            complete(row, asyncTaskId, provisionalReportId, response, runId);
+            complete(row, asyncTaskId, provisionalReportId, finalResponse, finalRunId);
+            });
         } catch (RuntimeException exception) {
             log.error("Job match analysis failed: matchId={}, asyncTaskId={}", matchId, asyncTaskId, exception);
             fail(row, asyncTaskId, runId, reason(exception));
@@ -771,7 +782,7 @@ public class JobMatchAnalysisService {
                 reportId, now, now, row.id(), row.accountId());
         if (moved == 0) return;
         quota.settle(row.accountId(), row.quotaReservationId(), 1);
-        tasks.markSucceeded(asyncTaskId, "job-match-report-v2", json(Map.of("matchId", row.id(), "reportId", reportId)));
+        if (!tasks.markSucceeded(asyncTaskId, "job-match-report-v2", json(Map.of("matchId", row.id(), "reportId", reportId)))) throw AppException.conflict("AI_TASK_CANCELLED", "任务已结束");
         events.append(row.accountId(), row.id(), "analysis.completed", Map.of("reportId", reportId, "model", blankTo(response.model(), model)));
         audit.append(row.accountId(), "JOB_MATCH_ANALYSIS_COMPLETED", "JOB_MATCH", row.id(),
                 "report=" + reportId + " model=" + blankTo(response.model(), model) + " quota=1");

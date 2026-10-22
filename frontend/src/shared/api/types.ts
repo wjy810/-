@@ -29,8 +29,9 @@ export class ApiClientError extends Error {
   readonly status: number
   readonly requestId: string
   readonly fields: Record<string, string>
+  readonly responseReceived: boolean
 
-  constructor(error: ApiError, status: number, requestId?: string) {
+  constructor(error: ApiError, status: number, requestId?: string, responseReceived = false) {
     super(error.message)
     this.name = 'ApiClientError'
     this.category = error.category
@@ -38,6 +39,7 @@ export class ApiClientError extends Error {
     this.status = status
     this.requestId = error.requestId ?? requestId ?? ''
     this.fields = error.fields ?? {}
+    this.responseReceived = responseReceived
   }
 }
 
@@ -47,6 +49,11 @@ export function isTimeout(error: unknown): boolean {
 
 export function fieldErrors(error: unknown): Record<string, string> {
   return isApiClientError(error) ? error.fields : {}
+}
+
+/** These refusals leave the original AI operation unresolved; retries must keep its identity and quote. */
+export function isAiRequestInFlight(reason: unknown): boolean {
+  return typeof reason === 'string' && ['AI_REQUEST_RUNNING', 'AI_REQUEST_IN_PROGRESS', 'AI_FOREGROUND_TASK_LIMIT', 'AI_BACKGROUND_TASK_LIMIT'].includes(reason)
 }
 
 export function isApiClientError(error: unknown): error is ApiClientError {

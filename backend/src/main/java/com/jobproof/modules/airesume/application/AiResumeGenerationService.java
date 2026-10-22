@@ -61,6 +61,19 @@ public class AiResumeGenerationService {
         this.defaultModel = defaultModel;
     }
 
+    /** Read-only replay is available even if the source or consent no longer allows new generation. */
+    public PreparedRequest completedRequest(String accountId, String conversationId, String requestId, String text) {
+        if (requestId == null || requestId.isBlank()) return null;
+        var user = jdbc.query("SELECT * FROM ai_resume_messages WHERE account_id=? AND conversation_id=? AND client_message_id=? AND role='USER'",
+                this::message, accountId, conversationId, requestId.trim()).stream().findFirst().orElse(null);
+        if (user == null) return null;
+        if (!java.util.Objects.equals(user.content(), text == null ? "" : text.trim()))
+            throw AppException.conflict("AI_REQUEST_CHANGED", "相同请求编号的消息内容不一致");
+        var assistant = assistantFor(accountId, conversationId, user.id());
+        if (assistant == null || !java.util.Set.of("COMPLETED", "FAILED", "CANCELLED").contains(assistant.status())) return null;
+        return new PreparedRequest(accountId, conversationId, requestId.trim(), user, assistant);
+    }
+
     public PreparedRequest prepare(String accountId, String conversationId, String requestId, String text) {
         return preparationTransactions.execute(status -> {
             lockConversation(accountId, conversationId);

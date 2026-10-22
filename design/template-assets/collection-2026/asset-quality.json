@@ -1,0 +1,86 @@
+[
+  {
+    "asset": "botanical-sprig",
+    "source": "botanical-sprig-v1.png",
+    "originalSize": [
+      1536,
+      1024
+    ],
+    "exportSize": [
+      638,
+      938
+    ],
+    "originalTransparentFraction": 0.8882,
+    "bytes": 159026
+  },
+  {
+    "asset": "paper-cotton",
+    "source": "paper-cotton-v3.png",
+    "originalSize": [
+      1536,
+      1024
+    ],
+    "exportSize": [
+      1240,
+      827
+    ],
+    "originalTransparentFraction": 0.0,
+    "bytes": 40735
+  },
+  {
+    "asset": "woven-strip",
+    "source": "woven-strip-v1.png",
+    "originalSize": [
+      1536,
+      1024
+    ],
+    "exportSize": [
+      900,
+      600
+    ],
+    "originalTransparentFraction": 0.0,
+    "bytes": 126042
+  },
+  {
+    "asset": "paper-cut",
+    "source": "paper-cut-v2.png",
+    "originalSize": [
+      1536,
+      1024
+    ],
+    "exportSize": [
+      641,
+      719
+    ],
+    "originalTransparentFraction": 0.842,
+    "bytes": 94092
+  },
+  {
+    "asset": "shoreline-waves",
+    "source": "shoreline-waves-v2.png",
+    "originalSize": [
+      1536,
+      1024
+    ],
+    "exportSize": [
+      1100,
+      170
+    ],
+    "originalTransparentFraction": 0.858,
+    "bytes": 73136
+  },
+  {
+    "asset": "porcelain-branch",
+    "source": "porcelain-branch-v2.png",
+    "originalSize": [
+      1536,
+      1024
+    ],
+    "exportSize": [
+      609,
+      1007
+    ],
+    "originalTransparentFraction": 0.8766,
+    "bytes": 170546
+  }
+]

@@ -1,6 +1,6 @@
 /** Chat with the AI resume assistant: optimistic messages, streaming replies, cancellation and change sets. */
 import { computed, nextTick, ref } from 'vue'
-import { errorMessage } from '@/shared/api/types'
+import { errorMessage, isAiRequestInFlight } from '@/shared/api/types'
 import { addAiResumeMessage, cancelAiResumeResponse, streamAiResume } from '../services/aiResumeApi'
 import type { AiResumeChangeSet } from '../types'
 import { identityIntro } from './copy'
@@ -79,6 +79,7 @@ export function useConversation(session: WorkbenchSession, assist: DescriptionAs
     const localAssistantId = `local-assistant-${clientId}`
     let accepted = false
     let terminal = false
+    let inFlight = false
     let streamError = ''
     pending.value = true
     session.clearError()
@@ -125,13 +126,14 @@ export function useConversation(session: WorkbenchSession, assist: DescriptionAs
             streamError = typeof payload.detail === 'string' ? payload.detail : 'AI 回复失败，额度已返还'
             if (message) replaceTransient(localAssistantId, { ...message, transient: true })
           } else if (event.type === 'request.failed') {
-            terminal = true
+            inFlight = isAiRequestInFlight(payload.errorCode)
+            terminal = !inFlight
             streamError = typeof payload.message === 'string' ? payload.message : '消息发送失败'
           }
           // Deltas only follow the bottom when the reader has not scrolled up.
           void nextTick(() => session.requestChatScroll(event.type !== 'assistant.delta', false))
         }, controller.signal)
-        if (!terminal) throw new Error('AI 流式响应意外中断，请重试')
+        if (!terminal) throw new Error(streamError || 'AI 流式响应意外中断，请重试')
         if (streamError) session.fail(streamError)
         await session.load()
         transient.value = transient.value.filter(message => !message.id.includes(clientId))
@@ -147,7 +149,7 @@ export function useConversation(session: WorkbenchSession, assist: DescriptionAs
       session.fail(errorMessage(reason, '消息发送失败，正式简历没有变化'))
       transient.value = transient.value.filter(message => !message.id.includes(clientId))
       // Give the text back when the server never accepted it, unless the user already typed something new.
-      if (!accepted && !draft.value) draft.value = text
+      if ((!accepted || inFlight) && !draft.value) draft.value = text
       await session.load()
     } finally {
       controller = null

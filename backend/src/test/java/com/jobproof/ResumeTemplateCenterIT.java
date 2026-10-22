@@ -88,11 +88,11 @@ class ResumeTemplateCenterIT {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.total").value(1))
                 .andExpect(jsonPath("$.data.items[0].id").value("rlt-b-english-single-v1"));
-        // The built-in English template is published, not a demo draft.
+        // Both strict English templates are published, not demo drafts.
         mockMvc.perform(get("/api/v1/resume-templates").cookie(owner).queryParam("language", "en")
                         .queryParam("atsLevel", "HIGH"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.total").value(1))
+                .andExpect(jsonPath("$.data.total").value(2))
                 .andExpect(jsonPath("$.data.items[0].id").value("harvard"))
                 .andExpect(jsonPath("$.data.items[0].status").value("PUBLISHED"))
                 .andExpect(jsonPath("$.data.items[0].rendererProtocol").value("resume-render-v4"));

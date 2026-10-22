@@ -13,6 +13,7 @@
   /* Between bullets; also between the parts of an entry split for pagination. */
   --r-bullet-gap: var(--r-line-gap);
   position: relative;
+  color-scheme: light;
   color: var(--r-ink);
   font-family: var(--r-font-body);
   font-size: var(--r-size);
@@ -28,6 +29,8 @@
 
 .rr-root *, .rr-root *::before, .rr-root *::after { box-sizing: border-box; }
 .rr-root :where(h1, h2, h3, h4, p, ul, ol, li, figure) { margin: 0; padding: 0; }
+/* App headings use --text-primary, which is near-white in dark mode. Paper owns its typography. */
+.rr-root :where(h1, h2, h3, h4, h5, h6) { color: inherit; font-family: inherit; letter-spacing: inherit; }
 .rr-root :where(ul) { list-style: none; }
 .rr-root a { color: inherit; text-decoration: none; }
 .rr-root strong { font-weight: 600; }

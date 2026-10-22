@@ -15,7 +15,7 @@ class FlywayMigrationIT {
     void freshDatabaseMigratesThroughLatestVersion() {
         Flyway flyway = flyway("fresh-" + UUID.randomUUID(), null);
 
-        assertThat(flyway.migrate().targetSchemaVersion).isEqualTo("85");
+        assertThat(flyway.migrate().targetSchemaVersion).isEqualTo("92");
     }
 
     @Test
@@ -25,7 +25,26 @@ class FlywayMigrationIT {
         assertThat(version39.migrate().targetSchemaVersion).isEqualTo("39");
 
         Flyway latest = flyway(database, null);
-        assertThat(latest.migrate().targetSchemaVersion).isEqualTo("85");
+        assertThat(latest.migrate().targetSchemaVersion).isEqualTo("92");
+    }
+
+    @Test
+    void version86PreservesTheLastWorkingSystemModelAndLeavesUntestedChannelsUnselected() {
+        String database = "direct-model-" + UUID.randomUUID();
+        flyway(database, MigrationVersion.fromVersion("85")).migrate();
+        JdbcTemplate jdbc = new JdbcTemplate(dataSource(database));
+        String insert = "INSERT INTO ai_channel(id,scope,name,provider_code,base_url,protocol,api_key_ciphertext,api_key_masked,channel_rate,status,created_at,updated_at) "
+                + "VALUES(?,'SYSTEM',?,'','https://provider.example/v1','OPENAI_CHAT','test-cipher','****',1,'DRAFT',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)";
+        jdbc.update(insert, "tested", "tested");
+        jdbc.update(insert, "untested", "untested");
+        String test = "INSERT INTO ai_channel_capability_test(id,channel_id,normalized_base_url,models_json,tested_model,authenticated,model_discovery,plain_response,streaming_response,structured_response,status,detail,checked_by,checked_at) "
+                + "VALUES(?,'tested','https://provider.example/v1','[]',?,1,1,1,1,?,?,'test','admin',?)";
+        jdbc.update(test, "old-pass", "old-model", 1, "PASSED", java.sql.Timestamp.valueOf("2026-10-20 10:00:00"));
+        jdbc.update(test, "latest-pass", "working-model", 1, "PASSED", java.sql.Timestamp.valueOf("2026-10-20 11:00:00"));
+        jdbc.update(test, "latest-fail", "broken-model", 0, "FAILED", java.sql.Timestamp.valueOf("2026-10-20 12:00:00"));
+        flyway(database, null).migrate();
+        assertThat(jdbc.queryForObject("SELECT selected_model FROM ai_channel WHERE id='tested'", String.class)).isEqualTo("working-model");
+        assertThat(jdbc.queryForObject("SELECT selected_model FROM ai_channel WHERE id='untested'", String.class)).isNull();
     }
 
     @Test

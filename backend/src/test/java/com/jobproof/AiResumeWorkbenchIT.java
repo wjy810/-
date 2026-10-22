@@ -2465,6 +2465,19 @@ class AiResumeWorkbenchIT {
                 .andExpect(jsonPath("$.data.promptVersion").value("resume-summary-v1"))
                 .andExpect(jsonPath("$.data.remainingQuota").value(beforeQuota - 1));
 
+        // A paid response is replayable even after provider availability changes.
+        when(aiCandidates.availability(any(), nullable(String.class)))
+                .thenReturn(new ResumeAiCandidateService.Availability(false,"qwen-plus","AI_GATEWAY_DISABLED"));
+        mockMvc.perform(post("/api/v1/ai-resume/conversations/{conversation}/cards/{card}/summary-suggestions",
+                        conversationId,summaryCardId).cookie(owner.cookie()).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"clientRequestId\":\"summary-options\",\"currentSummary\":\"\"}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.candidates.length()").value(3))
+                .andExpect(jsonPath("$.data.remainingQuota").value(beforeQuota-1));
+        mockMvc.perform(post("/api/v1/ai-resume/conversations/{conversation}/cards/{card}/summary-suggestions",
+                        conversationId,summaryCardId).cookie(owner.cookie()).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"clientRequestId\":\"summary-options\",\"currentSummary\":\"changed\"}"))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.error.reason").value("AI_REQUEST_CHANGED"));
+
         JsonNode refreshed = data(mockMvc.perform(get("/api/v1/ai-resume/conversations/{id}", conversationId)
                         .cookie(owner.cookie())).andExpect(status().isOk()).andReturn());
         assertThat(card(refreshed, "SUMMARY").path("payload").path("text").asText()).isBlank();

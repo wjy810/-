@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { api, setPlanLimitHandler } from './client'
+import { api, apiSse, setPlanLimitHandler, setRequestPreflight } from './client'
 
 afterEach(() => {
   vi.unstubAllGlobals()
   setPlanLimitHandler(null)
+  setRequestPreflight(null)
 })
 
 describe('forbidden API responses', () => {
@@ -43,5 +44,25 @@ describe('plan-limit refusals', () => {
     }, { status: 409 })))
     await expect(api('/api/v1/job-applications/a1', { method: 'PUT' })).rejects.toMatchObject({ reason: 'VERSION_CONFLICT' })
     expect(handler).not.toHaveBeenCalled()
+  })
+})
+
+
+describe('stream payment completion', () => {
+  it('clears a fully received structured rejection and retains an in-flight request', async () => {
+    const complete = vi.fn()
+    setRequestPreflight(async () => ({ complete }))
+    for (const reason of ['AI_QUOTE_CHANGED', 'AI_REQUEST_RUNNING', 'AI_REQUEST_IN_PROGRESS', 'AI_FOREGROUND_TASK_LIMIT', 'AI_BACKGROUND_TASK_LIMIT']) {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ ok: false, error: { reason, category: 'CONFLICT', message: reason } }, { status: 409 })))
+      await expect(apiSse('/stream', { method: 'POST' }, vi.fn())).rejects.toMatchObject({ reason })
+    }
+    expect(complete.mock.calls).toEqual([[true], [false], [false], [false], [false]])
+  })
+  it('retains identity for an unreadable error response', async () => {
+    const complete = vi.fn()
+    setRequestPreflight(async () => ({ complete }))
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{', { status: 502 })))
+    await expect(apiSse('/stream', { method: 'POST' }, vi.fn())).rejects.toThrow()
+    expect(complete).not.toHaveBeenCalledWith(true)
   })
 })

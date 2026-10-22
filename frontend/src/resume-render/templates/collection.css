@@ -1,0 +1,29 @@
+/* Shared type and flow primitives for the 2026 collection. Layouts own their composition. */
+.collection-sheet { --c-name-size: 29pt; --c-side-width: 53mm; }
+.collection-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 3mm 6mm; align-items: center; margin-bottom: 7mm; padding-bottom: 5mm; }
+.collection-identity { min-width: 0; }
+.collection-name { color: var(--r-ink); font-family: var(--r-font-heading); font-size: var(--c-name-size); font-weight: 600; line-height: 1.12; letter-spacing: 0.035em; overflow-wrap: anywhere; }
+.collection-title { margin-top: 2mm; color: var(--r-accent); font-size: calc(var(--r-size) + 1pt); font-weight: 500; overflow-wrap: anywhere; }
+.collection-photo { width: 23mm; height: 28mm; }
+.collection-contact { grid-column: 1 / -1; min-width: 0; }
+.collection-contact .rr-contact__item { white-space: normal; overflow-wrap: anywhere; min-width: 0; max-width: 100%; }
+.collection-contact .rr-contact__item a { overflow-wrap: anywhere; }
+.collection-body { gap: 7mm; }
+.collection-main { flex: 1 1 0; }
+.collection-side { flex: 0 0 var(--c-side-width); padding-left: 5mm; border-left: 0.5pt solid var(--r-rule); }
+.collection-side .rr-entry { grid-template-columns: minmax(0, 1fr); grid-template-areas: 'title' 'meta' 'date' 'body'; }
+.collection-side .rr-entry__date { white-space: normal; margin-top: 0.8mm; }
+.collection-side .rr-entry__meta { flex-direction: column; }
+.collection-side .rr-skill { grid-template-columns: minmax(0, 1fr); }
+.collection-side .rr-skill__name { white-space: normal; margin-bottom: 0.8mm; }
+.collection-side .rr-skill__name::after { content: none; }
+.collection-side .rr-list-item__date { margin-left: 0; }
+.collection-sheet :where(.rr-entry__title, .rr-entry__subtitle, .rr-p, .rr-bullets, .rr-skill__items, .rr-list-item) { overflow-wrap: anywhere; }
+.collection-sheet .rr-heading { color: var(--r-accent); font-size: calc(var(--r-size) + 1.1pt); }
+.collection-sheet .rr-entry__title { color: var(--r-ink); }
+.collection-side .rr-heading { font-size: var(--r-size); }
+.collection-art { object-fit: contain; }
+.rr-root[data-template][data-header='compact'] .collection-head { margin-bottom: 4mm; padding-top: 2mm; padding-bottom: 3mm; row-gap: 2mm; }
+.rr-root[data-template][data-header='compact'] .collection-name { font-size: 23pt; }
+.rr-root[data-template][data-header='compact'] .collection-photo { width: 18mm; height: 21mm; }
+.rr-root[data-template][data-header='compact'] .collection-monogram { width: 18mm; height: 18mm; font-size: 22pt; }

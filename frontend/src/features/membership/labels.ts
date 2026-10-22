@@ -87,9 +87,9 @@ function csvCell(value: string): string {
 }
 
 /** The codes of a freshly created batch as CSV (with a BOM so Excel opens the Chinese header correctly). */
-export function codesCsv(batch: { name: string; channel?: string | null; durationDays: number }, codes: string[]): string {
-  const header = ['兑换码', '批次', '渠道', '专业版天数'].map(csvCell).join(',')
-  const rows = codes.map(code => [code, batch.name, batch.channel ?? '', String(batch.durationDays)].map(csvCell).join(','))
+export function codesCsv(batch: { name: string; channel?: string | null; durationDays: number; balanceAmount?: number | null }, codes: string[]): string {
+  const header = ['兑换码', '批次', '渠道', batch.balanceAmount != null ? '人民币面额' : '专业版天数'].map(csvCell).join(',')
+  const rows = codes.map(code => [code, batch.name, batch.channel ?? '', String(batch.balanceAmount ?? batch.durationDays)].map(csvCell).join(','))
   return `﻿${[header, ...rows].join('\r\n')}\r\n`
 }
 

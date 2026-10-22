@@ -50,7 +50,7 @@ class ResumeAiCandidateServiceTest {
     @BeforeEach void setUp()throws Exception{
         master=new ResumeMasterEntity();master.setId("resume-1");master.setAccountId("account-1");master.setTitle("技术简历");master.setStatus("DRAFT");master.setExperienceJson(mapper.writeValueAsString("在平台开发接口并处理线上问题"));master.setKeyOutcomesJson("[]");master.setVersionNo(3);master.setCreatedAt(Instant.parse("2026-08-22T00:00:00Z"));master.setUpdatedAt(master.getCreatedAt());
         when(masters.findById("resume-1")).thenReturn(Optional.of(master));when(clock.now()).thenReturn(Instant.parse("2026-08-22T01:00:00Z"));
-        when(channels.findEligible("account-1","qwen-plus")).thenReturn(List.of(new Channel("channel-1",AiProtocol.OPENAI_CHAT,URI.create("https://api.example/v1"),"cipher",0,100,true)));
+        when(channels.findAvailable("account-1","qwen-plus")).thenReturn(List.of(new Channel("channel-1",AiProtocol.OPENAI_CHAT,URI.create("https://api.example/v1"),"cipher",0,100,true)));
         when(jdbc.queryForObject(anyString(),eq(Integer.class),any(),any())).thenReturn(1);
         when(careerLibrary.evidenceSnapshot(eq("account-1"),anyString())).thenReturn(new EvidenceSnapshot(5,
                 List.of(new SourceRef("record-1","PROJECT","招聘平台","招聘平台 Java 后端开发与接口维护"))));

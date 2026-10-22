@@ -2,7 +2,7 @@
 export type OverviewUsers = { total: number; new7: number; new30: number; active7: number; active30: number }
 export type OverviewMembership = { pro: number; proShare?: number | null; redeemed30: number; codesIssued: number; codesRedeemed: number; activeBatches: number }
 export type OverviewModule = { key: string; label: string; total: number; last7: number }
-export type OverviewAi = { period: string; usedUnits: number; accounts: number }
+export type OverviewAi = { period: string; usedUnits: number; accounts: number; quotaUnits: number; walletUnits: number; personalUnits: number }
 export type FunnelStep = { key: string; label: string; accounts: number; rate?: number | null }
 export type OverviewDay = { day: string; signups: number; applications: number; opens: number }
 

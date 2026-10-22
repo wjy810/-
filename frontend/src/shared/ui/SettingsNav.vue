@@ -1,11 +1,14 @@
 <script setup lang="ts">
 import { useRoute } from 'vue-router'
-import { Bell, Crown, Database, Lock, Palette, Sparkles } from 'lucide-vue-next'
+import { Bell, Crown, Database, Lock, Palette, Sparkles, Wallet, Cpu } from 'lucide-vue-next'
 
 const route = useRoute()
 const items = [
   { to: '/account', label: '账号与安全', icon: Lock },
   { to: '/account/membership', label: '会员', icon: Crown },
+  { to: '/account/wallet', label: '钱包与账单', icon: Wallet },
+  { to: '/account/personal-channel-subscription', label: '通道订阅', icon: Crown },
+  { to: '/account/ai-channels', label: 'AI 通道', icon: Cpu },
   { to: '/account/notifications', label: '通知', icon: Bell },
   { to: '/account/appearance', label: '外观', icon: Palette },
   { to: '/account/ai', label: 'AI 用量', icon: Sparkles },
@@ -13,7 +16,8 @@ const items = [
 ]
 
 function isActive(to: string): boolean {
-  return to === '/account' ? route.path === '/account' : route.path.startsWith(to)
+  if (to === '/account') return route.path === to
+  return route.path === to || route.path.startsWith(`${to}/`)
 }
 </script>
 

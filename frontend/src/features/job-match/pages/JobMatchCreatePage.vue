@@ -136,7 +136,6 @@ function removeRequirement(index: number) {
   requirements.value.splice(index, 1)
 }
 const analyzeBlockedReason = computed(() => {
-  if ((capabilities.value?.quota.remainingUnits ?? 0) < 1) return 'AI 分析额度已用完'
   if (!consent.value) return '请先勾选上方的确认'
   return ''
 })

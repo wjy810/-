@@ -48,6 +48,14 @@ ClamAV 首次启动需要下载病毒库；健康检查通过后，`local` profi
 
 隔离验收使用 `test` profile、`127.0.0.1:18081` 和内存 H2，不读取开发/生产数据库。测试账号通过 `jobproof.dev.seeker.*` 显式启用；岗位匹配和职业规划需分别启用 `jobproof.job-match.enabled`、`jobproof.career-planning.enabled`。如前端为 `127.0.0.1:5174`，还需设置 `--jobproof.cors.origins=http://127.0.0.1:5174`。这些本地设置不得用于生产。
 
+## 平台 AI 通道
+
+管理员在 `/admin/ai-channels` 填写名称、HTTPS Base URL、协议和 API 密钥即可保存草稿，供应商代码可留空。首次点击“检测可用模型”后，系统按发现顺序逐个测试，跳过请求失败、无有效流式正文或无法输出 JSON 的模型，记录首个全部通过的模型。发现的模型在可搜索下拉框中展示，默认选中当前已启用模型；已有选择时只检测所选模型。检测最多持续 120 秒，检测和选择都不会切换当前模型，点击“启用所选模型”才生效；如果所选模型尚未通过检测，该操作会先检测再启用。刷新页面保留当前生效模型和最近的检测结果。
+
+平台功能默认使用 `auto`，直接调用已启用通道选中的实际模型，不要求预建模型目录、价格或别名映射。`JOBPROOF_RESUME_MODEL`、`JOBPROOF_JOB_MATCH_MODEL`、`JOBPROOF_CAREER_PLANNING_MODEL` 可指定固定模型；显式指定的模型不会被自动替换成其他模型。旧客户端仍可传可选的 `platformModelCode` 使用原有别名映射。
+
+V86 迁移会保留旧通道最近一次测试通过的模型。V87 将旧客户端的可选别名保存在检测记录中，点击启用时才应用映射。启用接口可传 `providerModel`，后端校验它与最近一次通过检测的模型一致，并通过 `expectedVersion` 防止覆盖并发修改。开发通道首次启动以 `JOBPROOF_DEV_AI_MODEL` 填充默认模型，后续重启保留管理员已启用的模型和通道停用状态。自动发现不会复制其他模型的价格或修改历史账单。
+
 ## 模块包
 
 - `modules.identity` 邮箱/手机号账号、HttpOnly Cookie 会话、验证码注册与密码重置、登录节流

@@ -5,6 +5,9 @@ import { RotateCcw } from 'lucide-vue-next'
 import BrandMark from '@/shared/ui/BrandMark.vue'
 import UiButton from '@/shared/ui/UiButton.vue'
 import UiConfirmHost from '@/shared/ui/UiConfirmHost.vue'
+import PublicationConfirmHost from '@/features/updates/components/PublicationConfirmHost.vue'
+import AiPaymentHost from '@/features/billing/components/AiPaymentHost.vue'
+import { installAiPayments } from '@/features/billing/payment'
 import UiToaster from '@/shared/ui/UiToaster.vue'
 import { useSessionStore } from '@/stores/session'
 import { useCommandPaletteStore } from '@/stores/commandPalette'
@@ -17,6 +20,7 @@ const ShortcutsDialog = defineAsyncComponent(() => import('@/features/command/Sh
 const session = useSessionStore()
 const palette = useCommandPaletteStore()
 useGlobalShortcuts()
+installAiPayments()
 
 // The palette carries the pinyin dictionary (~145 KB gzip): mount it on first use and
 // warm the chunk when the browser is idle, so it never competes with the first paint.
@@ -55,6 +59,8 @@ watch(
       </Transition>
       <UiToaster />
       <UiConfirmHost />
+      <PublicationConfirmHost />
+      <AiPaymentHost />
       <CommandPalette v-if="session.signedIn && paletteActivated" />
       <ShortcutsDialog />
     </div>

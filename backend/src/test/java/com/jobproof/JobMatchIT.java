@@ -55,6 +55,7 @@ class JobMatchIT {
     @Autowired JdbcTemplate jdbc;
     @MockBean AiGatewayService gateway;
     @MockBean ResumeAiCandidateService resumeAiCandidates;
+    @org.springframework.boot.test.mock.mockito.SpyBean com.jobproof.modules.airesume.application.AiQuotaService quota;
 
     @BeforeEach
     void configureAi() {
@@ -802,6 +803,28 @@ class JobMatchIT {
                                 "requestId", requestId, "expectedVersion", expectedVersion,
                                 "outputOptions", Map.of("redacted", true, "language", "zh-CN")))))
                 .andExpect(status().isAccepted()).andReturn());
+    }
+
+    @Test
+    void settlementFailureRollsBackFinalReportAndAllowsAnExplicitNewAnalysis() throws Exception {
+        MockCookie owner=registerAndLogin("match-settlement+"+System.nanoTime()+"@example.com");
+        createStructuredResume(owner);
+        JsonNode authorized=authorizedMatch(owner);
+        String matchId=authorized.path("id").asText();
+        doThrow(new IllegalStateException("synthetic settlement failure")).when(quota).settle(anyString(),anyString(),org.mockito.ArgumentMatchers.eq(1));
+        analyze(owner,matchId,"settlement-fail-"+UUID.randomUUID(),authorized.path("version").asInt());
+        awaitStatus(owner,matchId,"ANALYSIS_PAUSED");
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM job_match_report_versions WHERE match_id=?",Integer.class,matchId)).isZero();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM match_reports WHERE match_id=? AND status='COMPLETED'",Integer.class,matchId)).isZero();
+        String accountId=jdbc.queryForObject("SELECT account_id FROM job_match_tasks WHERE id=?",String.class,matchId);
+        await().atMost(Duration.ofSeconds(12)).untilAsserted(()->assertThat(jdbc.queryForObject("SELECT status FROM ai_quota_reservations WHERE id=(SELECT quota_reservation_id FROM job_match_tasks WHERE id=?)",String.class,matchId)).isEqualTo("RELEASED"));
+        assertThat(jdbc.queryForObject("SELECT used_units FROM ai_quota_accounts WHERE account_id=?",Integer.class,accountId)).isZero();
+        org.mockito.Mockito.doCallRealMethod().when(quota).settle(anyString(),anyString(),org.mockito.ArgumentMatchers.eq(1));
+        int version=jdbc.queryForObject("SELECT version_no FROM job_match_tasks WHERE id=?",Integer.class,matchId);
+        analyze(owner,matchId,"settlement-retry-"+UUID.randomUUID(),version);
+        awaitStatus(owner,matchId,"COMPLETED");
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM job_match_report_versions WHERE match_id=?",Integer.class,matchId)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT used_units FROM ai_quota_accounts WHERE account_id=?",Integer.class,accountId)).isEqualTo(1);
     }
 
     @Test

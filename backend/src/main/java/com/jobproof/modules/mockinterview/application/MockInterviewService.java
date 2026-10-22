@@ -48,14 +48,16 @@ public class MockInterviewService {
     private final ClockPort clock;
     private final MockInterviewAiService ai;
     private final TransactionTemplate transactions;
+    private final com.jobproof.modules.airesume.application.AiQuotaService quota;
 
     public MockInterviewService(JdbcTemplate jdbc, ObjectMapper mapper, ClockPort clock, MockInterviewAiService ai,
-            PlatformTransactionManager transactionManager) {
+            PlatformTransactionManager transactionManager, com.jobproof.modules.airesume.application.AiQuotaService quota) {
         this.jdbc = jdbc;
         this.mapper = mapper;
         this.clock = clock;
         this.ai = ai;
         this.transactions = new TransactionTemplate(transactionManager);
+        this.quota = quota;
     }
 
     @Transactional(readOnly = true)
@@ -130,7 +132,7 @@ public class MockInterviewService {
         return draft(current.accountId(), draftId);
     }
 
-    @Transactional
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.NOT_SUPPORTED)
     public SessionView createSession(CurrentAccount current, CreateSessionCommand command) {
         assertSeeker(current);
         String accountId = current.accountId();
@@ -169,6 +171,8 @@ public class MockInterviewService {
         }
         if (command.draftId() != null && !command.draftId().isBlank()) {
             draft(accountId, command.draftId());
+            var existing = jdbc.queryForList("SELECT id FROM mock_interview_sessions WHERE draft_id=? AND account_id=? ORDER BY created_at LIMIT 1", String.class, command.draftId(), accountId);
+            if (!existing.isEmpty()) return session(current, existing.getFirst());
         }
 
         Instant now = clock.now();
@@ -176,35 +180,53 @@ public class MockInterviewService {
         String company = clean(command.companyName());
         String title = position + (company == null || company.isBlank() ? " · 模拟面试" : " · " + company);
         List<QuestionSeed> seeds;
+        var reservation = quota.reserveExclusive(accountId, "mock-questions:" + paymentRequestId(), "MOCK_INTERVIEW_QUESTIONS", 1);
         try {
-            GeneratedQuestions generated = ai.generateQuestions(accountId, position, company, type, difficulty,
-                    questionCount, resume, jd);
-            seeds = generated.questions().stream().map(item ->
-                    seed(item.type(), item.prompt(), item.sourceLabel(), item.sourceRefs())).toList();
-            settings.put("questionGenerationMode", "AI_MODEL");
-            settings.put("questionModel", generated.model());
-            settings.put("questionChannelId", generated.channelId());
-            settings.put("questionInputTokens", generated.inputTokens());
-            settings.put("questionOutputTokens", generated.outputTokens());
-        } catch (AiGatewayException exception) {
-            seeds = questions(position, company, type, difficulty, questionCount, resume, jd);
-            settings.put("questionGenerationMode", "BASIC_RULES");
-            settings.put("aiNotice", "AI 通道暂不可用，本次使用基础题库；回答和进度仍会完整保存。");
+            try {
+                GeneratedQuestions generated = ai.generateQuestions(accountId, position, company, type, difficulty,
+                        questionCount, resume, jd);
+                seeds = generated.questions().stream().map(item ->
+                        seed(item.type(), item.prompt(), item.sourceLabel(), item.sourceRefs())).toList();
+                settings.put("questionGenerationMode", "AI_MODEL");
+                settings.put("questionModel", generated.model());
+                settings.put("questionChannelId", generated.channelId());
+                settings.put("questionInputTokens", generated.inputTokens());
+                settings.put("questionOutputTokens", generated.outputTokens());
+            } catch (AiGatewayException exception) {
+                seeds = questions(position, company, type, difficulty, questionCount, resume, jd);
+                settings.put("questionGenerationMode", "BASIC_RULES");
+                settings.put("aiNotice", "AI 通道暂不可用，本次使用基础题库；回答和进度仍会完整保存。");
+            }
+            List<QuestionSeed> savedSeeds = seeds;
+            return transactions.execute(status -> {
+                quota.lockForSettlement(accountId);
+                if (command.draftId() != null && !command.draftId().isBlank()) {
+                    var existing = jdbc.queryForList("SELECT id FROM mock_interview_sessions WHERE draft_id=? AND account_id=?", String.class, command.draftId(), accountId);
+                    if (!existing.isEmpty()) {
+                        quota.release(accountId, reservation.id());
+                        return session(current, existing.getFirst());
+                    }
+                }
+                jdbc.update("INSERT INTO mock_interview_sessions(id,account_id,draft_id,title,position_name,company_name,mode,interview_type,difficulty,duration_minutes,question_count,language_code,feedback_mode,follow_up_enabled,status,current_question_index,elapsed_seconds,resume_snapshot_json,jd_snapshot_json,materials_snapshot_json,settings_snapshot_json,version_no,created_at,updated_at,started_at,resumed_at,paused_at,completed_at,last_active_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,'IN_PROGRESS',0,0,?,?,?,?,0,?,?,?,?,NULL,NULL,?)",
+                        id, accountId, clean(command.draftId()), title, position, company, mode, type, difficulty,
+                        duration, questionCount, blankTo(command.languageCode(), "zh-CN"), feedbackMode,
+                        command.followUpEnabled(), json(resume), json(jd), json(materials), json(settings), now, now, now, now, now);
+                for (int i = 0; i < savedSeeds.size(); i++) {
+                    QuestionSeed seed = savedSeeds.get(i);
+                    jdbc.update("INSERT INTO mock_interview_questions(id,session_id,order_no,question_type,prompt_text,source_label,source_refs_json,status,created_at) VALUES(?,?,?,?,?,?,?,'PENDING',?)",
+                            Ids.newId(), id, i + 1, seed.type(), seed.prompt(), seed.sourceLabel(), json(seed.sourceRefs()), now);
+                }
+                if (command.draftId() != null && !command.draftId().isBlank()) {
+                    jdbc.update("UPDATE mock_interview_drafts SET status='COMPLETED',step_no=5,version_no=version_no+1,updated_at=? WHERE id=? AND account_id=?",
+                            now, command.draftId(), accountId);
+                }
+                quota.settle(accountId, reservation.id(), "AI_MODEL".equals(settings.get("questionGenerationMode")) ? 1 : 0);
+                return session(current, id);
+            });
+        } catch (RuntimeException failure) {
+            quota.release(accountId, reservation.id());
+            throw failure;
         }
-        jdbc.update("INSERT INTO mock_interview_sessions(id,account_id,draft_id,title,position_name,company_name,mode,interview_type,difficulty,duration_minutes,question_count,language_code,feedback_mode,follow_up_enabled,status,current_question_index,elapsed_seconds,resume_snapshot_json,jd_snapshot_json,materials_snapshot_json,settings_snapshot_json,version_no,created_at,updated_at,started_at,resumed_at,paused_at,completed_at,last_active_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,'IN_PROGRESS',0,0,?,?,?,?,0,?,?,?,?,NULL,NULL,?)",
-                id, accountId, clean(command.draftId()), title, position, company, mode, type, difficulty,
-                duration, questionCount, blankTo(command.languageCode(), "zh-CN"), feedbackMode,
-                command.followUpEnabled(), json(resume), json(jd), json(materials), json(settings), now, now, now, now, now);
-        for (int i = 0; i < seeds.size(); i++) {
-            QuestionSeed seed = seeds.get(i);
-            jdbc.update("INSERT INTO mock_interview_questions(id,session_id,order_no,question_type,prompt_text,source_label,source_refs_json,status,created_at) VALUES(?,?,?,?,?,?,?,'PENDING',?)",
-                    Ids.newId(), id, i + 1, seed.type(), seed.prompt(), seed.sourceLabel(), json(seed.sourceRefs()), now);
-        }
-        if (command.draftId() != null && !command.draftId().isBlank()) {
-            jdbc.update("UPDATE mock_interview_drafts SET status='COMPLETED',step_no=5,version_no=version_no+1,updated_at=? WHERE id=? AND account_id=?",
-                    now, command.draftId(), accountId);
-        }
-        return session(current, id);
     }
 
     private Map<String, Object> jobMatchSnapshot(String accountId, String jobMatchId) {
@@ -311,41 +333,58 @@ public class MockInterviewService {
         return upsertAnswer(session, question, "TEXT", command.answer(), "DRAFT", command.expectedVersion(), Map.of(), Map.of());
     }
 
-    @Transactional
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.NOT_SUPPORTED)
     public SessionView submitAnswer(CurrentAccount current, String sessionId, String questionId, AnswerCommand command) {
         SessionRow row = requireActive(current, sessionId);
         QuestionView question = question(row.id(), questionId);
         String text = required(command.answer(), "MOCK_INTERVIEW_ANSWER_REQUIRED", "回答不能为空");
-        Map<String, Integer> scores;
-        Map<String, Object> feedback;
+        var reservation = quota.reserveExclusive(current.accountId(), "mock-answer:" + questionId + ":" + paymentRequestId(), "MOCK_INTERVIEW_EVALUATE", 1);
         try {
-            Evaluation evaluation = ai.evaluateAnswer(current.accountId(), row.positionName(), row.interviewType(),
-                    new QuestionInput(question.questionType(), question.prompt(), question.sourceRefs()),
-                    thread(row.id(), question), text,
-                    row.followUpEnabled(), map(row.resumeSnapshotJson()), map(row.jdSnapshotJson()));
-            scores = evaluation.scores();
-            feedback = evaluation.feedback();
-        } catch (AiGatewayException exception) {
-            // No model, no score: counting characters is not an evaluation (BE-1).
-            scores = Map.of();
-            feedback = pendingFeedback();
+            Map<String, Integer> scores;
+            Map<String, Object> feedback;
+            try {
+                Evaluation evaluation = ai.evaluateAnswer(current.accountId(), row.positionName(), row.interviewType(),
+                        new QuestionInput(question.questionType(), question.prompt(), question.sourceRefs()),
+                        thread(row.id(), question), text,
+                        row.followUpEnabled(), map(row.resumeSnapshotJson()), map(row.jdSnapshotJson()));
+                scores = evaluation.scores();
+                feedback = evaluation.feedback();
+            } catch (AiGatewayException exception) {
+                // No model, no score: counting characters is not an evaluation (BE-1).
+                scores = Map.of();
+                feedback = pendingFeedback();
+            }
+            Map<String, Integer> savedScores = scores;
+            Map<String, Object> generatedFeedback = feedback;
+            return transactions.execute(status -> {
+                quota.lockForSettlement(current.accountId());
+                SessionRow latest = requireActive(current, sessionId);
+                assertVersion(row.version(), latest.version());
+                Map<String, Object> savedFeedback = generatedFeedback;
+                Instant now = clock.now();
+                boolean askedFollowUp = askFollowUp(row, question, savedFeedback, now);
+                if (askedFollowUp) {
+                    savedFeedback = new LinkedHashMap<>(savedFeedback);
+                    savedFeedback.put("followUpAsked", true);
+                }
+                upsertAnswer(row, question, row.mode(), text, "SUBMITTED", command.expectedVersion(), savedScores, savedFeedback);
+                jdbc.update("UPDATE mock_interview_questions SET status='COMPLETED' WHERE id=? AND session_id=?", questionId, sessionId);
+                int next = Math.max(row.currentQuestionIndex(), question.orderNo());
+                boolean complete = next >= row.questionCount() + (askedFollowUp ? 1 : 0);
+                // Answering is activity: a clock stopped while the page was away starts again (the report closes it).
+                // State transitions do not take the account lock: guard the final write against a concurrent
+                // pause, completion or abandonment after requireActive read its snapshot.
+                requireUpdated(jdbc.update("UPDATE mock_interview_sessions SET current_question_index=?,status=?,version_no=version_no+1,updated_at=?,completed_at=?,resumed_at=COALESCE(resumed_at,?),paused_at=NULL,last_active_at=? WHERE id=? AND account_id=? AND version_no=? AND status=?",
+                        next, complete ? "COMPLETED" : "IN_PROGRESS", now, complete ? now : null, now, now, sessionId, current.accountId(), latest.version(), latest.status()));
+                if (complete) stopClock(requireOwn(current, sessionId), now);
+                if (complete) generateReport(current.accountId(), sessionId);
+                quota.settle(current.accountId(), reservation.id(), savedScores.isEmpty() ? 0 : 1);
+                return session(current, sessionId);
+            });
+        } catch (RuntimeException failure) {
+            quota.release(current.accountId(), reservation.id());
+            throw failure;
         }
-        Instant now = clock.now();
-        boolean askedFollowUp = askFollowUp(row, question, feedback, now);
-        if (askedFollowUp) {
-            feedback = new LinkedHashMap<>(feedback);
-            feedback.put("followUpAsked", true);
-        }
-        upsertAnswer(row, question, row.mode(), text, "SUBMITTED", command.expectedVersion(), scores, feedback);
-        jdbc.update("UPDATE mock_interview_questions SET status='COMPLETED' WHERE id=? AND session_id=?", questionId, sessionId);
-        int next = Math.max(row.currentQuestionIndex(), question.orderNo());
-        boolean complete = next >= row.questionCount() + (askedFollowUp ? 1 : 0);
-        // Answering is activity: a clock stopped while the page was away starts again (the report closes it).
-        jdbc.update("UPDATE mock_interview_sessions SET current_question_index=?,status=?,version_no=version_no+1,updated_at=?,completed_at=?,resumed_at=COALESCE(resumed_at,?),paused_at=NULL,last_active_at=? WHERE id=? AND account_id=?",
-                next, complete ? "COMPLETED" : "IN_PROGRESS", now, complete ? now : null, now, now, sessionId, current.accountId());
-        if (complete) stopClock(requireOwn(current, sessionId), now);
-        if (complete) generateReport(current.accountId(), sessionId);
-        return session(current, sessionId);
     }
 
     /**
@@ -469,6 +508,9 @@ public class MockInterviewService {
                 .toList();
         int evaluated = 0;
         boolean available = true;
+        if (pending.isEmpty()) return new EvaluationResult(0, 0, true);
+        var reservation = quota.reserve(current.accountId(), "mock-evaluate:" + sessionId + ":" + paymentRequestId(), "MOCK_INTERVIEW_EVALUATE", pending.size());
+        try {
         for (ReviewRow item : pending) {
             Evaluation evaluation;
             try {
@@ -480,8 +522,13 @@ public class MockInterviewService {
                 available = false;
                 break;
             }
-            int changed = jdbc.update("UPDATE mock_interview_answers SET score_json=?,feedback_json=?,version_no=version_no+1,updated_at=? WHERE id=? AND version_no=?",
-                    json(evaluation.scores()), json(evaluation.feedback()), clock.now(), item.answer().id(), item.answer().version());
+            int changed = transactions.execute(status -> {
+                quota.lockForSettlement(current.accountId());
+                int saved = jdbc.update("UPDATE mock_interview_answers SET score_json=?,feedback_json=?,version_no=version_no+1,updated_at=? WHERE id=? AND version_no=?",
+                        json(evaluation.scores()), json(evaluation.feedback()), clock.now(), item.answer().id(), item.answer().version());
+                if (saved == 1) quota.successfulUnit(current.accountId(), reservation.id(), item.answer().id());
+                return saved;
+            });
             if (changed == 1) evaluated++;
         }
         if (evaluated > 0) {
@@ -491,6 +538,14 @@ public class MockInterviewService {
             });
         }
         return new EvaluationResult(evaluated, pending.size() - evaluated, available);
+        } finally {
+            quota.settle(current.accountId(), reservation.id(), evaluated);
+        }
+    }
+
+    private static String paymentRequestId() {
+        var context = com.jobproof.shared.ai.AiExecutionContext.current();
+        return context != null && context.operationId() != null ? context.operationId() : Ids.newId();
     }
 
     @Transactional

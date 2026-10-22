@@ -64,7 +64,7 @@ onMounted(page.load)
             :icon="Crown"
             tone="violet"
           />
-          <UiStatTile label="本月 AI 次数" :value="compact(data.ai.usedUnits)" :hint="`${data.ai.accounts} 人在用 · ${data.ai.period}`" :icon="Sparkles" tone="accent" />
+          <UiStatTile label="本月 AI 次数" :value="compact(data.ai.usedUnits)" :hint="`${data.ai.accounts} 人在用 · 额度 ${data.ai.quotaUnits ?? 0} / 余额 ${data.ai.walletUnits ?? 0} / 个人 ${data.ai.personalUnits ?? 0}`" :icon="Sparkles" tone="accent" />
         </div>
 
         <section class="ops-card" :class="{ 'is-refreshing': page.loading.value }" aria-labelledby="ops-trend">
@@ -122,7 +122,7 @@ onMounted(page.load)
               </tbody>
             </table>
             <div class="redeem-line">
-              <span>兑换码：已生成 {{ compact(data.membership.codesIssued) }} · 已兑换 {{ compact(data.membership.codesRedeemed) }} · 可兑换批次 {{ data.membership.activeBatches }}</span>
+              <span>平台兑换码库存：已生成 {{ compact(data.membership.codesIssued) }} · 已兑换 {{ compact(data.membership.codesRedeemed) }} · 可兑换批次 {{ data.membership.activeBatches }}</span>
               <UiButton size="sm" variant="ghost" to="/admin/redeem-codes" :icon-right="ArrowRight">管理</UiButton>
             </div>
           </section>

@@ -1,4 +1,5 @@
-import { api, apiSse, type SseEvent } from '@/shared/api/client'
+import { api, apiSse, type ApiInit, type SseEvent } from '@/shared/api/client'
+import { isApiClientError, isAiRequestInFlight } from '@/shared/api/types'
 import type { TaskView } from '@/shared/api/task'
 import { withQuery } from '@/shared/lib/query'
 import type {
@@ -32,6 +33,34 @@ import type {
 } from '../types'
 
 const ROOT = '/api/v1/ai-resume'
+
+// Store only request identities and a digest: resume text stays out of browser storage.
+const suggestionRetries = new Map<string, string>()
+const suggestionAliases = new Map<string, { requestId: string; key: string }>()
+function forgetSuggestion(key: string) {
+  suggestionRetries.delete(key)
+  for (const [alias, value] of suggestionAliases) if (value.key === key) suggestionAliases.delete(alias)
+  try { localStorage.removeItem(key) } catch { /* storage is optional */ }
+}
+async function suggestionApi<T>(path: string, init: ApiInit): Promise<T> {
+  const { clientRequestId, ...input } = JSON.parse(init.body as string)
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify({ path, input })))
+  const key = `jobproof:suggestion-retry:${Array.from(new Uint8Array(digest), v => v.toString(16).padStart(2, '0')).join('')}`
+  let requestId = suggestionRetries.get(key)
+  try { requestId ??= localStorage.getItem(key) ?? undefined } catch { /* storage is optional */ }
+  requestId ??= clientRequestId
+  suggestionRetries.set(key, requestId!)
+  suggestionAliases.set(clientRequestId, { requestId: requestId!, key })
+  try { localStorage.setItem(key, requestId!) } catch { /* memory supports immediate retry */ }
+  try {
+    const result = await api<T>(path, { ...init, body: JSON.stringify({ clientRequestId: requestId, ...input }) })
+    forgetSuggestion(key)
+    return result
+  } catch (error) {
+    if (isApiClientError(error) && error.responseReceived && error.status > 0 && !['BAD_RESPONSE', 'TIMEOUT'].includes(error.reason) && !isAiRequestInFlight(error.reason)) forgetSuggestion(key)
+    throw error
+  }
+}
 
 export function createAiResume(identityType: AiIdentity, title?: string): Promise<AiResumeConversation> {
   return api<AiResumeConversation>(`${ROOT}/conversations`, {
@@ -93,7 +122,7 @@ export function generateAiResumeDescriptionSuggestion(
   clientRequestId: string = crypto.randomUUID(),
   signal?: AbortSignal,
 ): Promise<AiDescriptionSuggestion> {
-  return api<AiDescriptionSuggestion>(
+  return suggestionApi<AiDescriptionSuggestion>(
     `${ROOT}/conversations/${encodeURIComponent(conversationId)}/cards/${encodeURIComponent(cardId)}`
       + `/records/${recordIndex}/description-suggestion`,
     { method: 'POST', body: JSON.stringify({ clientRequestId, recordFacts }), signal },
@@ -107,7 +136,7 @@ export function generateAiResumeSummarySuggestions(
   clientRequestId: string = crypto.randomUUID(),
   signal?: AbortSignal,
 ): Promise<AiSummarySuggestion> {
-  return api<AiSummarySuggestion>(
+  return suggestionApi<AiSummarySuggestion>(
     `${ROOT}/conversations/${encodeURIComponent(conversationId)}/cards/${encodeURIComponent(cardId)}`
       + '/summary-suggestions',
     { method: 'POST', body: JSON.stringify({ clientRequestId, currentSummary }), signal },
@@ -125,7 +154,7 @@ export function generateAiResumeSkillSuggestion(
   clientRequestId: string = crypto.randomUUID(),
   signal?: AbortSignal,
 ): Promise<AiSkillSuggestion> {
-  return api<AiSkillSuggestion>(
+  return suggestionApi<AiSkillSuggestion>(
     `${ROOT}/conversations/${encodeURIComponent(conversationId)}/cards/${encodeURIComponent(cardId)}`
       + '/skill-suggestions',
     {
@@ -146,7 +175,7 @@ export function generateAiResumeCertificateSuggestion(
   clientRequestId: string = crypto.randomUUID(),
   signal?: AbortSignal,
 ): Promise<AiCertificateSuggestion> {
-  return api<AiCertificateSuggestion>(
+  return suggestionApi<AiCertificateSuggestion>(
     `${ROOT}/conversations/${encodeURIComponent(conversationId)}/cards/${encodeURIComponent(cardId)}`
       + '/certificate-suggestions',
     {
@@ -167,7 +196,7 @@ export function generateAiResumeHonorSuggestion(
   clientRequestId: string = crypto.randomUUID(),
   signal?: AbortSignal,
 ): Promise<AiHonorSuggestion> {
-  return api<AiHonorSuggestion>(
+  return suggestionApi<AiHonorSuggestion>(
     `${ROOT}/conversations/${encodeURIComponent(conversationId)}/cards/${encodeURIComponent(cardId)}`
       + '/honor-suggestions',
     {
@@ -184,7 +213,7 @@ export function generateAiResumeCredentialRecommendations(
   clientRequestId: string = crypto.randomUUID(),
   signal?: AbortSignal,
 ): Promise<AiCredentialRecommendation> {
-  return api<AiCredentialRecommendation>(
+  return suggestionApi<AiCredentialRecommendation>(
     `${ROOT}/conversations/${encodeURIComponent(conversationId)}/cards/${encodeURIComponent(cardId)}`
       + '/credential-recommendations',
     {
@@ -285,25 +314,42 @@ export function askAiResume(
   })
 }
 
-export function streamAiResume(
+export async function streamAiResume(
   conversationId: string,
   text: string,
   clientMessageId: string,
   onEvent: (event: SseEvent) => void,
   signal?: AbortSignal,
 ): Promise<void> {
-  return apiSse(`${ROOT}/conversations/${encodeURIComponent(conversationId)}/messages/stream`, {
-    method: 'POST',
-    body: JSON.stringify({ clientMessageId, text }),
-    signal,
-  }, onEvent)
+  const path = `${ROOT}/conversations/${encodeURIComponent(conversationId)}/messages/stream`
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify({ path, text })))
+  const key = `jobproof:chat-retry:${Array.from(new Uint8Array(digest), v => v.toString(16).padStart(2, '0')).join('')}`
+  let requestId = suggestionRetries.get(key)
+  try { requestId ??= localStorage.getItem(key) ?? undefined } catch { /* storage is optional */ }
+  requestId ??= clientMessageId
+  suggestionRetries.set(key, requestId)
+  suggestionAliases.set(clientMessageId, { requestId, key })
+  try { localStorage.setItem(key, requestId) } catch { /* memory supports immediate retry */ }
+  try {
+    await apiSse(path, { method: 'POST', body: JSON.stringify({ clientMessageId: requestId, text }), signal }, event => {
+      const running = event.type === 'request.failed' && isAiRequestInFlight((event.data as { errorCode?: string })?.errorCode)
+      if (!running && ['assistant.completed', 'assistant.failed', 'assistant.cancelled', 'request.failed'].includes(event.type)) forgetSuggestion(key)
+      onEvent(event)
+    })
+  } catch (error) {
+    if (isApiClientError(error) && error.responseReceived && error.status > 0 && !['BAD_RESPONSE', 'TIMEOUT'].includes(error.reason) && !isAiRequestInFlight(error.reason)) forgetSuggestion(key)
+    throw error
+  }
 }
 
-export function cancelAiResumeResponse(conversationId: string, requestId: string): Promise<AiCancellation> {
-  return api<AiCancellation>(
-    `${ROOT}/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(requestId)}/cancel`,
+export async function cancelAiResumeResponse(conversationId: string, requestId: string): Promise<AiCancellation> {
+  const retry = suggestionAliases.get(requestId)
+  const result = await api<AiCancellation>(
+    `${ROOT}/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(retry?.requestId ?? requestId)}/cancel`,
     { method: 'POST' },
   )
+  if (retry) { forgetSuggestion(retry.key); suggestionAliases.delete(requestId) }
+  return result
 }
 
 export function decideAiResumeChange(

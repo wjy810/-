@@ -59,6 +59,7 @@ public class AiResumeHonorSuggestionService {
     private final ResumeAiCandidateService aiCandidates;
     private final AiGatewayService gateway;
     private final AiQuotaService quota;
+    private final AiSuggestionResults results;
     private final AiGenerationAttemptService attempts;
     private final AuditService audit;
     private final CareerLibraryService careerLibrary;
@@ -67,7 +68,7 @@ public class AiResumeHonorSuggestionService {
 
     public AiResumeHonorSuggestionService(JdbcTemplate jdbc, ObjectMapper mapper,
             ResumeAiCandidateService aiCandidates, AiGatewayService gateway, AiQuotaService quota,
-            AiGenerationAttemptService attempts, AuditService audit, CareerLibraryService careerLibrary,
+            AiGenerationAttemptService attempts, AuditService audit, AiSuggestionResults results, CareerLibraryService careerLibrary,
             AiResumeCredentialRecommendationService credentialRecommendations,
             @Value("${jobproof.ai.resume-model:qwen-plus}") String defaultModel) {
         this.jdbc = jdbc;
@@ -75,6 +76,7 @@ public class AiResumeHonorSuggestionService {
         this.aiCandidates = aiCandidates;
         this.gateway = gateway;
         this.quota = quota;
+        this.results = results;
         this.attempts = attempts;
         this.audit = audit;
         this.careerLibrary = careerLibrary;
@@ -83,6 +85,15 @@ public class AiResumeHonorSuggestionService {
     }
 
     public HonorSuggestionView generate(CurrentAccount current, String conversationId, String cardId,
+            String clientRequestId, String rawPhase, JsonNode currentHonors, List<String> selectedNames,
+            List<String> confirmedNames) {
+        assertSeeker(current);
+        if ("NAMES".equals(normalized(rawPhase))) return generateFresh(current, conversationId, cardId, clientRequestId, rawPhase, currentHonors, selectedNames, confirmedNames);
+        return results.execute(current.accountId(), "honors:" + conversationId + ":" + cleanRequestId(clientRequestId), "RESUME_HONOR_DETAILS",
+                java.util.Arrays.asList(current, conversationId, cardId, clientRequestId, rawPhase, currentHonors, selectedNames, confirmedNames), HonorSuggestionView.class, () -> generateFresh(current, conversationId, cardId, clientRequestId, rawPhase, currentHonors, selectedNames, confirmedNames));
+    }
+
+    private HonorSuggestionView generateFresh(CurrentAccount current, String conversationId, String cardId,
             String clientRequestId, String rawPhase, JsonNode currentHonors, List<String> selectedNames,
             List<String> confirmedNames) {
         assertSeeker(current);
@@ -158,13 +169,17 @@ public class AiResumeHonorSuggestionService {
                 attempts.finish(attempt, "CANCELLED", "AI_TASK_CANCELLED", model, inputTokens, outputTokens);
                 throw AppException.conflict("AI_TASK_CANCELLED", "已取消荣誉生成，当前内容没有变化");
             }
-            AiQuotaService.QuotaView settled = quota.settle(current.accountId(), reservation.id(), 1);
+            HonorSuggestionView saved = results.complete(current.accountId(), reservation.id(), new HonorSuggestionView(phase, List.of(), honors, requestId, model, inputTokens,
+                    outputTokens, 0, PROMPT_VERSION, context.careerSnapshot(),
+                    context.careerEvidenceEnabled()));
+            try {
             attempts.finish(attempt, "COMPLETED", null, model, inputTokens, outputTokens);
             audit.append(current.accountId(), "AI_RESUME_HONORS_SUGGESTED", "AI_RESUME_CARD", cardId,
                     "phase=DETAILS model=" + model + " honorCount=" + honors.size());
-            return new HonorSuggestionView(phase, List.of(), honors, requestId, model, inputTokens,
-                    outputTokens, settled.remainingUnits(), PROMPT_VERSION, context.careerSnapshot(),
-                    context.careerEvidenceEnabled());
+            } catch (RuntimeException ignored) {
+                // A committed paid result stays available even if telemetry is unavailable.
+            }
+            return saved;
         } catch (AiGatewayException exception) {
             if (reservation != null) quota.release(current.accountId(), reservation.id());
             attempts.finish(attempt, "FAILED", "AI_MODEL_FAILED", defaultModel, 0, 0);

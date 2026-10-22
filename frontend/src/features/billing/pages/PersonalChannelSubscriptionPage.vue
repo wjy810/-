@@ -1,0 +1,1 @@
+<script setup lang="ts">import WalletPage from './WalletPage.vue'</script><template><WalletPage personal-only /></template>

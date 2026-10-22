@@ -203,6 +203,7 @@ public class JobMatchService {
 
     @Transactional
     public MatchView updateJd(CurrentAccount current, String matchId, JdStructureCommand command) {
+        jdbc.queryForList("SELECT id FROM accounts WHERE id=? FOR UPDATE", String.class, current.accountId());
         MatchRow row = owned(current, matchId, true);
         Versions.assertExpected(command.expectedVersion(), row.version());
         if (command.requirements() == null || command.requirements().size() < 3) {
@@ -254,6 +255,7 @@ public class JobMatchService {
 
     @Transactional
     public MatchView selectResume(CurrentAccount current, String matchId, ResumeSelectionCommand command) {
+        jdbc.queryForList("SELECT id FROM accounts WHERE id=? FOR UPDATE", String.class, current.accountId());
         MatchRow row = owned(current, matchId, true);
         Versions.assertExpected(command.expectedVersion(), row.version());
         if (!("JD_PARSED".equals(row.status()) || "RESUME_CONFIRMED".equals(row.status()))) {
@@ -301,6 +303,7 @@ public class JobMatchService {
 
     @Transactional
     public MatchView authorizeEvidence(CurrentAccount current, String matchId, AuthorizationCommand command) {
+        jdbc.queryForList("SELECT id FROM accounts WHERE id=? FOR UPDATE", String.class, current.accountId());
         MatchRow row = owned(current, matchId, true);
         Versions.assertExpected(command.expectedVersion(), row.version());
         if (!"RESUME_CONFIRMED".equals(row.status()) && !"EVIDENCE_AUTHORIZED".equals(row.status())) {
@@ -359,6 +362,7 @@ public class JobMatchService {
 
     @Transactional
     public MatchView revokeAuthorization(CurrentAccount current, String matchId, MutationCommand command) {
+        jdbc.queryForList("SELECT id FROM accounts WHERE id=? FOR UPDATE", String.class, current.accountId());
         MatchRow row = owned(current, matchId, true);
         assertMutationVersion(command, row);
         if (row.authorizationId() == null) return get(current, matchId);
@@ -379,6 +383,7 @@ public class JobMatchService {
 
     @Transactional
     public AnalysisStart analyze(CurrentAccount current, String matchId, AnalyzeCommand command) {
+        jdbc.queryForList("SELECT id FROM accounts WHERE id=? FOR UPDATE", String.class, current.accountId());
         MatchRow row = owned(current, matchId, true);
         String requestId = required(command.requestId(), "JOB_MATCH_REQUEST_ID_REQUIRED", "缺少稳定请求编号");
         if (requestId.equals(row.analysisRequestId()) && row.analysisTaskId() != null) {
@@ -424,6 +429,7 @@ public class JobMatchService {
 
     @Transactional
     public MatchView answerClarifications(CurrentAccount current, String matchId, ClarificationCommand command) {
+        jdbc.queryForList("SELECT id FROM accounts WHERE id=? FOR UPDATE", String.class, current.accountId());
         MatchRow row = owned(current, matchId, true);
         Versions.assertExpected(command.expectedVersion(), row.version());
         if (!"NEEDS_CLARIFICATION".equals(row.status())) {
@@ -455,6 +461,7 @@ public class JobMatchService {
             jdbc.update("UPDATE job_match_clarifications SET answer_code='暂不确认',answer_verdict='UNCLEAR',status='DEFERRED',version_no=version_no+1,answered_at=? WHERE match_id=? AND account_id=? AND status='PENDING'",
                     now, matchId, current.accountId());
         }
+        quota.restoreReservation(current.accountId(), row.quotaReservationId());
         String request = row.analysisRequestId() + ":clarification:" + (row.version() + 1);
         TaskView task = tasks.create(current.accountId(), TaskTypes.JOB_MATCH, request,
                 json(Map.of("matchId", matchId, "requestId", row.analysisRequestId(), "resume", true)));
@@ -465,6 +472,7 @@ public class JobMatchService {
 
     @Transactional
     public MatchView resumeAnalysis(CurrentAccount current, String matchId, MutationCommand command) {
+        jdbc.queryForList("SELECT id FROM accounts WHERE id=? FOR UPDATE", String.class, current.accountId());
         MatchRow row = owned(current, matchId, true);
         assertMutationVersion(command, row);
         if (!"ANALYSIS_PAUSED".equals(row.status())) return get(current, matchId);
@@ -480,6 +488,7 @@ public class JobMatchService {
 
     @Transactional
     public MatchView cancel(CurrentAccount current, String matchId, MutationCommand command) {
+        jdbc.queryForList("SELECT id FROM accounts WHERE id=? FOR UPDATE", String.class, current.accountId());
         MatchRow row = owned(current, matchId, true);
         assertMutationVersion(command, row);
         if (!Set.of("ANALYZING", "NEEDS_CLARIFICATION", "ANALYSIS_PAUSED").contains(row.status())) {
@@ -497,6 +506,7 @@ public class JobMatchService {
     /** Removes a match from the lists (archived_at); its reports stay for export and data rights. */
     @Transactional
     public void archive(CurrentAccount current, String matchId) {
+        jdbc.queryForList("SELECT id FROM accounts WHERE id=? FOR UPDATE", String.class, current.accountId());
         MatchRow row = owned(current, matchId, true);
         if ("ANALYZING".equals(row.status())) {
             throw AppException.conflict("JOB_MATCH_BUSY", "分析进行中，请先取消再删除");

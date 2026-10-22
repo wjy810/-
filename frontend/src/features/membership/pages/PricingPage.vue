@@ -4,6 +4,8 @@
  * promises more than the server grants. Online payment is not open yet; the page says so plainly and
  * points to redeem codes, which schools, partners and promotions hand out.
  */
+import { catalog as commerceCatalog } from '@/features/billing/services/commerceApi'
+import type { Shop } from '@/features/billing/services/commerceApi'
 import { computed, onMounted, ref, shallowRef } from 'vue'
 import { useRoute } from 'vue-router'
 import { ArrowRight, Building2, Check, Crown, GraduationCap, Mail, ShieldCheck, Ticket, Users } from 'lucide-vue-next'
@@ -22,6 +24,7 @@ import type { Membership, Price } from '../types'
 
 type Period = Price['code']
 
+const shop = ref<Shop>()
 const route = useRoute()
 const session = useSessionStore()
 const capabilities = useCapabilitiesStore()
@@ -41,18 +44,19 @@ const currentPlan = computed(() => membership.value?.plan ?? null)
 const contact = computed(() => capabilities.operator?.contactEmail || '')
 
 const registerFor = (next: string) => ({ name: 'home', query: { auth: 'register', next } })
-const redeemTarget = computed(() => (session.signedIn ? '/account/membership#redeem' : registerFor('/account/membership#redeem')))
+const redeemTarget = computed(() => (session.signedIn ? '/account/wallet' : registerFor('/account/wallet')))
 const freeTarget = computed(() => (session.signedIn ? '/dashboard' : registerFor(route.fullPath)))
 
 const faqs = [
   { q: '免费版会过期吗？', a: '不会。免费版一直可用，每个月按自然月重置 AI 次数。' },
   { q: '专业版到期后数据会怎样？', a: '简历、投递记录、查看回执和资料都会保留。只是额度回到免费版：已经发出的专属链接在各自的有效期内继续可用，不会被撤回；只是有效链接降到免费版上限以内之前，不能再新建。' },
-  { q: '兑换码从哪里获得？', a: '学校就业指导中心、合作培训机构和官方活动会发放兑换码。每个码只能使用一次，可以叠加：已是专业版时再兑换会在当前到期日之后顺延。' },
-  { q: '什么时候可以在线购买？', a: '在线支付正在接入，开放后会在本页直接购买，价格以本页显示为准。在此之前请使用兑换码开通。' },
+  { q: '兑换码从哪里获得？', a: '请通过官方购码入口获取余额兑换码；每码充值一次。在钱包购买 PRO 或个人通道订阅。历史会员码仍可兑换。' },
+  { q: '如何购买或续期？', a: '使用人民币钱包余额购买，购买前确认当前价格。不自动续费；有效期内手动续期会顺延。' },
   { q: '学校或机构可以批量开通吗？', a: '可以。我们按届或按班级批量生成兑换码，每批可以设置兑换截止日期，未使用的码可以随时停用。' },
 ]
 
 onMounted(async () => {
+  try { shop.value = (await commerceCatalog()).shop } catch { /* shop may be unavailable */ }
   void capabilities.load()
   await catalog.load()
   if (session.signedIn && !session.isAdmin) {
@@ -63,6 +67,7 @@ onMounted(async () => {
 
 <template>
   <div class="page-container pricing-page">
+    <div class="commerce-links"><UiButton to="/account/wallet">钱包充值与购买</UiButton> <a v-if="shop?.enabled && shop.url" :href="shop.url" target="_blank" rel="noopener noreferrer">{{shop.name}}</a><p v-if="shop?.enabled && shop.url">{{shop.description}}</p></div>
     <header class="pricing-hero">
       <UiBadge tone="ai"><Crown :size="12" />套餐与价格</UiBadge>
       <h1>免费开始，求职旺季再升级</h1>
@@ -118,9 +123,9 @@ onMounted(async () => {
               <li><Check :size="16" />到期自动回到免费版，数据全部保留</li>
             </ul>
             <UiButton class="plan__cta" variant="ai" block :to="redeemTarget" :icon="Ticket">
-              {{ currentPlan === 'PRO' ? '兑换续期' : '使用兑换码开通' }}
+              {{ currentPlan === 'PRO' ? '余额续期' : '前往钱包购买' }}
             </UiButton>
-            <p class="plan__note">在线支付即将开放，届时按上方价格购买；目前可用学校、合作机构或活动发放的兑换码开通。</p>
+            <p class="plan__note">使用人民币钱包余额购买；价格与有效期以支付确认时为准，不会自动续费。</p>
           </article>
         </div>
 

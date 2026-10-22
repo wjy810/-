@@ -74,7 +74,7 @@ public class ResumeAiCandidateService {
             ClockPort clock,ObjectMapper mapper,boolean enabled,String defaultModel){this(masters,candidates,gateway,channels,outbox,audit,clock,mapper,enabled,defaultModel,null,null,null);}
 
     @Transactional(readOnly=true)
-    public Availability availability(CurrentAccount current,String requestedModel){assertSeeker(current);String model=model(requestedModel);if(!enabled)return new Availability(false,model,"AI_GATEWAY_DISABLED");return channels.findEligible(current.accountId(),model).isEmpty()?new Availability(false,model,"AI_CHANNEL_UNAVAILABLE"):new Availability(true,model,null);}
+    public Availability availability(CurrentAccount current,String requestedModel){assertSeeker(current);String model=model(requestedModel);if(!enabled)return new Availability(false,model,"AI_GATEWAY_DISABLED");return channels.findAvailable(current.accountId(),model).isEmpty()?new Availability(false,model,"AI_CHANNEL_UNAVAILABLE"):new Availability(true,model,null);}
 
     @Transactional
     public ResumeService.CandidateView generate(CurrentAccount current,String masterId,GenerateCommand command){
@@ -100,7 +100,9 @@ public class ResumeAiCandidateService {
         if(quota==null||jdbc==null)return null;
         Integer consent=jdbc.queryForObject("SELECT COUNT(*) FROM ai_user_consents WHERE account_id=? AND consent_type='AI_RESUME_WORKBENCH' AND status='GRANTED'",Integer.class,accountId);
         if(consent==null||consent==0)throw AppException.conflict("AI_CONSENT_REQUIRED","请先在 AI 简历工作台确认授权");
-        return quota.reserve(accountId,"candidate:"+masterId+":"+field+":"+action+":"+Ids.newId(),"RESUME_CANDIDATE",1);
+        var context=com.jobproof.shared.ai.AiExecutionContext.current();
+        String requestId=context!=null && context.operationId()!=null?context.operationId():Ids.newId();
+        return quota.reserve(accountId,"candidate:"+masterId+":"+field+":"+action+":"+requestId,"RESUME_CANDIDATE",1);
     }
 
     private Response execute(String accountId,String model,String prompt){try{ObjectNode temperature=mapper.createObjectNode();temperature.put("value",0.2);Map<String,JsonNode> options=Map.of("temperature",mapper.getNodeFactory().numberNode(0.2),"max_tokens",mapper.getNodeFactory().numberNode(1800));return gateway.execute(accountId,new Request(model,List.of(new Message("system",SYSTEM_PROMPT),new Message("user",prompt)),false,options));}catch(AiGatewayException exception){throw AppException.dependency("AI_MODEL_FAILED","AI 模型调用失败，未创建候选，也未改写正式内容");}}
@@ -116,7 +118,7 @@ public class ResumeAiCandidateService {
     private EvidenceSnapshot careerEvidence(String accountId,String masterId,ResumeFieldKey field,String action,String before,Map<String,String> facts){if(jdbc==null||careerLibrary==null)return null;Integer enabled=jdbc.queryForObject("SELECT COUNT(*) FROM ai_resume_conversations c JOIN ai_resume_preferences p ON p.account_id=c.account_id AND p.conversation_id=c.id WHERE c.account_id=? AND c.master_id=? AND p.preference_key='CAREER_LIBRARY_EVIDENCE' AND LOWER(p.preference_value)='true'",Integer.class,accountId,masterId);if(enabled==null||enabled==0)return null;String query=String.join(" ",field.name(),action,before);EvidenceSnapshot evidence=careerLibrary.evidenceSnapshot(accountId,query);for(SourceRef source:evidence.sources())facts.put("careerLibrary.record."+source.id(),source.excerpt());return evidence;}
     private List<SourceRef> usedCareerSources(ParsedCandidate result,EvidenceSnapshot evidence){if(evidence==null||evidence.sources().isEmpty())return List.of();Set<String> cited=result.citations().stream().map(value->value.get("source")).collect(java.util.stream.Collectors.toSet());return evidence.sources().stream().filter(source->cited.contains("careerLibrary.record."+source.id())).toList();}
     private String trustedText(Map<String,String> facts){return facts.entrySet().stream().filter(entry->entry.getKey().startsWith("resume.")||entry.getKey().startsWith("careerLibrary.record.")).map(Map.Entry::getValue).collect(java.util.stream.Collectors.joining("\n"));}
-    private void ensureAvailable(String accountId,String model){if(!enabled)throw AppException.conflict("AI_GATEWAY_DISABLED","AI 未配置，当前不能生成候选");if(channels.findEligible(accountId,model).isEmpty())throw AppException.conflict("AI_CHANNEL_UNAVAILABLE","没有可用 AI 渠道，当前不能生成候选");}
+    private void ensureAvailable(String accountId,String model){if(!enabled)throw AppException.conflict("AI_GATEWAY_DISABLED","AI 未配置，当前不能生成候选");if(channels.findAvailable(accountId,model).isEmpty())throw AppException.conflict("AI_CHANNEL_UNAVAILABLE","没有可用 AI 渠道，当前不能生成候选");}
     private ResumeMasterEntity requireOwn(String accountId,String id){ResumeMasterEntity value=masters.findById(id).orElseThrow(()->AppException.user("RESUME_NOT_FOUND","简历主档不存在"));if(!accountId.equals(value.getAccountId()))throw AppException.forbidden("OBJECT_FORBIDDEN","不能访问他人的简历");return value;}
     private String model(String value){String result=value==null||value.isBlank()?defaultModel:value.trim();if(result.length()>128)throw AppException.user("AI_MODEL_INVALID","模型编码无效");return result;}
     private static String action(String value){String result=value==null?"":value.trim().toUpperCase(Locale.ROOT);if(!ACTIONS.contains(result))throw AppException.user("AI_ACTION_INVALID","AI 操作仅支持 REFINE 或 POLISH");return result;}

@@ -11,7 +11,7 @@ export type PlanCatalog = { free: Entitlements; pro: Entitlements; proPrices: Pr
 export type MembershipEvent = {
   id: string
   type: 'REDEEMED' | string
-  plan: PlanCode
+  plan: PlanCode | 'BALANCE'
   days: number
   expiresAt?: string | null
   detail?: string | null
@@ -33,8 +33,9 @@ export type RedeemBatch = {
   id: string
   name: string
   channel?: string | null
-  plan: PlanCode
+  plan: PlanCode | 'BALANCE'
   durationDays: number
+  balanceAmount?: number | null
   quantity: number
   redeemed: number
   redeemBefore?: string | null

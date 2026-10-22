@@ -123,6 +123,7 @@ async function autoFit(first: Measured, token: number): Promise<{ measured: Meas
   for (const level of AUTO_FIT_LEVELS) {
     trialFit.value = level
     await nextTick()
+    await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
     if (token !== generation) return null
     const attempt = measure()
     if (!attempt) return null
@@ -150,6 +151,8 @@ async function relayout(): Promise<LayoutResult | null> {
   trialFit.value = 0
   await nextTick()
   if (typeof document !== 'undefined' && document.fonts) await document.fonts.ready
+  // Let the browser apply newly loaded font metrics before measuring the hidden probe pages.
+  await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
   if (token !== generation) return null
   const first = measure()
   if (!first) return null

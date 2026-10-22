@@ -54,6 +54,7 @@ public class TaskService {
         AsyncTaskEntity entity = new AsyncTaskEntity();
         entity.setId(Ids.newId());
         entity.setAccountId(accountId);
+        entity.captureAiContext(com.jobproof.shared.ai.AiExecutionContext.current());
         entity.setTaskType(taskType);
         entity.setStatus(TaskStatus.PENDING.name());
         entity.setIdempotencyKey(key);
@@ -73,6 +74,30 @@ public class TaskService {
     public boolean hasOpen(String accountId, String taskType, String inputVersion) {
         return tasks.existsByAccountIdAndTaskTypeAndInputVersionAndStatusIn(accountId, taskType, inputVersion,
                 List.of(TaskStatus.PENDING.name(), TaskStatus.RUNNING.name()));
+    }
+
+    public com.jobproof.shared.ai.AiExecutionContext.Scope aiScope(String taskId) {
+        return com.jobproof.shared.ai.AiExecutionContext.use(require(taskId).aiContext());
+    }
+
+    /** Called after the account lock, inside the business result transaction. */
+    @Transactional
+    public void fenceAiCompletion(String accountId) {
+        var context = com.jobproof.shared.ai.AiExecutionContext.current();
+        if (context == null || context.taskId() == null) return;
+        var task = requireForUpdate(context.taskId());
+        if (!accountId.equals(task.getAccountId()) || !TaskStatus.RUNNING.name().equals(task.getStatus())
+                || ownedElsewhere(task)) throw AppException.conflict("AI_TASK_CANCELLED", "任务已结束或由其他执行接管");
+    }
+
+    @Transactional
+    public void completeAiResult(String accountId) {
+        var context = com.jobproof.shared.ai.AiExecutionContext.current();
+        if (context == null || context.taskId() == null) return;
+        fenceAiCompletion(accountId);
+        var task = requireForUpdate(context.taskId());
+        if (!markSucceeded(task.getId(), "ai-result-saved", task.getPayloadJson()))
+            throw AppException.conflict("AI_TASK_CANCELLED", "任务已结束");
     }
 
     @Transactional(readOnly = true)
@@ -120,7 +145,21 @@ public class TaskService {
         if (status != TaskStatus.FAILED && status != TaskStatus.CANCELLED) {
             throw AppException.conflict("TASK_RETRY_NOT_ALLOWED", "仅失败或已取消任务可手动重试");
         }
-        return create(accountId, old.getTaskType(), Ids.newId(), old.getPayloadJson(), old.getInputVersion());
+        String attemptId = Ids.newId();
+        String payload = old.getPayloadJson();
+        if (old.getTaskType().startsWith("CAREER_PLANNING_")) {
+            var context = com.jobproof.shared.ai.AiExecutionContext.current();
+            if (context != null && context.operationId() != null) attemptId = context.operationId();
+            try {
+                var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+                var value = (com.fasterxml.jackson.databind.node.ObjectNode) mapper.readTree(payload);
+                value.put("requestId", attemptId);
+                if (value.path("command").isObject()) ((com.fasterxml.jackson.databind.node.ObjectNode)value.path("command")).put("requestId",attemptId);
+                if (value.has("batchId")) value.put("batchId",attemptId);
+                payload = mapper.writeValueAsString(value);
+            } catch (Exception e) { throw AppException.conflict("TASK_RETRY_NOT_ALLOWED", "任务参数无效，请重新发起"); }
+        }
+        return create(accountId, old.getTaskType(), attemptId, payload, old.getInputVersion());
     }
 
     /**
@@ -168,6 +207,12 @@ public class TaskService {
     public boolean markSucceeded(String taskId, String resultVersion, String payloadJson) {
         AsyncTaskEntity entity = requireForUpdate(taskId);
         TaskStatus current = TaskStatus.valueOf(entity.getStatus());
+        if (current == TaskStatus.SUCCEEDED && "ai-result-saved".equals(entity.getResultVersion())) {
+            entity.setResultVersion(resultVersion);
+            entity.setPayloadJson(payloadJson);
+            tasks.save(entity);
+            return true;
+        }
         if (current.terminal() || ownedElsewhere(entity)) return false;
         Instant now = clock.now();
         Map<String, String> refs = TaskRefs.from(entity.getPayloadJson());

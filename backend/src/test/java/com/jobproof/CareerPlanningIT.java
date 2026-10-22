@@ -63,6 +63,45 @@ class CareerPlanningIT {
     @MockBean CareerPlanningAiService ai;
 
     @Test
+    void recommendationCancellationDuringGenerationPreventsResultAndSettlement() throws Exception {
+        MockCookie owner = registerAndLogin("career-result-cancel+" + System.nanoTime() + "@example.com");
+        String sessionId = data(mockMvc.perform(post("/api/v1/career-planning/sessions").cookie(owner)
+                .contentType(MediaType.APPLICATION_JSON).content("{\"entryMode\":\"AI_DISCOVERY\",\"aiConsent\":true}"))
+                .andExpect(status().isOk()).andReturn()).path("id").asText();
+        JsonNode drafted = data(mockMvc.perform(put("/api/v1/career-planning/sessions/{id}/profile",sessionId)
+                .cookie(owner).contentType(MediaType.APPLICATION_JSON).content("""
+                {"basics":{"identity":"应届生","education":"本科","experienceYears":"暂无正式经验","weeklyLearningHours":"5~10小时"},
+                 "preferences":{"workMode":"不限"},"constraints":{},
+                 "items":[{"section":"SKILLS","claimType":"SELF_REPORTED","title":"Java",
+                   "payload":{"origin":"PROFILE_FORM","proficiency":"PRACTICED"},"sourceRefs":[],"locked":false,"sortOrder":1}],
+                 "expectedVersion":0}
+                """)).andExpect(status().isOk()).andReturn());
+        String itemId=drafted.path("profile").path("items").get(0).path("id").asText();
+        JsonNode reviewed=data(mockMvc.perform(post("/api/v1/career-planning/sessions/{id}/profile/review",sessionId)
+                .cookie(owner).contentType(MediaType.APPLICATION_JSON).content("{\"expectedVersion\":"+drafted.path("profile").path("version").asInt()+"}"))
+                .andExpect(status().isOk()).andReturn());
+        mockMvc.perform(post("/api/v1/career-planning/sessions/{id}/profile/confirm",sessionId)
+                .cookie(owner).contentType(MediaType.APPLICATION_JSON).content("{\"confirmedItemIds\":[\""+itemId+"\"],\"expectedVersion\":"+reviewed.path("profile").path("version").asInt()+"}"))
+                .andExpect(status().isOk());
+        String accountId=jdbc.queryForObject("SELECT account_id FROM career_planning_sessions WHERE id=?",String.class,sessionId);
+        String taskId=data(mockMvc.perform(post("/api/v1/career-planning/sessions/{id}/recommendations/tasks",sessionId)
+                .cookie(owner).contentType(MediaType.APPLICATION_JSON).content("{\"requestId\":\"cancel-result\"}"))
+                .andExpect(status().isAccepted()).andReturn()).path("id").asText();
+        when(ai.generateRecommendations(anyString(),any(),any())).thenAnswer(invocation -> {
+            taskService.cancel(accountId,taskId);
+            return new AiResult<>(new RecommendationPayload("READY",List.of(
+                    recommendation(taxonomyId("Java"),"Java","READY_NOW",List.of("PROFILE_ITEM:"+itemId))),List.of()),
+                    "test-model",10,20,"cancel-result-hash");
+        });
+        careerPlanningAsync.processClaimedTask(taskService.claimNext(TaskTypes.CAREER_PLANNING_RECOMMENDATIONS).orElseThrow());
+        org.assertj.core.api.Assertions.assertThat(taskService.getOwned(accountId,taskId).status()).isEqualTo("CANCELLED");
+        org.assertj.core.api.Assertions.assertThat(jdbc.queryForObject(
+                "SELECT COUNT(*) FROM career_recommendation_sets WHERE session_id=?",Integer.class,sessionId)).isZero();
+        org.mockito.Mockito.verify(ai,org.mockito.Mockito.never()).settle(anyString(),any());
+        org.mockito.Mockito.verify(ai).release(org.mockito.ArgumentMatchers.eq(accountId),any());
+    }
+
+    @Test
     void streamingInterviewRollsBackRoundMessagesAndEventsWhenTaskCompletionLosesToCancellation() throws Exception {
         MockCookie owner = registerAndLogin("career-interview-cancel+" + System.nanoTime() + "@example.com");
         MvcResult started = mockMvc.perform(post("/api/v1/career-planning/sessions").cookie(owner)

@@ -63,8 +63,43 @@ class OperationsOverviewIT {
                 .isEqualTo(jdbc.queryForObject("SELECT COUNT(*) FROM accounts WHERE role='SEEKER'", Long.class));
     }
 
+    @Test void balanceRedemptionNeverCountsAsProActivation() throws Exception {
+        Cookie admin=account("balance-admin",true); Cookie seeker=account("balance-seeker",false);
+        String id=data(mockMvc.perform(get("/api/v1/me").cookie(seeker)).andReturn()).path("id").asText();
+        JsonNode before=overview(admin);
+        jdbc.update("INSERT INTO membership_events(id,account_id,event_type,plan,days,created_at) VALUES(?,?,'REDEEMED','BALANCE',0,?)",UUID.randomUUID().toString(),id,Instant.now());
+        JsonNode after=overview(admin);
+        assertThat(after.path("membership").path("redeemed30")).isEqualTo(before.path("membership").path("redeemed30"));
+        assertThat(after.path("funnel").get(4).path("accounts")).isEqualTo(before.path("funnel").get(4).path("accounts"));
+    }
+
     private JsonNode overview(Cookie admin) throws Exception {
         return data(mockMvc.perform(get("/api/v1/admin/overview").cookie(admin)).andExpect(status().isOk()).andReturn());
+    }
+
+    @Test
+    void memberOpenAndDailyStatisticsExcludeAdminOwnedRecords() throws Exception {
+        Cookie admin = account("ops-filter-admin", true);
+        Cookie seeker = account("ops-filter-seeker", false);
+        String adminId = data(mockMvc.perform(get("/api/v1/me").cookie(admin)).andReturn()).path("id").asText();
+        String seekerId = data(mockMvc.perform(get("/api/v1/me").cookie(seeker)).andReturn()).path("id").asText();
+        JsonNode before = overview(admin);
+        Instant now = Instant.now();
+        for (String id : java.util.List.of(adminId, seekerId)) {
+            jdbc.update("INSERT INTO account_memberships(account_id,plan,expires_at,source,created_at,updated_at) VALUES(?,'PRO',?,'TEST',?,?)", id, now.plusSeconds(86400), now, now);
+            jdbc.update("INSERT INTO membership_events(id,account_id,event_type,plan,days,created_at) VALUES(?,?,'REDEEMED','PRO',30,?)", UUID.randomUUID().toString(), id, now);
+            jdbc.update("INSERT INTO job_applications(id,account_id,company,position_title,channel,stage,furthest_stage,created_at,updated_at) VALUES(?,?,'test','test','OTHER','SAVED','SAVED',?,?)", UUID.randomUUID().toString(), id, now, now);
+            String link = UUID.randomUUID().toString();
+            jdbc.update("INSERT INTO resume_share_links(id,account_id,token,resume_version_id,label,created_at,updated_at) VALUES(?,?,?,?, 'test',?,?)", link, id, link.replace("-", ""), UUID.randomUUID().toString(), now, now);
+            jdbc.update("INSERT INTO resume_share_views(id,link_id,view_key,visitor_hash,device,client,started_at,last_seen_at) VALUES(?,?,'anonymous','hash','DESKTOP','BROWSER',?,?)", UUID.randomUUID().toString(), link, now, now);
+        }
+        JsonNode after = overview(admin);
+        assertThat(after.path("membership").path("pro").asLong()).isEqualTo(before.path("membership").path("pro").asLong() + 1);
+        assertThat(after.path("membership").path("redeemed30").asLong()).isEqualTo(before.path("membership").path("redeemed30").asLong() + 1);
+        assertThat(module(after, "opens").path("total").asLong()).isEqualTo(module(before, "opens").path("total").asLong() + 1);
+        assertThat(module(after, "opens").path("last7").asLong()).isEqualTo(module(before, "opens").path("last7").asLong() + 1);
+        for (String field : java.util.List.of("applications", "opens"))
+            assertThat(after.path("days").get(13).path(field).asLong()).isEqualTo(before.path("days").get(13).path(field).asLong() + 1);
     }
 
     private static JsonNode module(JsonNode overview, String key) {

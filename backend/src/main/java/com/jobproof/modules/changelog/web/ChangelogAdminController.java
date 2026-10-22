@@ -72,8 +72,13 @@ public class ChangelogAdminController {
     }
 
     @PostMapping("/{id}/publish")
-    public ApiResponse<ReleaseDetail> publish(@PathVariable String id, @RequestBody VersionRequest request) {
-        return ApiResponse.ok(service.publish(SecurityConfig.currentAccount(), id, request.expectedVersion()));
+    public ApiResponse<ReleaseDetail> publish(@PathVariable String id, @RequestBody PublishRequest request) {
+        return ApiResponse.ok(service.publish(SecurityConfig.currentAccount(), id, request.expectedVersion(), request.sendNotification(), request.notificationConfirmed()));
+    }
+
+    @GetMapping("/{id}/publication-preview")
+    public ApiResponse<ChangelogService.PublicationPreview> publicationPreview(@PathVariable String id) {
+        return ApiResponse.ok(service.publicationPreview(SecurityConfig.currentAccount(), id));
     }
 
     @PostMapping("/{id}/publish-history")
@@ -85,7 +90,7 @@ public class ChangelogAdminController {
 
     @PostMapping("/{id}/schedule")
     public ApiResponse<ReleaseDetail> schedule(@PathVariable String id, @Valid @RequestBody ScheduleRequest request) {
-        return ApiResponse.ok(service.schedule(SecurityConfig.currentAccount(), id, request.expectedVersion(), request.scheduledAt()));
+        return ApiResponse.ok(service.schedule(SecurityConfig.currentAccount(), id, request.expectedVersion(), request.scheduledAt(), request.sendNotification(), request.notificationConfirmed()));
     }
 
     @PostMapping("/{id}/cancel-schedule")
@@ -144,8 +149,9 @@ public class ChangelogAdminController {
     }
 
     public record VersionRequest(int expectedVersion) {}
+    public record PublishRequest(int expectedVersion, Boolean sendNotification, boolean notificationConfirmed) {}
     public record HistoricalPublishRequest(int expectedVersion, @NotNull Instant publishedAt) {}
-    public record ScheduleRequest(int expectedVersion, @NotNull Instant scheduledAt) {}
+    public record ScheduleRequest(int expectedVersion, @NotNull Instant scheduledAt, Boolean sendNotification, boolean notificationConfirmed) {}
     public record RevisionRequest(@NotBlank String reason, @NotNull ReleaseRequest release) {}
     public record CopyRequest(@NotBlank String versionLabel) {}
 }

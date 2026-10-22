@@ -13,6 +13,7 @@ const api = vi.hoisted(() => ({
   revokeRedeemBatch: vi.fn(),
 }))
 vi.mock('../services/membershipApi', () => api)
+vi.mock('@/features/billing/services/commerceApi', () => ({catalog:vi.fn().mockResolvedValue({prices:[],shop:{enabled:false,url:'',name:'链动小铺',description:'外部购买后返回兑换',version:0}})}))
 const quota = vi.hoisted(() => ({ fetchAiResumeQuota: vi.fn() }))
 vi.mock('@/features/ai-resume/services/aiResumeApi', () => quota)
 vi.mock('@/shared/api/capabilities', () => ({
@@ -127,7 +128,7 @@ describe('pricing page', () => {
     expect(pro.get('.plan__price').text()).toContain('¥168')
     expect(pro.text()).toContain('每月 300 次 AI')
     expect(pro.get('.plan__cta').attributes('data-to')).toContain('register')
-    expect(wrapper.text()).toContain('在线支付即将开放')
+    expect(wrapper.text()).toContain('使用人民币钱包余额购买')
     expect(wrapper.get('.campus a').attributes('href')).toContain('mailto:campus@example.com')
     expect(api.fetchMembership).not.toHaveBeenCalled()
   })
@@ -141,8 +142,8 @@ describe('pricing page', () => {
     const wrapper = mount(PricingPage, { global: { plugins: [pinia], stubs: { UiIllustration: true } } })
     await flushPromises()
     expect(wrapper.get('.plan.is-pro').text()).toContain('当前套餐')
-    expect(wrapper.get('.plan.is-pro .plan__cta').text()).toContain('兑换续期')
-    expect(wrapper.get('.plan.is-pro .plan__cta').attributes('data-to')).toBe('/account/membership#redeem')
+    expect(wrapper.get('.plan.is-pro .plan__cta').text()).toContain('余额续期')
+    expect(wrapper.get('.plan.is-pro .plan__cta').attributes('data-to')).toBe('/account/wallet')
   })
 })
 
@@ -167,7 +168,7 @@ describe('redeem code admin', () => {
     await wrapper.get('#redeem-batch-form input').setValue('2027 届计算机学院')
     await wrapper.get('#redeem-batch-form').trigger('submit')
     await flushPromises()
-    expect(api.createRedeemBatch).toHaveBeenCalledWith({ name: '2027 届计算机学院', channel: null, durationDays: 30, quantity: 50, redeemBefore: null })
+    expect(api.createRedeemBatch).toHaveBeenCalledWith({ name: '2027 届计算机学院', channel: null, balanceAmount: 50, quantity: 50, redeemBefore: null })
     expect(wrapper.findAll('.codes li').map(item => item.text())).toEqual(created.codes)
     expect(wrapper.findAll('tbody tr')).toHaveLength(1)
 

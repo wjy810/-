@@ -121,25 +121,34 @@ public class AiResumeDescriptionSuggestionService {
     private final ResumeAiCandidateService aiCandidates;
     private final AiGatewayService gateway;
     private final AiQuotaService quota;
+    private final AiSuggestionResults results;
     private final AiGenerationAttemptService attempts;
     private final AuditService audit;
     private final String defaultModel;
 
     public AiResumeDescriptionSuggestionService(JdbcTemplate jdbc, ObjectMapper mapper,
             ResumeAiCandidateService aiCandidates, AiGatewayService gateway, AiQuotaService quota,
-            AiGenerationAttemptService attempts, AuditService audit,
+            AiGenerationAttemptService attempts, AuditService audit, AiSuggestionResults results,
             @Value("${jobproof.ai.resume-model:qwen-plus}") String defaultModel) {
         this.jdbc = jdbc;
         this.mapper = mapper;
         this.aiCandidates = aiCandidates;
         this.gateway = gateway;
         this.quota = quota;
+        this.results = results;
         this.attempts = attempts;
         this.audit = audit;
         this.defaultModel = defaultModel;
     }
 
     public DescriptionSuggestionView generate(CurrentAccount current, String conversationId, String cardId,
+            int recordIndex, String clientRequestId, JsonNode recordFacts) {
+        assertSeeker(current);
+        return results.execute(current.accountId(), "description:" + conversationId + ":" + cleanRequestId(clientRequestId), "RESUME_DESCRIPTION",
+                java.util.Arrays.asList(current, conversationId, cardId, recordIndex, clientRequestId, recordFacts), DescriptionSuggestionView.class, () -> generateFresh(current, conversationId, cardId, recordIndex, clientRequestId, recordFacts));
+    }
+
+    private DescriptionSuggestionView generateFresh(CurrentAccount current, String conversationId, String cardId,
             int recordIndex, String clientRequestId, JsonNode recordFacts) {
         assertSeeker(current);
         String cardType = requireContext(current.accountId(), conversationId, cardId);
@@ -196,15 +205,19 @@ public class AiResumeDescriptionSuggestionService {
                 attempts.finish(attempt, "CANCELLED", "AI_TASK_CANCELLED", model, inputTokens, outputTokens);
                 throw AppException.conflict("AI_TASK_CANCELLED", "已取消 AI 帮写，补充描述没有变化");
             }
-            AiQuotaService.QuotaView settled = quota.settle(current.accountId(), reservation.id(), 1);
+            DescriptionSuggestionView saved = results.complete(current.accountId(), reservation.id(), new DescriptionSuggestionView(parsed.suggestion(), parsed.reason(), parsed.sourceFields(),
+                    parsed.verificationRequired(), parsed.verificationItems(), requestId, model, inputTokens,
+                    outputTokens, 0, PROMPT_VERSION));
+            try {
             attempts.finish(attempt, "COMPLETED", null, model, inputTokens, outputTokens);
             audit.append(current.accountId(), "AI_RESUME_DESCRIPTION_SUGGESTED", "AI_RESUME_CARD", cardId,
                     "cardType=" + cardType + " recordIndex=" + recordIndex + " model=" + model
                             + " channel=" + blankTo(response.channelId(), "unknown")
                             + " sourceFieldCount=" + parsed.sourceFields().size());
-            return new DescriptionSuggestionView(parsed.suggestion(), parsed.reason(), parsed.sourceFields(),
-                    parsed.verificationRequired(), parsed.verificationItems(), requestId, model, inputTokens,
-                    outputTokens, settled.remainingUnits(), PROMPT_VERSION);
+            } catch (RuntimeException ignored) {
+                // A committed paid result stays available even if telemetry is unavailable.
+            }
+            return saved;
         } catch (AiGatewayException exception) {
             if (reservation != null) quota.release(current.accountId(), reservation.id());
             attempts.finish(attempt, "FAILED", "AI_MODEL_FAILED", defaultModel, 0, 0);

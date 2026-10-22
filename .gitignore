@@ -9,6 +9,8 @@ backend/.local-data/
 .settings/
 *.log
 .DS_Store
+__pycache__/
+*.py[cod]
 .codex_tmp/
 .local-run/
 frontend/node_modules/

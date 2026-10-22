@@ -110,7 +110,7 @@ class DevAdminAccountIT {
         mockMvc.perform(post("/api/v1/ai/channels/personal").cookie(seeker)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"name\":\"x\",\"providerCode\":\"x\",\"baseUrl\":\"https://api.example.com\",\"apiKey\":\"secret\",\"protocol\":\"OPENAI_CHAT\",\"idempotencyKey\":\"one\"}"))
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.error.reason").value("AI_PERSONAL_CHANNELS_DISABLED"));
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.reason").value("PERSONAL_SUBSCRIPTION_REQUIRED"));
     }
 }

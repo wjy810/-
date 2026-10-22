@@ -1,5 +1,7 @@
 <script setup lang="ts">
 /** 会员与兑换 (docs/phase2/02): the current plan, what it allows this month, and redeeming a code. */
+import { catalog as commerceCatalog } from '@/features/billing/services/commerceApi'
+import type { Shop } from '@/features/billing/services/commerceApi'
 import { computed, nextTick, onMounted, ref, shallowRef } from 'vue'
 import { useRoute } from 'vue-router'
 import { ArrowRight, Crown, Gift, Link2, RefreshCw, Sparkles, Ticket } from 'lucide-vue-next'
@@ -18,6 +20,7 @@ import { fetchMembership, redeemCode } from '../services/membershipApi'
 import { benefits, formatCodeInput, fullCode, isCompleteCode, planLabel } from '../labels'
 import type { Membership } from '../types'
 
+const shop = ref<Shop>()
 const route = useRoute()
 const page = useLoadState(() => fetchMembership())
 const quota = shallowRef<AiQuota | null>(null)
@@ -68,10 +71,9 @@ async function redeem(): Promise<void> {
   try {
     page.data.value = await redeemCode(fullCode(code.value))
     code.value = ''
-    justUpgraded.value = true
+    justUpgraded.value = page.data.value?.plan === 'PRO' && !wasPro
     try { quota.value = await fetchAiResumeQuota() } catch { /* the plan card still updates */ }
-    const until = page.data.value?.expiresAt ? formatWhen(page.data.value.expiresAt) : ''
-    toast.success(wasPro ? `已续期，专业版有效期至 ${until}` : `已开通专业版，有效期至 ${until}`)
+    toast.success('兑换成功，余额或历史会员权益已到账')
   } catch (reason) {
     redeemError.value = isApiClientError(reason) && reason.reason === 'REDEEM_TOO_MANY_ATTEMPTS'
       ? '尝试次数过多，请一小时后再试'
@@ -82,6 +84,7 @@ async function redeem(): Promise<void> {
 }
 
 onMounted(async () => {
+  try { shop.value = (await commerceCatalog()).shop } catch { /* shop may be unavailable */ }
   await load()
   if (route.hash === '#redeem') {
     await nextTick()
@@ -93,12 +96,13 @@ onMounted(async () => {
 
 <template>
   <div class="settings-section membership-page">
+    <div class="commerce-links"><UiButton to="/account/wallet">钱包充值与购买</UiButton> <a v-if="shop?.enabled && shop.url" :href="shop.url" target="_blank" rel="noopener noreferrer">{{shop.name}}</a><p v-if="shop?.enabled && shop.url">{{shop.description}}</p></div>
     <header class="settings-section__head">
       <div class="settings-section__title">
         <span class="settings-section__icon"><Crown :size="18" /></span>
         <div>
           <h2>会员与兑换</h2>
-          <p>查看当前套餐与本月可用额度，使用兑换码开通或续期专业版。</p>
+          <p>查看当前套餐与本月可用额度，兑换码充值后，可在钱包购买或续期专业版。</p>
         </div>
       </div>
       <div class="settings-section__actions">
@@ -118,8 +122,8 @@ onMounted(async () => {
             <UiBadge :tone="pro ? 'ai' : 'neutral'"><Crown v-if="pro" :size="12" />{{ planLabel(membership.plan) }}</UiBadge>
             <h3 v-if="pro">专业版还剩 {{ daysLeft }} 天</h3>
             <h3 v-else>你正在使用免费版</h3>
-            <p v-if="pro">有效期至 {{ formatWhen(membership.expiresAt) }}。再兑换一个码会在这之后顺延。</p>
-            <p v-else-if="membership.expiredAt">专业版已于 {{ formatWhen(membership.expiredAt) }} 到期，数据都还在；兑换新码即可恢复专业版额度。</p>
+            <p v-if="pro">有效期至 {{ formatWhen(membership.expiresAt) }}。余额续期会在这之后顺延。</p>
+            <p v-else-if="membership.expiredAt">专业版已于 {{ formatWhen(membership.expiredAt) }} 到期，数据都还在；在钱包续期即可恢复专业版额度。</p>
             <p v-else>每月 {{ membership.free.aiMonthlyUnits }} 次 AI，{{ membership.free.activeLinks }} 条有效专属链接。专业版提供 {{ membership.pro.aiMonthlyUnits }} 次 AI 和 {{ membership.pro.activeLinks }} 条链接。</p>
             <div class="plan-hero__actions">
               <UiButton v-if="!pro" :icon="Ticket" @click="codeInput?.focus()">使用兑换码</UiButton>
@@ -154,7 +158,7 @@ onMounted(async () => {
             <span class="usage__icon is-gift"><Gift :size="17" /></span>
             <div>
               <h3 id="redeem-title">兑换码</h3>
-              <p>兑换码由学校就业指导中心、合作机构或官方活动发放，每个码只能使用一次。</p>
+              <p>新兑换码充值人民币余额，每个码只能使用一次；历史专业版兑换码仍有效。</p>
             </div>
           </div>
           <form class="redeem__form" @submit.prevent="redeem">
@@ -201,7 +205,7 @@ onMounted(async () => {
             <li v-for="event in membership.events" :key="event.id">
               <span class="history__dot" aria-hidden="true"><Ticket :size="13" /></span>
               <span class="history__text">
-                <strong>兑换 {{ event.days }} 天{{ planLabel(event.plan) }}</strong>
+                <strong v-if="event.plan === 'BALANCE'">人民币余额充值</strong><strong v-else>{{ event.type === 'PURCHASED' ? '购买' : '兑换' }} {{ event.days }} 天{{ planLabel(event.plan) }}</strong>
                 <small>{{ event.detail || '兑换码' }}<template v-if="event.expiresAt"> · 有效期至 {{ formatWhen(event.expiresAt) }}</template></small>
               </span>
               <time :datetime="event.createdAt">{{ formatWhen(event.createdAt) }}</time>

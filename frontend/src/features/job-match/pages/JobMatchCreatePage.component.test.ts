@@ -61,6 +61,27 @@ describe('job match creation', () => {
     expect(wrapper.get('#jm-jd-hint').text()).toBe('还差 120 字（至少 120 字，不计空格）')
   })
 
+  it('allows payment preflight after consent when monthly quota is exhausted', async () => {
+    route.query = { id: 'paid-match' }
+    const cap = capabilities(); cap.quota.remainingUnits = 0
+    api.fetchMatchCapabilities.mockResolvedValue(cap)
+    api.fetchJobMatch.mockResolvedValue({ id: 'paid-match', status: 'EVIDENCE_AUTHORIZED', version: 7,
+      title: 'Java', requirements: [], clarifications: [], evidenceMode: 'NONE', authorizationId: 'auth',
+      resume: { revisionId: 'r', title: '简历' } })
+    api.fetchEvidenceRecommendations.mockResolvedValue([])
+    api.fetchRedactionPreview.mockResolvedValue({ includedSources: [], excludedFields: [] })
+    api.startAnalysis.mockResolvedValue({ id: 'paid-match', status: 'ANALYZING' })
+    const wrapper = mountPage()
+    await flushPromises()
+    await wrapper.get('.jm-consent input').setValue(true)
+    const start = wrapper.findAll('.jm-wizard__footer button').find(b => b.text().includes('深度匹配'))!
+    expect(start.attributes('disabled')).toBeUndefined()
+    await start.trigger('click')
+    await flushPromises()
+    expect(api.startAnalysis).toHaveBeenCalled()
+    expect(wrapper.text()).not.toContain('AI 分析额度已用完')
+  })
+
   it('shows a failed restore as an error instead of a blank form', async () => {
     route.query = { id: 'match-1' }
     api.fetchMatchCapabilities.mockResolvedValue(capabilities())

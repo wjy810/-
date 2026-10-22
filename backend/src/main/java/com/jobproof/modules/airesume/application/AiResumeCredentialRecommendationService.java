@@ -106,25 +106,34 @@ public class AiResumeCredentialRecommendationService {
     private final ResumeAiCandidateService aiCandidates;
     private final AiGatewayService gateway;
     private final AiQuotaService quota;
+    private final AiSuggestionResults results;
     private final AiGenerationAttemptService attempts;
     private final AuditService audit;
     private final String defaultModel;
 
     public AiResumeCredentialRecommendationService(JdbcTemplate jdbc, ObjectMapper mapper,
             ResumeAiCandidateService aiCandidates, AiGatewayService gateway, AiQuotaService quota,
-            AiGenerationAttemptService attempts, AuditService audit,
+            AiGenerationAttemptService attempts, AuditService audit, AiSuggestionResults results,
             @Value("${jobproof.ai.resume-model:qwen-plus}") String defaultModel) {
         this.jdbc = jdbc;
         this.mapper = mapper;
         this.aiCandidates = aiCandidates;
         this.gateway = gateway;
         this.quota = quota;
+        this.results = results;
         this.attempts = attempts;
         this.audit = audit;
         this.defaultModel = defaultModel;
     }
 
     public CredentialRecommendationView recommend(CurrentAccount current, String conversationId, String cardId,
+            String clientRequestId) {
+        assertSeeker(current);
+        return results.execute(current.accountId(), "credential-recommendations:" + conversationId + ":" + cleanRequestId(clientRequestId), "RESUME_CREDENTIAL_RECOMMENDATIONS",
+                java.util.Arrays.asList(current, conversationId, cardId, clientRequestId), CredentialRecommendationView.class, () -> recommendFresh(current, conversationId, cardId, clientRequestId));
+    }
+
+    private CredentialRecommendationView recommendFresh(CurrentAccount current, String conversationId, String cardId,
             String clientRequestId) {
         assertSeeker(current);
         String requestId = cleanRequestId(clientRequestId);
@@ -165,12 +174,16 @@ public class AiResumeCredentialRecommendationService {
                 attempts.finish(attempt, "CANCELLED", "AI_TASK_CANCELLED", model, inputTokens, outputTokens);
                 throw AppException.conflict("AI_TASK_CANCELLED", "已取消推荐，当前内容没有变化");
             }
-            AiQuotaService.QuotaView settled = quota.settle(current.accountId(), reservation.id(), 1);
+            CredentialRecommendationView saved = results.complete(current.accountId(), reservation.id(), new CredentialRecommendationView(context.kind(), candidates, requestId, model,
+                    inputTokens, outputTokens, 0, PROMPT_VERSION));
+            try {
             attempts.finish(attempt, "COMPLETED", null, model, inputTokens, outputTokens);
             audit.append(current.accountId(), "AI_RESUME_CREDENTIALS_RECOMMENDED", "AI_RESUME_CARD", cardId,
                     "kind=" + context.kind() + " model=" + model + " candidateCount=" + candidates.size());
-            return new CredentialRecommendationView(context.kind(), candidates, requestId, model,
-                    inputTokens, outputTokens, settled.remainingUnits(), PROMPT_VERSION);
+            } catch (RuntimeException ignored) {
+                // A committed paid result stays available even if telemetry is unavailable.
+            }
+            return saved;
         } catch (AiGatewayException exception) {
             if (reservation != null) quota.release(current.accountId(), reservation.id());
             attempts.finish(attempt, "FAILED", "AI_MODEL_FAILED", defaultModel, inputTokens, outputTokens);

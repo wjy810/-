@@ -1280,6 +1280,1251 @@
           "languages"
         ]
       }
+    },
+    {
+      "id": "botanica",
+      "revision": 2,
+      "name": "植笺",
+      "nameEn": "Botanica",
+      "category": "design",
+      "summary": "植物线描轻落纸角，经历与能力分栏，清新而有秩序。",
+      "bestFor": "教育、公益、生活方式与服务岗位",
+      "tags": [
+        "双栏",
+        "艺术装饰",
+        "照片可选"
+      ],
+      "maxPages": 2,
+      "locale": "zh-CN",
+      "paperSizes": [
+        "A4"
+      ],
+      "fontPairings": [
+        "mixed",
+        "sans"
+      ],
+      "palettes": [
+        {
+          "id": "sage",
+          "name": "鼠尾草",
+          "accent": "#42654b",
+          "art": "botanical-sprig"
+        },
+        {
+          "id": "olive",
+          "name": "橄榄",
+          "accent": "#65602e",
+          "art": "botanical-sprig"
+        },
+        {
+          "id": "blue",
+          "name": "雾蓝",
+          "accent": "#345c75",
+          "art": "botanical-sprig"
+        }
+      ],
+      "headerVariants": [
+        {
+          "id": "standard",
+          "name": "标准"
+        },
+        {
+          "id": "compact",
+          "name": "紧凑"
+        }
+      ],
+      "photo": "optional",
+      "regions": [
+        {
+          "id": "main",
+          "sections": [
+            "summary",
+            "experience",
+            "projects",
+            "education",
+            "organizations"
+          ]
+        },
+        {
+          "id": "side",
+          "sections": [
+            "skills",
+            "certificates",
+            "honors",
+            "languages"
+          ]
+        }
+      ],
+      "atsLevel": "standard",
+      "decorations": true,
+      "defaults": {
+        "fontPairing": "mixed",
+        "contactIcons": false
+      }
+    },
+    {
+      "id": "arcade",
+      "revision": 2,
+      "name": "拱廊",
+      "nameEn": "Arcade",
+      "category": "design",
+      "summary": "拱形刊头与陶土细线呼应，柔和纸纹承托清晰的单栏经历。",
+      "bestFor": "建筑、空间、艺术与策展方向",
+      "tags": [
+        "单栏",
+        "艺术装饰",
+        "照片可选"
+      ],
+      "maxPages": 2,
+      "locale": "zh-CN",
+      "paperSizes": [
+        "A4"
+      ],
+      "fontPairings": [
+        "mixed",
+        "sans"
+      ],
+      "palettes": [
+        {
+          "id": "clay",
+          "name": "陶土",
+          "accent": "#974f37",
+          "art": "paper-cotton"
+        },
+        {
+          "id": "umber",
+          "name": "褐石",
+          "accent": "#6b5847",
+          "art": "paper-cotton"
+        },
+        {
+          "id": "slate",
+          "name": "岩蓝",
+          "accent": "#3c596d",
+          "art": "paper-cotton"
+        }
+      ],
+      "headerVariants": [
+        {
+          "id": "standard",
+          "name": "标准"
+        },
+        {
+          "id": "compact",
+          "name": "紧凑"
+        }
+      ],
+      "photo": "optional",
+      "regions": [
+        {
+          "id": "main",
+          "sections": [
+            "summary",
+            "experience",
+            "projects",
+            "education",
+            "organizations",
+            "skills",
+            "certificates",
+            "honors",
+            "languages"
+          ]
+        }
+      ],
+      "atsLevel": "standard",
+      "decorations": true,
+      "defaults": {
+        "fontPairing": "mixed",
+        "contactIcons": false
+      }
+    },
+    {
+      "id": "woven",
+      "revision": 2,
+      "name": "绢纹",
+      "nameEn": "Woven",
+      "category": "design",
+      "summary": "织物侧边、衬线标题与暖灰留白，细节安静而精致。",
+      "bestFor": "时尚、文创、品牌与内容策划",
+      "tags": [
+        "单栏",
+        "艺术装饰",
+        "照片可选"
+      ],
+      "maxPages": 2,
+      "locale": "zh-CN",
+      "paperSizes": [
+        "A4"
+      ],
+      "fontPairings": [
+        "serif",
+        "mixed"
+      ],
+      "palettes": [
+        {
+          "id": "taupe",
+          "name": "暖灰",
+          "accent": "#6c5b50",
+          "art": "woven-strip"
+        },
+        {
+          "id": "mulberry",
+          "name": "桑紫",
+          "accent": "#70506a",
+          "art": "woven-strip"
+        },
+        {
+          "id": "moss",
+          "name": "苔绿",
+          "accent": "#4d6651",
+          "art": "woven-strip"
+        }
+      ],
+      "headerVariants": [
+        {
+          "id": "standard",
+          "name": "标准"
+        },
+        {
+          "id": "compact",
+          "name": "紧凑"
+        }
+      ],
+      "photo": "optional",
+      "regions": [
+        {
+          "id": "main",
+          "sections": [
+            "summary",
+            "experience",
+            "projects",
+            "education",
+            "organizations",
+            "skills",
+            "certificates",
+            "honors",
+            "languages"
+          ]
+        }
+      ],
+      "atsLevel": "standard",
+      "decorations": true,
+      "defaults": {
+        "fontPairing": "serif",
+        "contactIcons": false
+      }
+    },
+    {
+      "id": "mosaic",
+      "revision": 2,
+      "name": "构成",
+      "nameEn": "Mosaic",
+      "category": "design",
+      "summary": "非对称姓名区与几何拼色，双栏展示经历和专业能力。",
+      "bestFor": "视觉设计、创意策划、品牌传播",
+      "tags": [
+        "双栏",
+        "艺术装饰",
+        "照片可选"
+      ],
+      "maxPages": 2,
+      "locale": "zh-CN",
+      "paperSizes": [
+        "A4"
+      ],
+      "fontPairings": [
+        "sans",
+        "mixed"
+      ],
+      "palettes": [
+        {
+          "id": "rust",
+          "name": "赤陶",
+          "accent": "#a14d35",
+          "art": "paper-cut"
+        },
+        {
+          "id": "teal",
+          "name": "松石",
+          "accent": "#246b69",
+          "art": "paper-cut"
+        },
+        {
+          "id": "ochre",
+          "name": "赭金",
+          "accent": "#82601e",
+          "art": "paper-cut"
+        }
+      ],
+      "headerVariants": [
+        {
+          "id": "standard",
+          "name": "标准"
+        },
+        {
+          "id": "compact",
+          "name": "紧凑"
+        }
+      ],
+      "photo": "optional",
+      "regions": [
+        {
+          "id": "main",
+          "sections": [
+            "summary",
+            "experience",
+            "projects",
+            "organizations"
+          ]
+        },
+        {
+          "id": "side",
+          "sections": [
+            "skills",
+            "education",
+            "certificates",
+            "honors",
+            "languages"
+          ]
+        }
+      ],
+      "atsLevel": "standard",
+      "decorations": true,
+      "defaults": {
+        "fontPairing": "sans",
+        "contactIcons": false
+      }
+    },
+    {
+      "id": "shoreline",
+      "revision": 2,
+      "name": "海岸",
+      "nameEn": "Shoreline",
+      "category": "design",
+      "summary": "横向联系区、海蓝短线与轻盈浪纹，舒展的单栏叙事。",
+      "bestFor": "文旅、服务、传播与公共关系",
+      "tags": [
+        "单栏",
+        "艺术装饰",
+        "照片可选"
+      ],
+      "maxPages": 2,
+      "locale": "zh-CN",
+      "paperSizes": [
+        "A4"
+      ],
+      "fontPairings": [
+        "sans",
+        "mixed"
+      ],
+      "palettes": [
+        {
+          "id": "ocean",
+          "name": "海蓝",
+          "accent": "#27657f",
+          "art": "shoreline-waves"
+        },
+        {
+          "id": "lagoon",
+          "name": "潟湖",
+          "accent": "#306e66",
+          "art": "shoreline-waves"
+        },
+        {
+          "id": "dusk",
+          "name": "暮色",
+          "accent": "#59547b",
+          "art": "shoreline-waves"
+        }
+      ],
+      "headerVariants": [
+        {
+          "id": "standard",
+          "name": "标准"
+        },
+        {
+          "id": "compact",
+          "name": "紧凑"
+        }
+      ],
+      "photo": "optional",
+      "regions": [
+        {
+          "id": "main",
+          "sections": [
+            "summary",
+            "experience",
+            "projects",
+            "education",
+            "organizations",
+            "skills",
+            "certificates",
+            "honors",
+            "languages"
+          ]
+        }
+      ],
+      "atsLevel": "standard",
+      "decorations": true,
+      "defaults": {
+        "fontPairing": "sans",
+        "contactIcons": false
+      }
+    },
+    {
+      "id": "porcelain",
+      "revision": 2,
+      "name": "瓷青",
+      "nameEn": "Porcelain",
+      "category": "design",
+      "summary": "青瓷花枝点缀页边，细框姓名区与留白章节兼具温度和分寸。",
+      "bestFor": "文化、出版、国风品牌与教育",
+      "tags": [
+        "单栏",
+        "艺术装饰",
+        "照片可选"
+      ],
+      "maxPages": 2,
+      "locale": "zh-CN",
+      "paperSizes": [
+        "A4"
+      ],
+      "fontPairings": [
+        "mixed",
+        "sans"
+      ],
+      "palettes": [
+        {
+          "id": "cobalt",
+          "name": "瓷蓝",
+          "accent": "#345d8a",
+          "art": "porcelain-branch"
+        },
+        {
+          "id": "celadon",
+          "name": "青瓷",
+          "accent": "#3f6b61",
+          "art": "porcelain-branch"
+        },
+        {
+          "id": "ink",
+          "name": "墨青",
+          "accent": "#425568",
+          "art": "porcelain-branch"
+        }
+      ],
+      "headerVariants": [
+        {
+          "id": "standard",
+          "name": "标准"
+        },
+        {
+          "id": "compact",
+          "name": "紧凑"
+        }
+      ],
+      "photo": "optional",
+      "regions": [
+        {
+          "id": "main",
+          "sections": [
+            "summary",
+            "experience",
+            "projects",
+            "education",
+            "organizations",
+            "skills",
+            "certificates",
+            "honors",
+            "languages"
+          ]
+        }
+      ],
+      "atsLevel": "standard",
+      "decorations": true,
+      "defaults": {
+        "fontPairing": "mixed",
+        "contactIcons": false
+      }
+    },
+    {
+      "id": "constellation",
+      "revision": 2,
+      "name": "星图",
+      "nameEn": "Constellation",
+      "category": "design",
+      "summary": "深蓝页头与细金星盘构成视觉中心，正文与能力栏以清晰的线序展开。",
+      "bestFor": "科技创意、交互设计、数字产品",
+      "tags": [
+        "双栏",
+        "艺术装饰",
+        "照片可选"
+      ],
+      "maxPages": 2,
+      "locale": "zh-CN",
+      "paperSizes": [
+        "A4"
+      ],
+      "fontPairings": [
+        "tech",
+        "sans"
+      ],
+      "palettes": [
+        {
+          "id": "midnight",
+          "name": "午夜蓝",
+          "accent": "#294a73"
+        },
+        {
+          "id": "plum",
+          "name": "星紫",
+          "accent": "#624b7c"
+        },
+        {
+          "id": "petrol",
+          "name": "深海",
+          "accent": "#28656a"
+        }
+      ],
+      "headerVariants": [
+        {
+          "id": "standard",
+          "name": "标准"
+        },
+        {
+          "id": "compact",
+          "name": "紧凑"
+        }
+      ],
+      "photo": "optional",
+      "regions": [
+        {
+          "id": "main",
+          "sections": [
+            "summary",
+            "experience",
+            "projects",
+            "education",
+            "organizations"
+          ]
+        },
+        {
+          "id": "side",
+          "sections": [
+            "skills",
+            "certificates",
+            "honors",
+            "languages"
+          ]
+        }
+      ],
+      "atsLevel": "standard",
+      "decorations": true,
+      "defaults": {
+        "fontPairing": "tech",
+        "contactIcons": false
+      }
+    },
+    {
+      "id": "atelier",
+      "revision": 2,
+      "name": "留白",
+      "nameEn": "Atelier",
+      "category": "design",
+      "summary": "A generous nameplate, cotton paper and an asymmetric project-led layout.",
+      "bestFor": "海外设计、创意工作室与品牌岗位",
+      "tags": [
+        "双栏",
+        "艺术装饰",
+        "英文"
+      ],
+      "maxPages": 2,
+      "locale": "en",
+      "paperSizes": [
+        "A4",
+        "LETTER"
+      ],
+      "fontPairings": [
+        "mixed",
+        "sans"
+      ],
+      "palettes": [
+        {
+          "id": "charcoal",
+          "name": "Charcoal",
+          "accent": "#343b39",
+          "art": "paper-cotton"
+        },
+        {
+          "id": "sienna",
+          "name": "Sienna",
+          "accent": "#92533e",
+          "art": "paper-cotton"
+        },
+        {
+          "id": "forest",
+          "name": "Forest",
+          "accent": "#3a6455",
+          "art": "paper-cotton"
+        }
+      ],
+      "headerVariants": [
+        {
+          "id": "standard",
+          "name": "标准"
+        },
+        {
+          "id": "compact",
+          "name": "紧凑"
+        }
+      ],
+      "photo": "none",
+      "regions": [
+        {
+          "id": "main",
+          "sections": [
+            "summary",
+            "projects",
+            "experience",
+            "organizations"
+          ]
+        },
+        {
+          "id": "side",
+          "sections": [
+            "skills",
+            "education",
+            "certificates",
+            "honors",
+            "languages"
+          ]
+        }
+      ],
+      "atsLevel": "standard",
+      "decorations": true,
+      "defaults": {
+        "fontPairing": "mixed",
+        "contactIcons": false
+      }
+    },
+    {
+      "id": "prism",
+      "revision": 2,
+      "name": "棱镜",
+      "nameEn": "Prism",
+      "category": "modern",
+      "summary": "切角姓名区与清晰色条，右侧能力栏让重点一眼可见。",
+      "bestFor": "产品、互联网、项目协作岗位",
+      "tags": [
+        "双栏",
+        "清晰排版",
+        "照片可选"
+      ],
+      "maxPages": 2,
+      "locale": "zh-CN",
+      "paperSizes": [
+        "A4"
+      ],
+      "fontPairings": [
+        "sans",
+        "mixed"
+      ],
+      "palettes": [
+        {
+          "id": "cobalt",
+          "name": "钴蓝",
+          "accent": "#315eb1"
+        },
+        {
+          "id": "teal",
+          "name": "青绿",
+          "accent": "#19736b"
+        },
+        {
+          "id": "plum",
+          "name": "紫晶",
+          "accent": "#75538c"
+        }
+      ],
+      "headerVariants": [
+        {
+          "id": "standard",
+          "name": "标准"
+        },
+        {
+          "id": "compact",
+          "name": "紧凑"
+        }
+      ],
+      "photo": "optional",
+      "regions": [
+        {
+          "id": "main",
+          "sections": [
+            "summary",
+            "experience",
+            "projects",
+            "education",
+            "organizations"
+          ]
+        },
+        {
+          "id": "side",
+          "sections": [
+            "skills",
+            "certificates",
+            "honors",
+            "languages"
+          ]
+        }
+      ],
+      "atsLevel": "standard",
+      "decorations": false,
+      "defaults": {
+        "fontPairing": "sans",
+        "contactIcons": true
+      }
+    },
+    {
+      "id": "axis",
+      "revision": 2,
+      "name": "轴线",
+      "nameEn": "Axis",
+      "category": "modern",
+      "summary": "章节构成左侧索引，经历正文沿统一轴线展开，阅读节奏明晰。",
+      "bestFor": "综合管理、专业服务与经验型求职",
+      "tags": [
+        "单栏",
+        "清晰排版",
+        "照片可选"
+      ],
+      "maxPages": 2,
+      "locale": "zh-CN",
+      "paperSizes": [
+        "A4"
+      ],
+      "fontPairings": [
+        "sans",
+        "mixed"
+      ],
+      "palettes": [
+        {
+          "id": "graphite",
+          "name": "石墨",
+          "accent": "#3b4857"
+        },
+        {
+          "id": "navy",
+          "name": "藏蓝",
+          "accent": "#315f86"
+        },
+        {
+          "id": "brick",
+          "name": "砖红",
+          "accent": "#944e49"
+        }
+      ],
+      "headerVariants": [
+        {
+          "id": "standard",
+          "name": "标准"
+        },
+        {
+          "id": "compact",
+          "name": "紧凑"
+        }
+      ],
+      "photo": "optional",
+      "regions": [
+        {
+          "id": "main",
+          "sections": [
+            "summary",
+            "experience",
+            "projects",
+            "education",
+            "organizations",
+            "skills",
+            "certificates",
+            "honors",
+            "languages"
+          ]
+        }
+      ],
+      "atsLevel": "standard",
+      "decorations": false,
+      "defaults": {
+        "fontPairing": "sans",
+        "contactIcons": false
+      }
+    },
+    {
+      "id": "folio",
+      "revision": 2,
+      "name": "折页",
+      "nameEn": "Folio",
+      "category": "modern",
+      "summary": "通栏姓名与折页式分隔，经历和资质各有清晰位置。",
+      "bestFor": "商务、运营、综合管理",
+      "tags": [
+        "双栏",
+        "清晰排版",
+        "照片可选"
+      ],
+      "maxPages": 2,
+      "locale": "zh-CN",
+      "paperSizes": [
+        "A4"
+      ],
+      "fontPairings": [
+        "mixed",
+        "sans"
+      ],
+      "palettes": [
+        {
+          "id": "navy",
+          "name": "海军蓝",
+          "accent": "#314f69"
+        },
+        {
+          "id": "pine",
+          "name": "松绿",
+          "accent": "#3e6558"
+        },
+        {
+          "id": "aubergine",
+          "name": "茄紫",
+          "accent": "#71506b"
+        }
+      ],
+      "headerVariants": [
+        {
+          "id": "standard",
+          "name": "标准"
+        },
+        {
+          "id": "compact",
+          "name": "紧凑"
+        }
+      ],
+      "photo": "optional",
+      "regions": [
+        {
+          "id": "main",
+          "sections": [
+            "summary",
+            "experience",
+            "projects",
+            "organizations"
+          ]
+        },
+        {
+          "id": "side",
+          "sections": [
+            "education",
+            "skills",
+            "certificates",
+            "honors",
+            "languages"
+          ]
+        }
+      ],
+      "atsLevel": "standard",
+      "decorations": false,
+      "defaults": {
+        "fontPairing": "mixed",
+        "contactIcons": false
+      }
+    },
+    {
+      "id": "orbit",
+      "revision": 2,
+      "name": "环线",
+      "nameEn": "Orbit",
+      "category": "modern",
+      "summary": "姓名首字标识、圆点章节与紧凑联系区，形成简洁的个人名片。",
+      "bestFor": "通用求职、个人品牌与跨行业转型",
+      "tags": [
+        "单栏",
+        "清晰排版",
+        "照片可选"
+      ],
+      "maxPages": 2,
+      "locale": "zh-CN",
+      "paperSizes": [
+        "A4"
+      ],
+      "fontPairings": [
+        "sans",
+        "mixed"
+      ],
+      "palettes": [
+        {
+          "id": "teal",
+          "name": "湖绿",
+          "accent": "#23746b"
+        },
+        {
+          "id": "blue",
+          "name": "晴蓝",
+          "accent": "#3668a0"
+        },
+        {
+          "id": "berry",
+          "name": "莓红",
+          "accent": "#974861"
+        }
+      ],
+      "headerVariants": [
+        {
+          "id": "standard",
+          "name": "标准"
+        },
+        {
+          "id": "compact",
+          "name": "紧凑"
+        }
+      ],
+      "photo": "optional",
+      "regions": [
+        {
+          "id": "main",
+          "sections": [
+            "summary",
+            "experience",
+            "projects",
+            "education",
+            "organizations",
+            "skills",
+            "certificates",
+            "honors",
+            "languages"
+          ]
+        }
+      ],
+      "atsLevel": "standard",
+      "decorations": false,
+      "defaults": {
+        "fontPairing": "sans",
+        "contactIcons": false
+      }
+    },
+    {
+      "id": "product",
+      "revision": 2,
+      "name": "产品·航标",
+      "nameEn": "Product",
+      "category": "industry",
+      "summary": "项目优先、里程碑条目与技能侧栏，清楚呈现产品推进过程。",
+      "bestFor": "产品经理、项目经理与业务分析",
+      "tags": [
+        "双栏",
+        "清晰排版",
+        "照片可选"
+      ],
+      "maxPages": 2,
+      "locale": "zh-CN",
+      "paperSizes": [
+        "A4"
+      ],
+      "fontPairings": [
+        "sans",
+        "mixed"
+      ],
+      "palettes": [
+        {
+          "id": "blue",
+          "name": "航标蓝",
+          "accent": "#285fa2"
+        },
+        {
+          "id": "green",
+          "name": "远航绿",
+          "accent": "#326859"
+        },
+        {
+          "id": "amber",
+          "name": "琥珀",
+          "accent": "#886026"
+        }
+      ],
+      "headerVariants": [
+        {
+          "id": "standard",
+          "name": "标准"
+        },
+        {
+          "id": "compact",
+          "name": "紧凑"
+        }
+      ],
+      "photo": "optional",
+      "regions": [
+        {
+          "id": "main",
+          "sections": [
+            "summary",
+            "projects",
+            "experience",
+            "education",
+            "organizations"
+          ]
+        },
+        {
+          "id": "side",
+          "sections": [
+            "skills",
+            "certificates",
+            "honors",
+            "languages"
+          ]
+        }
+      ],
+      "atsLevel": "standard",
+      "decorations": false,
+      "sectionTitles": {
+        "projects": "产品与项目"
+      },
+      "defaults": {
+        "fontPairing": "sans",
+        "contactIcons": true
+      }
+    },
+    {
+      "id": "growth",
+      "revision": 2,
+      "name": "增长·刻度",
+      "nameEn": "Growth",
+      "category": "industry",
+      "summary": "编号项目与横向技能组，突出经历中的目标、行动和成果。",
+      "bestFor": "市场、销售、增长与用户运营",
+      "tags": [
+        "单栏",
+        "清晰排版",
+        "照片可选"
+      ],
+      "maxPages": 2,
+      "locale": "zh-CN",
+      "paperSizes": [
+        "A4"
+      ],
+      "fontPairings": [
+        "sans",
+        "mixed"
+      ],
+      "palettes": [
+        {
+          "id": "orange",
+          "name": "燃橙",
+          "accent": "#a65025"
+        },
+        {
+          "id": "green",
+          "name": "增长绿",
+          "accent": "#2e6c4b"
+        },
+        {
+          "id": "blue",
+          "name": "洞察蓝",
+          "accent": "#365d8d"
+        }
+      ],
+      "headerVariants": [
+        {
+          "id": "standard",
+          "name": "标准"
+        },
+        {
+          "id": "compact",
+          "name": "紧凑"
+        }
+      ],
+      "photo": "optional",
+      "regions": [
+        {
+          "id": "main",
+          "sections": [
+            "summary",
+            "projects",
+            "experience",
+            "education",
+            "organizations",
+            "skills",
+            "certificates",
+            "honors",
+            "languages"
+          ]
+        }
+      ],
+      "atsLevel": "standard",
+      "decorations": false,
+      "sectionTitles": {
+        "projects": "增长项目"
+      },
+      "defaults": {
+        "fontPairing": "sans",
+        "contactIcons": false
+      }
+    },
+    {
+      "id": "clinical",
+      "revision": 2,
+      "name": "诊疗·青禾",
+      "nameEn": "Clinical",
+      "category": "industry",
+      "summary": "经历与教育资质分区，青绿色标题帮助快速定位专业信息。",
+      "bestFor": "医疗、护理、健康服务与专业支持",
+      "tags": [
+        "双栏",
+        "清晰排版",
+        "照片可选"
+      ],
+      "maxPages": 2,
+      "locale": "zh-CN",
+      "paperSizes": [
+        "A4"
+      ],
+      "fontPairings": [
+        "sans",
+        "mixed"
+      ],
+      "palettes": [
+        {
+          "id": "jade",
+          "name": "青禾",
+          "accent": "#277267"
+        },
+        {
+          "id": "blue",
+          "name": "医蓝",
+          "accent": "#346a8c"
+        },
+        {
+          "id": "sage",
+          "name": "草木",
+          "accent": "#586a44"
+        }
+      ],
+      "headerVariants": [
+        {
+          "id": "standard",
+          "name": "标准"
+        },
+        {
+          "id": "compact",
+          "name": "紧凑"
+        }
+      ],
+      "photo": "optional",
+      "regions": [
+        {
+          "id": "main",
+          "sections": [
+            "summary",
+            "experience",
+            "projects",
+            "organizations"
+          ]
+        },
+        {
+          "id": "side",
+          "sections": [
+            "education",
+            "certificates",
+            "skills",
+            "honors",
+            "languages"
+          ]
+        }
+      ],
+      "atsLevel": "standard",
+      "decorations": false,
+      "sectionTitles": {
+        "summary": "专业概述"
+      },
+      "defaults": {
+        "fontPairing": "sans",
+        "contactIcons": true
+      }
+    },
+    {
+      "id": "consultant",
+      "revision": 2,
+      "name": "顾问",
+      "nameEn": "Consultant",
+      "category": "industry",
+      "summary": "A compact single column with aligned organisations, dates and project outcomes.",
+      "bestFor": "咨询、战略、海外商务与专业服务",
+      "tags": [
+        "单栏",
+        "清晰排版",
+        "英文"
+      ],
+      "maxPages": 2,
+      "locale": "en",
+      "paperSizes": [
+        "A4",
+        "LETTER"
+      ],
+      "fontPairings": [
+        "serif",
+        "mixed"
+      ],
+      "palettes": [
+        {
+          "id": "navy",
+          "name": "Navy",
+          "accent": "#253f64"
+        },
+        {
+          "id": "burgundy",
+          "name": "Burgundy",
+          "accent": "#793f4c"
+        },
+        {
+          "id": "graphite",
+          "name": "Graphite",
+          "accent": "#404750"
+        }
+      ],
+      "headerVariants": [
+        {
+          "id": "standard",
+          "name": "标准"
+        },
+        {
+          "id": "compact",
+          "name": "紧凑"
+        }
+      ],
+      "photo": "none",
+      "regions": [
+        {
+          "id": "main",
+          "sections": [
+            "summary",
+            "projects",
+            "experience",
+            "education",
+            "organizations",
+            "skills",
+            "certificates",
+            "honors",
+            "languages"
+          ]
+        }
+      ],
+      "atsLevel": "strict",
+      "decorations": false,
+      "sectionTitles": {
+        "projects": "Selected Projects"
+      },
+      "defaults": {
+        "fontPairing": "serif",
+        "contactIcons": false,
+        "spacing": "TIGHT",
+        "lineHeight": "COMPACT"
+      }
     }
   ]
 }

@@ -18,6 +18,22 @@ const LOADERS: Record<string, () => Promise<{ default: TemplateModule }>> = {
   engineer: () => import('./engineer'),
   academic: () => import('./academic'),
   campus: () => import('./campus'),
+  botanica: () => import('./botanica'),
+  arcade: () => import('./arcade'),
+  woven: () => import('./woven'),
+  mosaic: () => import('./mosaic'),
+  shoreline: () => import('./shoreline'),
+  porcelain: () => import('./porcelain'),
+  constellation: () => import('./constellation'),
+  atelier: () => import('./atelier'),
+  prism: () => import('./prism'),
+  axis: () => import('./axis'),
+  folio: () => import('./folio'),
+  orbit: () => import('./orbit'),
+  product: () => import('./product'),
+  growth: () => import('./growth'),
+  clinical: () => import('./clinical'),
+  consultant: () => import('./consultant'),
 }
 
 const cache = new Map<string, Promise<TemplateModule>>()

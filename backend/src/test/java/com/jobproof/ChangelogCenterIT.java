@@ -213,6 +213,9 @@ class ChangelogCenterIT {
                 .isEqualTo("PUBLISHED");
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM outbox_events WHERE event_type=? AND payload_json LIKE ?",
                 Integer.class, EventTypes.CHANGELOG_PUBLISHED, "%" + releaseId + "%")).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT send_notification FROM changelog_publication_snapshots WHERE release_id=?",Boolean.class,releaseId)).isFalse();
+        distribution.enqueue(releaseId);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM changelog_distribution_jobs WHERE release_id=?",Integer.class,releaseId)).isZero();
     }
 
     @Test
@@ -252,8 +255,62 @@ class ChangelogCenterIT {
     private JsonNode publish(Cookie admin, String id, int expectedVersion) throws Exception {
         return data(mockMvc.perform(post("/api/v1/admin/changelog/{id}/publish", id).cookie(admin)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"expectedVersion\":" + expectedVersion + "}"))
+                        .content("{\"expectedVersion\":" + expectedVersion + ",\"notificationConfirmed\":true}"))
                 .andExpect(status().isOk()).andReturn());
+    }
+
+    @Test
+    void notificationNeedsExplicitVersionBoundConfirmationAndSilentPublishDoesNotQueue() throws Exception {
+        Cookie admin = account("confirmation-admin", true);
+        JsonNode draft = create(admin, command(version(), "PUBLIC", null, false, true, null));
+        String id = draft.path("release").path("id").asText();
+        int version = draft.path("release").path("versionNo").asInt();
+        mockMvc.perform(post("/api/v1/admin/changelog/{id}/publish", id).cookie(admin)
+                .contentType(MediaType.APPLICATION_JSON).content("{\"expectedVersion\":" + version + "}"))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.error.reason").value("CHANGELOG_NOTIFICATION_CONFIRMATION_REQUIRED"));
+        mockMvc.perform(get("/api/v1/admin/changelog/{id}/publication-preview", id).cookie(admin))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.versionNo").value(version));
+        mockMvc.perform(post("/api/v1/admin/changelog/{id}/publish", id).cookie(admin)
+                .contentType(MediaType.APPLICATION_JSON).content("{\"expectedVersion\":" + (version + 1) + ",\"notificationConfirmed\":true}"))
+                .andExpect(status().isConflict());
+        mockMvc.perform(post("/api/v1/admin/changelog/{id}/publish", id).cookie(admin)
+                .contentType(MediaType.APPLICATION_JSON).content("{\"expectedVersion\":" + version + ",\"sendNotification\":false}"))
+                .andExpect(status().isOk());
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM changelog_distribution_jobs WHERE release_id=?", Integer.class, id)).isZero();
+    }
+
+    @Test
+    void delayedDistributionUsesImmutablePublicationDecisionAndContent() throws Exception {
+        Cookie admin=account("snapshot-admin",true);
+        for(int i=0;i<101;i++) {
+            String accountId=java.util.UUID.randomUUID().toString();
+            jdbc.update("INSERT INTO accounts(id,email,password_hash,status,role,created_at,updated_at,password_changed_at) VALUES(?,?,'synthetic','ACTIVE','SEEKER',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)",accountId,accountId+"@snapshot.test");
+        }
+        for(int i=0;i<100 && distribution.processOneBatch();i++) { /* isolate the next campaign */ }
+        for (boolean notify : java.util.List.of(false,true)) {
+            String version=version();
+            JsonNode draft=create(admin,command(version,"PUBLIC",null,false,notify,null));
+            String id=draft.path("release").path("id").asText();
+            JsonNode published=publish(admin,id,draft.path("release").path("versionNo").asInt());
+            String original=published.path("release").path("summary").asText();
+            if(notify) {
+                distribution.enqueue(id); distribution.processOneBatch();
+                assertThat(jdbc.queryForObject("SELECT delivered_count FROM changelog_distribution_jobs WHERE release_id=?",Integer.class,id)).isEqualTo(100);
+            }
+            ObjectNode revision=command(version,"PUBLIC",null,false,true,null);
+            revision.put("summary","这是发布后修改但不应进入原通知批次的说明内容。").put("expectedVersion",published.path("release").path("versionNo").asInt());
+            ObjectNode request=mapper.createObjectNode().put("reason","更新公开说明");request.set("release",revision);
+            mockMvc.perform(post("/api/v1/admin/changelog/{id}/revise",id).cookie(admin).contentType(MediaType.APPLICATION_JSON).content(request.toString())).andExpect(status().isOk());
+            distribution.enqueue(id);
+            assertThat(jdbc.queryForObject("SELECT send_notification FROM changelog_publication_snapshots WHERE release_id=?",Boolean.class,id)).isEqualTo(notify);
+            assertThat(jdbc.queryForObject("SELECT summary FROM changelog_publication_snapshots WHERE release_id=?",String.class,id)).isEqualTo(original);
+            if(!notify) assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM changelog_distribution_jobs WHERE release_id=?",Integer.class,id)).isZero();
+            else {
+                for(int i=0;i<100 && distribution.processOneBatch();i++) { /* deliver remaining batches after revision */ }
+                assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM notifications WHERE event_id=?",Integer.class,id)).isGreaterThan(100);
+                assertThat(jdbc.queryForList("SELECT DISTINCT body FROM notifications WHERE event_id=?",String.class,id)).containsExactly(original);
+            }
+        }
     }
 
     private ObjectNode command(String version, String audience, String ctaPath, boolean show, boolean notify,

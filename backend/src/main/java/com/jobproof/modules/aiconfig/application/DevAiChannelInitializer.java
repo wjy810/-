@@ -19,10 +19,10 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Local development only: keeps one ACTIVE platform channel pointing at the configured OpenAI-compatible
+ * Local development only: initially seeds one ACTIVE platform channel pointing at the configured OpenAI-compatible
  * endpoint, plus the platform model the features request, so AI features work right after startup. The
  * admin capability-test gate is skipped here (it still applies to channels created in the admin console),
- * and the channel can be disabled or re-tested from 后台 › AI 通道 like any other.
+ * and subsequent startup preserves the entire configuration applied from 后台 › AI 通道.
  */
 @Component
 @Profile("dev")
@@ -57,6 +57,10 @@ public class DevAiChannelInitializer implements ApplicationRunner {
     @Override
     @Transactional
     public void run(ApplicationArguments args) {
+        if (!jdbc.queryForList("SELECT id FROM ai_channel WHERE scope='SYSTEM' AND name=?", String.class, name).isEmpty()) {
+            log.info("dev AI channel already exists; preserving managed configuration name={}", name);
+            return;
+        }
         if (apiKey.isBlank() || model.isBlank() || !baseUrl.startsWith("https://")) {
             log.warn("dev AI channel skipped: base-url must be https and api-key and model must be set");
             return;
@@ -64,14 +68,13 @@ public class DevAiChannelInitializer implements ApplicationRunner {
         Timestamp now = Timestamp.from(Instant.now());
         String modelId = ensureModel(now);
         String channelId = ensureChannel(now);
+        // Seed the local default once; preserve the model subsequently selected in the admin console.
+        jdbc.update("UPDATE ai_channel SET selected_model=COALESCE(selected_model,?) WHERE id=?", model, channelId);
         List<String> mapping = jdbc.queryForList("SELECT id FROM ai_channel_model WHERE channel_id=? AND model_id=?",
                 String.class, channelId, modelId);
         if (mapping.isEmpty()) {
             jdbc.update("INSERT INTO ai_channel_model(id,channel_id,model_id,provider_model_code,status,hidden,priority,version_no,created_at,updated_at) VALUES(?,?,?,?,'ACTIVE',0,100,0,?,?)",
                     Ids.newId(), channelId, modelId, model, now, now);
-        } else {
-            jdbc.update("UPDATE ai_channel_model SET provider_model_code=?,status='ACTIVE',hidden=0,updated_at=? WHERE id=?",
-                    model, now, mapping.get(0));
         }
         log.info("dev AI channel ready name={} model={} baseUrl={}", name, model, baseUrl);
     }
@@ -79,7 +82,6 @@ public class DevAiChannelInitializer implements ApplicationRunner {
     private String ensureModel(Timestamp now) {
         List<String> ids = jdbc.queryForList("SELECT id FROM ai_model WHERE model_code=?", String.class, model);
         if (!ids.isEmpty()) {
-            jdbc.update("UPDATE ai_model SET status='ACTIVE',updated_at=? WHERE id=?", now, ids.get(0));
             return ids.get(0);
         }
         String id = Ids.newId();
@@ -94,8 +96,6 @@ public class DevAiChannelInitializer implements ApplicationRunner {
         List<String> ids = jdbc.queryForList("SELECT id FROM ai_channel WHERE scope='SYSTEM' AND name=?", String.class, name);
         String ciphertext = cipher.encrypt(apiKey);
         if (!ids.isEmpty()) {
-            jdbc.update("UPDATE ai_channel SET provider_code=?,base_url=?,protocol=?,api_key_ciphertext=?,api_key_masked=?,status='ACTIVE',archived_at=NULL,updated_at=? WHERE id=?",
-                    PROVIDER, baseUrl, protocol, ciphertext, AiUserChannelService.mask(apiKey), now, ids.get(0));
             return ids.get(0);
         }
         String id = Ids.newId();

@@ -61,16 +61,17 @@ class MembershipIT {
         mockMvc.perform(post("/api/v1/admin/redeem-codes").cookie(admin).contentType(MediaType.APPLICATION_JSON)
                         .content(mapper.writeValueAsString(Map.of("name", "x", "durationDays", 31, "quantity", 1))))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error.reason").value("REDEEM_BATCH_DURATION"));
+                .andExpect(jsonPath("$.error.reason").value("REDEEM_BATCH_AMOUNT"));
 
         JsonNode created = data(mockMvc.perform(post("/api/v1/admin/redeem-codes").cookie(admin).contentType(MediaType.APPLICATION_JSON)
                         .content(mapper.writeValueAsString(Map.of("name", "示例大学就业中心 · 秋招", "channel", "高校合作",
-                                "durationDays", 30, "quantity", 4))))
+                                "balanceAmount", 30, "quantity", 4))))
                 .andExpect(status().isOk()).andReturn());
         List<String> codes = new ArrayList<>();
         created.path("codes").forEach(code -> codes.add(code.asText()));
         assertThat(codes).hasSize(4).allMatch(code -> code.matches("JP-(\\w{4}-){3}\\w{4}"));
         String batchId = created.path("batch").path("id").asText();
+        jdbc.update("UPDATE redeem_code_batches SET plan='PRO',duration_days=30,balance_amount=NULL WHERE id=?",batchId);
         // Only hashes are stored.
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM redeem_codes WHERE batch_id=? AND code_hash LIKE 'JP%'",
                 Integer.class, batchId)).isZero();
@@ -97,8 +98,7 @@ class MembershipIT {
 
         mockMvc.perform(post("/api/v1/membership/redeem").cookie(seeker).contentType(MediaType.APPLICATION_JSON)
                         .content(mapper.writeValueAsString(Map.of("code", codes.get(1)))))
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.error.reason").value("REDEEM_CODE_ALREADY_YOURS"));
+                .andExpect(status().isOk());
         mockMvc.perform(post("/api/v1/membership/redeem").cookie(other).contentType(MediaType.APPLICATION_JSON)
                         .content(mapper.writeValueAsString(Map.of("code", codes.get(0)))))
                 .andExpect(status().isBadRequest())

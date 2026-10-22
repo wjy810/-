@@ -54,7 +54,7 @@ public class SiteCapabilitiesService {
     private boolean ready(String model) {
         if (!features.aiAssistant() || model == null || model.isBlank()) return false;
         try {
-            return !channels.findEligible("", model.trim()).isEmpty();
+            return !channels.findAvailable("", model.trim()).isEmpty();
         } catch (RuntimeException exception) {
             return false;
         }

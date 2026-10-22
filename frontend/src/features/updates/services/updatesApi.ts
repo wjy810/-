@@ -79,15 +79,15 @@ export function validateUpdate(id: string): Promise<ValidationView> {
   return api<ValidationView>(`/api/v1/admin/changelog/${id}/validate`, { method: 'POST' })
 }
 
-export function publishUpdate(id: string, expectedVersion: number): Promise<ReleaseDetail> {
+export function publishUpdate(id: string, expectedVersion: number, confirmation?: { sendNotification: boolean; notificationConfirmed: boolean }): Promise<ReleaseDetail> {
   return api<ReleaseDetail>(`/api/v1/admin/changelog/${id}/publish`, {
-    method: 'POST', body: JSON.stringify({ expectedVersion }),
+    method: 'POST', body: JSON.stringify({ expectedVersion, ...confirmation }),
   })
 }
 
-export function scheduleUpdate(id: string, expectedVersion: number, scheduledAt: string): Promise<ReleaseDetail> {
+export function scheduleUpdate(id: string, expectedVersion: number, scheduledAt: string, confirmation?: { sendNotification: boolean; notificationConfirmed: boolean }): Promise<ReleaseDetail> {
   return api<ReleaseDetail>(`/api/v1/admin/changelog/${id}/schedule`, {
-    method: 'POST', body: JSON.stringify({ expectedVersion, scheduledAt }),
+    method: 'POST', body: JSON.stringify({ expectedVersion, scheduledAt, ...confirmation }),
   })
 }
 

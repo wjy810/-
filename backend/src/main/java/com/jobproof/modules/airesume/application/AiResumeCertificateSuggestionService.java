@@ -57,6 +57,7 @@ public class AiResumeCertificateSuggestionService {
     private final ResumeAiCandidateService aiCandidates;
     private final AiGatewayService gateway;
     private final AiQuotaService quota;
+    private final AiSuggestionResults results;
     private final AiGenerationAttemptService attempts;
     private final AuditService audit;
     private final CareerLibraryService careerLibrary;
@@ -65,7 +66,7 @@ public class AiResumeCertificateSuggestionService {
 
     public AiResumeCertificateSuggestionService(JdbcTemplate jdbc, ObjectMapper mapper,
             ResumeAiCandidateService aiCandidates, AiGatewayService gateway, AiQuotaService quota,
-            AiGenerationAttemptService attempts, AuditService audit, CareerLibraryService careerLibrary,
+            AiGenerationAttemptService attempts, AuditService audit, AiSuggestionResults results, CareerLibraryService careerLibrary,
             AiResumeCredentialRecommendationService credentialRecommendations,
             @Value("${jobproof.ai.resume-model:qwen-plus}") String defaultModel) {
         this.jdbc = jdbc;
@@ -73,6 +74,7 @@ public class AiResumeCertificateSuggestionService {
         this.aiCandidates = aiCandidates;
         this.gateway = gateway;
         this.quota = quota;
+        this.results = results;
         this.attempts = attempts;
         this.audit = audit;
         this.careerLibrary = careerLibrary;
@@ -81,6 +83,15 @@ public class AiResumeCertificateSuggestionService {
     }
 
     public CertificateSuggestionView generate(CurrentAccount current, String conversationId, String cardId,
+            String clientRequestId, String rawPhase, JsonNode currentCertificates, List<String> selectedNames,
+            List<String> confirmedNames) {
+        assertSeeker(current);
+        if ("NAMES".equals(normalized(rawPhase))) return generateFresh(current, conversationId, cardId, clientRequestId, rawPhase, currentCertificates, selectedNames, confirmedNames);
+        return results.execute(current.accountId(), "certificates:" + conversationId + ":" + cleanRequestId(clientRequestId), "RESUME_CERTIFICATE_DETAILS",
+                java.util.Arrays.asList(current, conversationId, cardId, clientRequestId, rawPhase, currentCertificates, selectedNames, confirmedNames), CertificateSuggestionView.class, () -> generateFresh(current, conversationId, cardId, clientRequestId, rawPhase, currentCertificates, selectedNames, confirmedNames));
+    }
+
+    private CertificateSuggestionView generateFresh(CurrentAccount current, String conversationId, String cardId,
             String clientRequestId, String rawPhase, JsonNode currentCertificates, List<String> selectedNames,
             List<String> confirmedNames) {
         assertSeeker(current);
@@ -155,14 +166,18 @@ public class AiResumeCertificateSuggestionService {
                 attempts.finish(attempt, "CANCELLED", "AI_TASK_CANCELLED", model, inputTokens, outputTokens);
                 throw AppException.conflict("AI_TASK_CANCELLED", "已取消证书生成，当前内容没有变化");
             }
-            AiQuotaService.QuotaView settled = quota.settle(current.accountId(), reservation.id(), 1);
+            CertificateSuggestionView saved = results.complete(current.accountId(), reservation.id(), new CertificateSuggestionView(phase, List.of(), parsed.certificates(), requestId,
+                    model, inputTokens, outputTokens, 0, PROMPT_VERSION,
+                    detailsContext.careerSnapshot(), detailsContext.careerEvidenceEnabled()));
+            try {
             attempts.finish(attempt, "COMPLETED", null, model, inputTokens, outputTokens);
             audit.append(current.accountId(), "AI_RESUME_CERTIFICATES_SUGGESTED", "AI_RESUME_CARD", cardId,
                     "phase=" + phase + " model=" + model + " candidateCount=" + parsed.candidates().size()
                             + " certificateCount=" + parsed.certificates().size());
-            return new CertificateSuggestionView(phase, List.of(), parsed.certificates(), requestId,
-                    model, inputTokens, outputTokens, settled.remainingUnits(), PROMPT_VERSION,
-                    detailsContext.careerSnapshot(), detailsContext.careerEvidenceEnabled());
+            } catch (RuntimeException ignored) {
+                // A committed paid result stays available even if telemetry is unavailable.
+            }
+            return saved;
         } catch (AiGatewayException exception) {
             if (reservation != null) quota.release(current.accountId(), reservation.id());
             attempts.finish(attempt, "FAILED", "AI_MODEL_FAILED", defaultModel, 0, 0);

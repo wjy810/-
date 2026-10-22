@@ -50,6 +50,7 @@ public class SecurityConfig {
                         // Resume links: whoever holds the link reads the resume; the token is the authorisation.
                         .requestMatchers("/api/v1/public/resume-links/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/membership/plans").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/commerce/catalog").permitAll()
                         .requestMatchers("/internal/dev/**").permitAll()
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .anyRequest().authenticated())

@@ -1,0 +1,1 @@
+<script setup lang="ts">import UiPageHeader from '@/shared/ui/UiPageHeader.vue';import BillingHistory from './components/BillingHistory.vue'</script><template><div class="page-container"><UiPageHeader title="钱包与账单" description="按账号、状态和日期查询人民币钱包、流水、AI 账单和订阅。"/><BillingHistory admin /></div></template>

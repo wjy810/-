@@ -17,6 +17,7 @@ import UpdateContent from '../components/UpdateContent.vue'
 import { MODULE_LABELS, SECTION_LABELS, TYPE_LABELS, moduleLabel, sectionLabel, typeLabel } from '../labels'
 import { archiveUpdate, cancelUpdateSchedule, createUpdate, fetchAdminUpdate, publishUpdate, reviseUpdate, saveUpdate, scheduleUpdate, uploadUpdateAsset, validateUpdate } from '../services/updatesApi'
 import type { ReleaseDetail, ReleaseDraft, UpdateSection } from '../types'
+import { confirmPublication } from '../publication'
 import '../updates.css'
 
 const route = useRoute(); const router = useRouter()
@@ -28,7 +29,7 @@ useToastFeedback(notice, 'success', 'admin-changelog-editor-notice')
 const saveState = ref(isNew.value ? '尚未创建' : '正在读取'); const previewMode = ref<'desktop' | 'mobile'>('desktop')
 const detail = ref<ReleaseDetail | null>(null); const scheduleAt = ref(''); let saveTimer = 0; let suppressAutosave = true
 const revisionOpen = ref(false); const archiveOpen = ref(false); const revisionReason = ref(''); const uploadingSection = ref(-1)
-const draft = ref<ReleaseDraft>({ versionLabel: '', title: '', summary: '', releaseType: 'FEATURE', audience: 'PUBLIC', modules: [], ctaLabel: '', ctaPath: '', showWhatsNew: true, sendNotification: true, expectedVersion: 0, sections: [{ sectionType: 'HIGHLIGHTS', title: '本次更新亮点', body: '', items: [''] }] })
+const draft = ref<ReleaseDraft>({ versionLabel: '', title: '', summary: '', releaseType: 'FEATURE', audience: 'PUBLIC', modules: [], ctaLabel: '', ctaPath: '', showWhatsNew: true, sendNotification: false, expectedVersion: 0, sections: [{ sectionType: 'HIGHLIGHTS', title: '本次更新亮点', body: '', items: [''] }] })
 const typeOptions = Object.keys(TYPE_LABELS).map(value => ({ value, label: typeLabel(value) }))
 const audienceOptions = [{ value: 'PUBLIC', label: '所有访问者' }, { value: 'AUTHENTICATED', label: '仅登录用户' }]
 const sectionOptions = Object.keys(SECTION_LABELS).map(value => ({ value, label: sectionLabel(value) }))
@@ -105,13 +106,36 @@ async function save(auto = false): Promise<boolean> {
   finally { pending.value = '' }
 }
 
-async function onPublish(): Promise<void> { if (!(await save(false)) || !id.value) return; pending.value = 'publish'; try { const check = await validateUpdate(id.value); if (!check.valid) { error.value = check.issues.join('；'); return } hydrate(await publishUpdate(id.value, draft.value.expectedVersion)); notice.value = '版本已正式发布' } catch (reason) { error.value = errorMessage(reason, '发布失败') } finally { pending.value = '' } }
-async function onSchedule(): Promise<void> { if (!(await save(false)) || !id.value || !scheduleAt.value) { error.value = '请选择定时发布时间'; return } pending.value = 'schedule'; try { hydrate(await scheduleUpdate(id.value, draft.value.expectedVersion, new Date(scheduleAt.value).toISOString())); notice.value = '已安排定时发布' } catch (reason) { error.value = errorMessage(reason, '定时发布失败') } finally { pending.value = '' } }
+async function onPublish(): Promise<void> {
+  window.clearTimeout(saveTimer)
+  if (!(await save(false)) || !id.value) return
+  pending.value = 'publish'
+  try {
+    const check = await validateUpdate(id.value)
+    if (!check.valid) { error.value = check.issues.join('；'); return }
+    const choice = await confirmPublication(id.value)
+    if (!choice) return
+    hydrate(await publishUpdate(id.value, choice.expectedVersion, choice)); notice.value = '版本已正式发布'
+  } catch (reason) { error.value = errorMessage(reason, '发布失败') } finally { pending.value = '' }
+}
+async function onSchedule(): Promise<void> {
+  const selectedTime = scheduleAt.value
+  if (!selectedTime) { error.value = '请选择定时发布时间'; return }
+  window.clearTimeout(saveTimer)
+  if (!(await save(false)) || !id.value) return
+  pending.value = 'schedule'
+  try {
+    const at = new Date(selectedTime).toISOString()
+    const choice = await confirmPublication(id.value, at)
+    if (!choice) { scheduleAt.value = selectedTime; return }
+    hydrate(await scheduleUpdate(id.value, choice.expectedVersion, at, choice)); notice.value = '已安排定时发布'
+  } catch (reason) { error.value = errorMessage(reason, '定时发布失败') } finally { pending.value = '' }
+}
 async function onCancelSchedule(): Promise<void> { pending.value = 'cancel'; try { hydrate(await cancelUpdateSchedule(id.value, draft.value.expectedVersion)); notice.value = '已取消定时发布' } catch (reason) { error.value = errorMessage(reason) } finally { pending.value = '' } }
 async function onRevise(): Promise<void> { const reason = revisionReason.value.trim(); if (reason.length < 4) { error.value = '修订原因至少填写 4 个字'; return } pending.value = 'revise'; try { hydrate(await reviseUpdate(id.value, draft.value, reason)); revisionOpen.value = false; revisionReason.value = ''; notice.value = '修订已发布并保留旧版本快照' } catch (cause) { error.value = errorMessage(cause, '修订失败') } finally { pending.value = '' } }
 async function onArchive(): Promise<void> { pending.value = 'archive'; try { hydrate(await archiveUpdate(id.value, draft.value.expectedVersion)); archiveOpen.value = false; notice.value = '版本已归档' } catch (cause) { error.value = errorMessage(cause, '归档失败') } finally { pending.value = '' } }
 
-watch(draft, () => { if (suppressAutosave || isNew.value || detail.value?.release.status !== 'DRAFT') return; saveState.value = '等待自动保存'; window.clearTimeout(saveTimer); saveTimer = window.setTimeout(() => void save(true), 700) }, { deep: true })
+watch(draft, () => { if (suppressAutosave || pending.value || isNew.value || detail.value?.release.status !== 'DRAFT') return; saveState.value = '等待自动保存'; window.clearTimeout(saveTimer); saveTimer = window.setTimeout(() => void save(true), 700) }, { deep: true })
 onMounted(load); onUnmounted(() => window.clearTimeout(saveTimer))
 </script>
 

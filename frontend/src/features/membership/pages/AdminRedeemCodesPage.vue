@@ -15,7 +15,6 @@ import UiEmptyState from '@/shared/ui/UiEmptyState.vue'
 import UiField from '@/shared/ui/UiField.vue'
 import UiInput from '@/shared/ui/UiInput.vue'
 import UiPageHeader from '@/shared/ui/UiPageHeader.vue'
-import UiSegmented from '@/shared/ui/UiSegmented.vue'
 import UiSkeleton from '@/shared/ui/UiSkeleton.vue'
 import UiStatTile from '@/shared/ui/UiStatTile.vue'
 import { confirm } from '@/shared/ui/confirm'
@@ -28,15 +27,6 @@ import { createRedeemBatch, fetchRedeemBatches, revokeRedeemBatch } from '../ser
 import { batchStatus, codesCsv, endOfDayIso, redemptionRate } from '../labels'
 import type { BatchCreated, RedeemBatch } from '../types'
 
-type Duration = '7' | '30' | '90' | '180' | '365'
-
-const DURATIONS: { value: Duration; label: string }[] = [
-  { value: '7', label: '7 天' },
-  { value: '30', label: '30 天' },
-  { value: '90', label: '90 天' },
-  { value: '180', label: '180 天' },
-  { value: '365', label: '365 天' },
-]
 const MAX_QUANTITY = 500
 
 const page = useLoadState(() => fetchRedeemBatches())
@@ -56,7 +46,7 @@ const totals = computed(() => {
 const creating = ref(false)
 const submitting = ref(false)
 const touched = ref(false)
-const form = reactive({ name: '', channel: '', duration: '30' as Duration, quantity: '50', redeemBefore: '' })
+const form = reactive({ name: '', channel: '', amount: '50', quantity: '50', redeemBefore: '' })
 const quantity = computed(() => Number(form.quantity))
 const nameError = computed(() => (touched.value && !form.name.trim() ? '请填写批次名称，方便之后对账' : null))
 const quantityError = computed(() => (touched.value && !(Number.isInteger(quantity.value) && quantity.value >= 1 && quantity.value <= MAX_QUANTITY)
@@ -67,7 +57,7 @@ const copied = ref(false)
 const revoking = ref('')
 
 function openCreate(): void {
-  Object.assign(form, { name: '', channel: '', duration: '30', quantity: '50', redeemBefore: '' })
+  Object.assign(form, { name: '', channel: '', amount: '50', quantity: '50', redeemBefore: '' })
   touched.value = false
   creating.value = true
 }
@@ -80,7 +70,7 @@ async function submit(): Promise<void> {
     const result = await createRedeemBatch({
       name: form.name.trim(),
       channel: form.channel.trim() || null,
-      durationDays: Number(form.duration),
+      balanceAmount: Number(form.amount),
       quantity: quantity.value,
       redeemBefore: form.redeemBefore ? endOfDayIso(form.redeemBefore) : null,
     })
@@ -127,7 +117,7 @@ async function revoke(batch: RedeemBatch): Promise<void> {
   const unused = batch.quantity - batch.redeemed
   if (!(await confirm({
     title: `停用「${batch.name}」？`,
-    message: `剩余 ${unused} 个未兑换的码将立即失效，已经兑换的会员不受影响。停用无法撤销。`,
+    message: `剩余 ${unused} 个未兑换的码将立即失效，已经兑换的余额不受影响。停用无法撤销。`,
     confirmText: '停用',
     tone: 'danger',
   }))) return
@@ -148,7 +138,7 @@ onMounted(page.load)
 
 <template>
   <div class="page-container page-container--wide redeem-admin">
-    <UiPageHeader title="兑换码" description="按批次生成专业版兑换码，发给学校、合作机构或活动。明文只在生成时显示一次，系统只保存哈希。">
+    <UiPageHeader title="兑换码" description="按批次生成人民币余额兑换码，发给学校、合作机构或活动。明文只在生成时显示一次，系统只保存哈希。">
       <template #actions>
         <UiButton variant="secondary" :icon="RefreshCw" :pending="page.loading.value && page.loaded.value" @click="page.load">刷新</UiButton>
         <UiButton :icon="Plus" @click="openCreate">新建批次</UiButton>
@@ -172,7 +162,7 @@ onMounted(page.load)
         v-if="!batches.length"
         illustration="redeem-ticket"
         title="还没有兑换码批次"
-        description="给一所学校或一次活动建一个批次：设定专业版天数和数量，生成后复制或下载发放。"
+        description="给一所学校或一次活动建一个批次：设定人民币面额和数量，生成后复制或下载发放。"
         bordered
       >
         <UiButton :icon="Plus" @click="openCreate">新建批次</UiButton>
@@ -181,7 +171,7 @@ onMounted(page.load)
       <div v-else class="redeem-admin__table">
         <table>
           <thead>
-            <tr><th>批次</th><th>专业版</th><th>兑换进度</th><th>兑换截止</th><th>状态</th><th>创建时间</th><th><span class="sr-only">操作</span></th></tr>
+            <tr><th>批次</th><th>面额 / 历史权益</th><th>兑换进度</th><th>兑换截止</th><th>状态</th><th>创建时间</th><th><span class="sr-only">操作</span></th></tr>
           </thead>
           <tbody>
             <tr v-for="batch in batches" :key="batch.id">
@@ -189,7 +179,7 @@ onMounted(page.load)
                 <strong class="batch-name">{{ batch.name }}</strong>
                 <small v-if="batch.channel" class="batch-channel">{{ batch.channel }}</small>
               </td>
-              <td class="num">{{ batch.durationDays }} 天</td>
+              <td class="num">{{ batch.balanceAmount != null ? `¥${batch.balanceAmount}` : `${batch.durationDays} 天专业版（历史）` }}</td>
               <td>
                 <div class="batch-progress">
                   <span class="batch-progress__bar" aria-hidden="true"><i :style="{ width: `${redemptionRate(batch.redeemed, batch.quantity)}%` }" /></span>
@@ -219,7 +209,7 @@ onMounted(page.load)
     <UiDialog
       :open="creating"
       title="新建兑换码批次"
-      description="每个码可兑换一次专业版；已是专业版的用户兑换后会顺延。"
+      description="每个码充值一次人民币余额。生成后明文只显示一次。"
       width="md"
       :dismissible="!submitting"
       @close="creating = false"
@@ -231,8 +221,8 @@ onMounted(page.load)
         <UiField v-slot="{ id }" label="发放渠道" optional hint="写给谁、通过什么方式发的，方便以后对账。">
           <UiInput :id="id" v-model="form.channel" maxlength="120" placeholder="例如：某某大学就业指导中心" />
         </UiField>
-        <UiField label="专业版天数">
-          <UiSegmented v-model="form.duration" :items="DURATIONS" aria-label="专业版天数" block />
+        <UiField label="人民币面额" required>
+          <UiInput v-model="form.amount" type="number" min="0.01" step="0.01" aria-label="人民币面额" />
         </UiField>
         <div class="batch-form__row">
           <UiField v-slot="{ id }" label="数量" required :error="quantityError" :hint="`单批最多 ${MAX_QUANTITY} 个`">

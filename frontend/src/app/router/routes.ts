@@ -279,6 +279,10 @@ export const routes: RouteRecordRaw[] = [
         component: () => import('@/features/notification/pages/NotificationListPage.vue'),
       },
       {
+        path: 'account/wallet', name: 'account-wallet', meta: { ...authed, title: '钱包与账单' },
+        component: () => import('@/features/billing/pages/WalletPage.vue'),
+      },
+      {
         path: 'account',
         meta: authed,
         component: () => import('@/features/identity/pages/AccountSettingsLayoutPage.vue'),
@@ -288,6 +292,8 @@ export const routes: RouteRecordRaw[] = [
           { path: 'appearance', name: 'account-appearance', meta: { title: '外观' }, component: () => import('@/features/identity/pages/AppearancePage.vue') },
           { path: 'membership', name: 'account-membership', meta: { title: '会员与兑换' }, component: () => import('@/features/membership/pages/MembershipPage.vue') },
           { path: 'ai', name: 'account-ai', meta: { title: 'AI 用量' }, component: () => import('@/features/ai-resume/pages/AiResumeUsagePage.vue') },
+          { path: 'personal-channel-subscription', name: 'account-personal-subscription', meta: { title: '个人通道订阅' }, component: () => import('@/features/billing/pages/PersonalChannelSubscriptionPage.vue') },
+          { path: 'ai-channels', name: 'account-ai-channels', meta: { title: '个人 AI 通道' }, component: () => import('@/features/ai/pages/AiPersonalChannelsPage.vue') },
           { path: 'data-rights', name: 'account-data-rights', meta: { title: '数据与隐私' }, component: () => import('@/features/datarights/pages/DataRightsPage.vue') },
         ],
       },
@@ -309,6 +315,9 @@ export const routes: RouteRecordRaw[] = [
         meta: { ...authed, adminOnly: true, title: 'AI 通道' },
         component: () => import('@/features/ai/pages/AiSystemChannelsPage.vue'),
       },
+      { path: 'admin/audit', name: 'admin-audit', meta: { ...authed, adminOnly: true, title: '审计日志' }, component: () => import('@/features/audit/pages/AdminAuditPage.vue') },
+      { path: 'admin/billing', name: 'admin-billing', meta: { ...authed, adminOnly: true, title: '计费管理' }, component: () => import('@/features/billing/pages/AdminBillingPage.vue') },
+      { path: 'admin/commerce', name: 'admin-commerce', meta: { ...authed, adminOnly: true, title: '商业设置' }, component: () => import('@/features/billing/pages/AdminCommercePage.vue') },
       {
         path: 'admin/redeem-codes',
         name: 'admin-redeem-codes',

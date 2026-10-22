@@ -193,23 +193,26 @@ public class CareerPlanningAsyncService {
     }
 
     public void processClaimedTask(AsyncTaskEntity task) {
-        if (TaskTypes.CAREER_PLANNING_VALIDATION_BATCH.equals(task.getTaskType())) {
+        TaskView view = TaskView.from(task);
+        try (var scope = tasks.aiScope(view.id())) {
+        if (TaskTypes.CAREER_PLANNING_VALIDATION_BATCH.equals(view.taskType())) {
             processValidationBatchTask(task);
             return;
         }
-        if (TaskTypes.CAREER_PLANNING_INTERVIEW.equals(task.getTaskType())) {
+        if (TaskTypes.CAREER_PLANNING_INTERVIEW.equals(view.taskType())) {
             processInterviewTask(task);
             return;
         }
-        if (TaskTypes.CAREER_PLANNING_RECOMMENDATIONS.equals(task.getTaskType())) {
+        if (TaskTypes.CAREER_PLANNING_RECOMMENDATIONS.equals(view.taskType())) {
             processRecommendationTask(task);
             return;
         }
-        if (TaskTypes.CAREER_PLANNING_CANVAS_PROPOSAL.equals(task.getTaskType())) {
+        if (TaskTypes.CAREER_PLANNING_CANVAS_PROPOSAL.equals(view.taskType())) {
             processNodeInferenceTask(task);
             return;
         }
         processCanvasTask(task);
+        }
     }
 
     private void processValidationBatchTask(AsyncTaskEntity task) {

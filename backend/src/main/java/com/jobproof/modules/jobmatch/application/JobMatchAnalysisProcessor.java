@@ -28,7 +28,7 @@ public class JobMatchAnalysisProcessor {
     public void poll() { tasks.claimNext(TaskTypes.JOB_MATCH).ifPresent(task -> run(task.getId(), task.getAccountId(), task.getPayloadJson())); }
 
     private void run(String taskId, String accountId, String payloadJson) {
-        try {
+        try (var scope = tasks.aiScope(taskId)) {
             Map<String, Object> payload = mapper.readValue(payloadJson, new TypeReference<>() {});
             analysis.process(taskId, accountId, String.valueOf(payload.get("matchId")));
         } catch (RuntimeException exception) {

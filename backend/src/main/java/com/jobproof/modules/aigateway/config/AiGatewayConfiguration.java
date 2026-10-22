@@ -5,6 +5,7 @@ import com.jobproof.modules.aigateway.application.AiChannelInspector;
 import com.jobproof.modules.aigateway.application.AiGatewayService;
 import com.jobproof.modules.aigateway.application.WeightedChannelRouter;
 import com.jobproof.modules.aigateway.port.AiChannelPort;
+import com.jobproof.modules.aigateway.port.AiCallObserver;
 import com.jobproof.modules.aigateway.port.AiTransportPort;
 import com.jobproof.modules.aigateway.security.ApiKeyCipher;
 import com.jobproof.modules.aigateway.security.MasterKeyProperties;
@@ -38,8 +39,8 @@ public class AiGatewayConfiguration {
 
     @Bean
     public AiGatewayService aiGatewayService(AiChannelPort channels, AiTransportPort transport, ApiKeyCipher cipher,
-            SsrfGuard ssrf, WeightedChannelRouter router, ObjectMapper mapper) {
-        return new AiGatewayService(channels, transport, cipher, ssrf, router, mapper);
+            SsrfGuard ssrf, WeightedChannelRouter router, ObjectMapper mapper, AiCallObserver observer) {
+        return new AiGatewayService(channels, transport, cipher, ssrf, router, mapper, observer);
     }
 
     @Bean

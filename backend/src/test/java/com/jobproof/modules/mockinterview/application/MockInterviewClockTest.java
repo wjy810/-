@@ -42,7 +42,10 @@ class MockInterviewClockTest {
                 new ClassPathResource("db/migration/V69__mock_interview_honest_scoring.sql"),
                 new ClassPathResource("db/migration/V81__mock_interview_follow_ups.sql"),
                 new ClassPathResource("db/migration/V82__mock_interview_activity.sql")).execute(source);
-        service = new MockInterviewService(jdbc, new ObjectMapper(), now::get, ai, new DataSourceTransactionManager(source));
+        var quota = org.mockito.Mockito.mock(com.jobproof.modules.airesume.application.AiQuotaService.class);
+        org.mockito.Mockito.when(quota.reserveExclusive(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyInt()))
+                .thenReturn(new com.jobproof.modules.airesume.application.AiQuotaService.Reservation("reservation", "request", 1, 0, "HELD"));
+        service = new MockInterviewService(jdbc, new ObjectMapper(), now::get, ai, new DataSourceTransactionManager(source), quota);
         when(ai.evaluateAnswer(anyString(), anyString(), anyString(), any(), anyList(), anyString(), anyBoolean(), anyMap(), anyMap()))
                 .thenThrow(new AiGatewayException("down", true, false));
         jdbc.update("INSERT INTO mock_interview_sessions(id,account_id,title,position_name,mode,interview_type,difficulty,duration_minutes,question_count,language_code,feedback_mode,follow_up_enabled,status,current_question_index,elapsed_seconds,resume_snapshot_json,jd_snapshot_json,materials_snapshot_json,settings_snapshot_json,version_no,created_at,updated_at,resumed_at,last_active_at) VALUES('interview','owner','Interview','Engineer','TEXT','COMPREHENSIVE','STANDARD',30,2,'zh-CN','AFTER_SESSION',0,'IN_PROGRESS',0,60,'{}','{}','{}','{}',0,?,?,?,?)",

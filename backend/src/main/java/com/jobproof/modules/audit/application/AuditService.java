@@ -38,8 +38,13 @@ public class AuditService {
         if (summary == null) {
             return "";
         }
-        String trimmed = summary.length() > 512 ? summary.substring(0, 512) : summary;
-        return trimmed.replaceAll("(?i)password=[^\\s,]+", "password=***")
+        String sanitized = summary
+                .replaceAll("(?i)Bearer\\s+[^\\s,;\"'}]+", "Bearer ***")
+                .replaceAll("(?i)(password|api[_-]?key|authorization|token|secret|code)[\"']?\\s*[=:]\\s*([\"'])(?s:(?:(?!\\2).)*(?:\\2|$))", "$1=***")
+                .replaceAll("(?i)(password|api[_-]?key|authorization|token|secret|code)[\"']?\\s*[=:]\\s*[^\\s,;\"'}]+", "$1=***")
+                .replaceAll("\\bsk-[a-zA-Z0-9_-]+", "***")
+                .replaceAll("(?i)JP-(?:[a-z0-9]{4}-){3}[a-z0-9]{4}", "JP-****")
                 .replaceAll("\\b\\d{6}\\b", "******");
+        return sanitized.length() > 512 ? sanitized.substring(0, 512) : sanitized;
     }
 }

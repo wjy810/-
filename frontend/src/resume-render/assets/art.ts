@@ -1,5 +1,11 @@
 /** Decorative raster art (docs/phase2/04 §6.1), exported by design/template-assets/export.py. */
 const FILES: Record<string, string> = {
+  'botanical-sprig': new URL('./art/botanical-sprig.webp', import.meta.url).href,
+  'paper-cotton': new URL('./art/paper-cotton.jpg', import.meta.url).href,
+  'woven-strip': new URL('./art/woven-strip.jpg', import.meta.url).href,
+  'paper-cut': new URL('./art/paper-cut.webp', import.meta.url).href,
+  'shoreline-waves': new URL('./art/shoreline-waves.webp', import.meta.url).href,
+  'porcelain-branch': new URL('./art/porcelain-branch.webp', import.meta.url).href,
   'paper-warm': new URL('./art/paper-warm.jpg', import.meta.url).href,
   'paper-cool': new URL('./art/paper-cool.jpg', import.meta.url).href,
   'paper-linen': new URL('./art/paper-linen.jpg', import.meta.url).href,

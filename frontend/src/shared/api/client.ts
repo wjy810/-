@@ -7,11 +7,16 @@
  * - Routes 401 responses to the registered session-expiry handler.
  * - Routes plan-limit refusals (docs/phase2/02) to the registered upgrade handler.
  */
-import { ApiClientError, type ApiError, type ApiResponse } from './types'
+import { ApiClientError, isAiRequestInFlight, type ApiError, type ApiResponse } from './types'
 
 type UnauthenticatedHandler = () => void
 
 let onUnauthenticated: UnauthenticatedHandler | null = null
+
+type PreflightResult = { headers?: Record<string, string>; complete?: (receivedResponse: boolean) => void }
+type RequestPreflight = (path: string, init: ApiInit) => Promise<PreflightResult | undefined>
+let requestPreflight: RequestPreflight | null = null
+export function setRequestPreflight(hook: RequestPreflight | null): void { requestPreflight = hook }
 
 export function setUnauthenticatedHandler(handler: UnauthenticatedHandler | null): void {
   onUnauthenticated = handler
@@ -142,7 +147,7 @@ function prepareSignal(external: AbortSignal | null | undefined, timeoutMs: numb
   }
 }
 
-async function send(path: string, init: ApiInit, accept: string, defaultTimeout: number): Promise<{ response: Response; requestId: string }> {
+async function send(path: string, init: ApiInit, accept: string, defaultTimeout: number): Promise<{ response: Response; requestId: string; complete: (completed: boolean) => void }> {
   const method = (init.method ?? 'GET').toUpperCase()
   const fallbackTimeout = defaultTimeout && method !== 'GET' && method !== 'HEAD' ? WRITE_TIMEOUT_MS : defaultTimeout
   const { timeoutMs = fallbackTimeout, ...rest } = init
@@ -155,11 +160,16 @@ async function send(path: string, init: ApiInit, accept: string, defaultTimeout:
   const requestId = headers.get('X-Request-Id') ?? newRequestId()
   headers.set('X-Request-Id', requestId)
 
+  const preflight = await requestPreflight?.(path, init)
+  for (const [name, value] of Object.entries(preflight?.headers ?? {})) headers.set(name, value)
+  if (rest.signal?.aborted) throw new DOMException('用户取消', 'AbortError')
+
   const prepared = prepareSignal(rest.signal, timeoutMs)
   try {
     const response = await fetch(path, { ...rest, headers, credentials: 'include', signal: prepared.signal })
-    return { response, requestId: response.headers.get('X-Request-Id') ?? requestId }
+    return { response, requestId: response.headers.get('X-Request-Id') ?? requestId, complete: completed => preflight?.complete?.(completed) }
   } catch (error) {
+    preflight?.complete?.(false)
     if (prepared.timedOut()) throw new ApiClientError(TIMEOUT_ERROR, 0, requestId)
     if (error instanceof DOMException && error.name === 'AbortError') throw error
     throw error instanceof TypeError ? error : new TypeError('网络请求失败')
@@ -169,23 +179,24 @@ async function send(path: string, init: ApiInit, accept: string, defaultTimeout:
 }
 
 export async function api<T>(path: string, init: ApiInit = {}): Promise<T> {
-  const { response, requestId } = await send(path, init, 'application/json', DEFAULT_TIMEOUT_MS)
+  const { response, requestId, complete } = await send(path, init, 'application/json', DEFAULT_TIMEOUT_MS)
   const payload = (await parseJson(response)) as ApiResponse<T> | null
   if (!payload || typeof payload.ok !== 'boolean') {
     if (response.status === 401) {
       onUnauthenticated?.()
     }
-    if (response.ok && response.status === 204) return null as T
+    if (response.ok && response.status === 204) { complete(true); return null as T }
     throw new ApiClientError(unparsedHttpError(response.status), response.status, requestId)
   }
 
+  complete(payload.ok || !isAiRequestInFlight(payload.error?.reason))
   if (!payload.ok) {
     const error = errorFromPayload(payload.error, response.status)
     if (response.status === 401 || error.category === 'UNAUTHENTICATED') {
       onUnauthenticated?.()
     }
     notifyPlanLimit(error)
-    throw new ApiClientError(error, response.status, requestId)
+    throw new ApiClientError(error, response.status, requestId, true)
   }
 
   return payload.data as T
@@ -194,15 +205,16 @@ export async function api<T>(path: string, init: ApiInit = {}): Promise<T> {
 export type SseEvent = { id?: string; type: string; data: unknown }
 
 export async function apiSse(path: string, init: RequestInit, onEvent: (event: SseEvent) => void): Promise<void> {
-  const { response, requestId } = await send(path, { ...init, timeoutMs: 0 }, 'text/event-stream', 0)
+  const { response, requestId, complete } = await send(path, { ...init, timeoutMs: 0 }, 'text/event-stream', 0)
   if (!response.ok) {
     const payload = (await parseJson(response)) as ApiResponse<unknown> | null
     const error = payload && typeof payload.ok === 'boolean'
       ? errorFromPayload(payload.error, response.status)
       : unparsedHttpError(response.status)
+    if (payload && typeof payload.ok === 'boolean') complete(payload.ok || !isAiRequestInFlight(payload.error?.reason))
     if (response.status === 401 || error.category === 'UNAUTHENTICATED') onUnauthenticated?.()
     notifyPlanLimit(error)
-    throw new ApiClientError(error, response.status, requestId)
+    throw new ApiClientError(error, response.status, requestId, Boolean(payload && typeof payload.ok === 'boolean'))
   }
   if (!response.body) throw new ApiClientError(DEFAULT_ERROR, response.status, requestId)
 
@@ -217,7 +229,10 @@ export async function apiSse(path: string, init: RequestInit, onEvent: (event: S
       const block = buffer.slice(0, boundary)
       buffer = buffer.slice(boundary + 2)
       const event = parseSseBlock(block)
-      if (event) onEvent(event)
+      if (event) {
+        onEvent(event)
+        if (!(event.type === 'request.failed' && isAiRequestInFlight((event.data as { errorCode?: string })?.errorCode)) && ['done', 'completed', 'complete', 'error', 'response.completed', 'generation.completed', 'generation.failed', 'assistant.completed', 'assistant.cancelled', 'assistant.failed', 'request.failed'].includes(event.type)) complete(true)
+      }
       boundary = buffer.indexOf('\n\n')
     }
     if (done) break

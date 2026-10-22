@@ -257,7 +257,10 @@ public class AiResumeWorkbenchController {
     public ResponseEntity<StreamingResponseBody> respondStream(@PathVariable String conversationId,
             @Valid @RequestBody MessageRequest request) {
         var current = SecurityConfig.currentAccount();
-        StreamingResponseBody body = output -> workbench.respondStreaming(current, conversationId,
+        var aiContext = com.jobproof.shared.ai.AiExecutionContext.current();
+        StreamingResponseBody body = output -> {
+            try (var scope = com.jobproof.shared.ai.AiExecutionContext.use(aiContext)) {
+                workbench.respondStreaming(current, conversationId,
                 request.clientMessageId(), request.text(), (eventType, payload) -> {
                     try {
                         String frame = "event:" + eventType + "\n"
@@ -268,6 +271,8 @@ public class AiResumeWorkbenchController {
                         throw new UncheckedIOException(exception);
                     }
                 });
+            }
+        };
         return ResponseEntity.ok()
                 .contentType(MediaType.TEXT_EVENT_STREAM)
                 .cacheControl(CacheControl.noStore())

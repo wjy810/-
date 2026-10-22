@@ -1,6 +1,8 @@
 package com.jobproof.modules.membership.application;
 
 import com.jobproof.modules.audit.application.AuditService;
+import com.jobproof.modules.aibilling.application.*;
+import java.math.BigDecimal;
 import com.jobproof.modules.membership.domain.MembershipPlan;
 import com.jobproof.modules.membership.domain.RedeemCodes;
 import com.jobproof.shared.auth.CurrentAccount;
@@ -44,14 +46,18 @@ public class MembershipService implements DeletionModuleHandler, AccountExportCo
     private final JdbcTemplate jdbc;
     private final AuditService audit;
     private final ClockPort clock;
+    private final BalanceWalletService wallets;
+    private final RedemptionAttemptService attempts;
+    private final CommerceCatalogService commerce;
     private final Entitlements free;
     private final Entitlements pro;
 
-    public MembershipService(JdbcTemplate jdbc, AuditService audit, ClockPort clock,
+    public MembershipService(JdbcTemplate jdbc, AuditService audit, ClockPort clock, BalanceWalletService wallets, RedemptionAttemptService attempts, CommerceCatalogService commerce,
             @Value("${jobproof.ai.workbench.monthly-quota:50}") int freeAiUnits,
             @Value("${jobproof.membership.free.active-links:3}") int freeLinks,
             @Value("${jobproof.membership.pro.ai-monthly-units:300}") int proAiUnits,
             @Value("${jobproof.membership.pro.active-links:20}") int proLinks) {
+        this.wallets = wallets; this.attempts = attempts; this.commerce = commerce;
         this.jdbc = jdbc;
         this.audit = audit;
         this.clock = clock;
@@ -72,10 +78,9 @@ public class MembershipService implements DeletionModuleHandler, AccountExportCo
 
     @Transactional(readOnly = true)
     public PlanCatalog catalog() {
-        return new PlanCatalog(free, pro, List.of(
-                new Price("MONTH", "月付", 1900, 30),
-                new Price("QUARTER", "季付", 4900, 90),
-                new Price("YEAR", "年付", 16800, 365)));
+        return new PlanCatalog(free, pro, commerce.prices().stream()
+                .filter(p -> p.enabled() && p.amount() != null && p.code().startsWith("PRO_"))
+                .map(p -> new Price(p.code().substring(4), p.name(), p.amount().movePointRight(2).intValueExact(), p.days())).toList());
     }
 
     @Transactional(readOnly = true)
@@ -88,10 +93,11 @@ public class MembershipService implements DeletionModuleHandler, AccountExportCo
      * Redeems a code for the caller. Each code works once; a code's days are added to a PRO that is
      * still running, so stacking codes never wastes time already paid for.
      */
-    @Transactional(noRollbackFor = AppException.class)
+    @Transactional
     public MembershipView redeem(CurrentAccount current, String input) {
         assertUser(current);
         String accountId = current.accountId();
+        wallets.lock(accountId);
         Instant now = clock.now();
         Integer failed = jdbc.queryForObject("SELECT COUNT(*) FROM redeem_attempts WHERE account_id=? AND succeeded=FALSE AND created_at>?",
                 Integer.class, accountId, now.minus(Duration.ofHours(1)));
@@ -101,18 +107,17 @@ public class MembershipService implements DeletionModuleHandler, AccountExportCo
         String canonical = RedeemCodes.normalize(input).orElse(null);
         if (canonical == null) throw failure(accountId, now, "REDEEM_CODE_INVALID", "兑换码格式不正确，应为 JP- 开头的 16 位字母数字");
         List<CodeRow> rows = jdbc.query("""
-                SELECT c.id,c.batch_id,c.redeemed_by,b.plan,b.duration_days,b.redeem_before,b.revoked_at,b.name
-                  FROM redeem_codes c JOIN redeem_code_batches b ON b.id=c.batch_id WHERE c.code_hash=?
+                SELECT c.id,c.batch_id,c.redeemed_by,b.plan,b.duration_days,b.redeem_before,b.revoked_at,b.name,b.balance_amount
+                  FROM redeem_codes c JOIN redeem_code_batches b ON b.id=c.batch_id WHERE c.code_hash=? FOR UPDATE
                 """, (rs, n) -> new CodeRow(rs.getString("id"), rs.getString("batch_id"), rs.getString("redeemed_by"),
                         rs.getString("plan"), rs.getInt("duration_days"), instant(rs, "redeem_before"),
-                        instant(rs, "revoked_at"), rs.getString("name")),
+                        instant(rs, "revoked_at"), rs.getString("name"), rs.getBigDecimal("balance_amount")),
                 Tokens.sha256(canonical));
         if (rows.isEmpty()) throw failure(accountId, now, "REDEEM_CODE_INVALID", "兑换码无效，请核对后重试");
         CodeRow code = rows.get(0);
         if (code.redeemedBy() != null) {
-            throw accountId.equals(code.redeemedBy())
-                    ? AppException.conflict("REDEEM_CODE_ALREADY_YOURS", "你已经兑换过这个码")
-                    : failure(accountId, now, "REDEEM_CODE_USED", "这个兑换码已被使用");
+            if (accountId.equals(code.redeemedBy())) return view(accountId);
+            throw failure(accountId, now, "REDEEM_CODE_USED", "这个兑换码已被使用");
         }
         if (code.revokedAt() != null) throw failure(accountId, now, "REDEEM_CODE_REVOKED", "这个兑换码已停用");
         if (code.redeemBefore() != null && !code.redeemBefore().isAfter(now)) {
@@ -122,14 +127,33 @@ public class MembershipService implements DeletionModuleHandler, AccountExportCo
                 accountId, now, code.id());
         if (claimed == 0) throw failure(accountId, now, "REDEEM_CODE_USED", "这个兑换码已被使用");
         jdbc.update("UPDATE redeem_code_batches SET redeemed_count=redeemed_count+1 WHERE id=?", code.batchId());
-        Instant expires = extend(accountId, code.durationDays(), "REDEEM_CODE", now);
+        Instant expires = null;
+        if ("BALANCE".equals(code.plan())) wallets.credit(accountId, "REDEEM:" + code.id(), code.balanceAmount());
+        else expires = extend(accountId, code.durationDays(), "REDEEM_CODE", now);
         jdbc.update("INSERT INTO membership_events(id,account_id,event_type,plan,days,batch_id,expires_at,detail,created_at) VALUES(?,?,?,?,?,?,?,?,?)",
                 Ids.newId(), accountId, "REDEEMED", code.plan(), code.durationDays(), code.batchId(), expires,
                 clip(code.batchName(), 200), now);
         jdbc.update("INSERT INTO redeem_attempts(id,account_id,succeeded,created_at) VALUES(?,?,TRUE,?)", Ids.newId(), accountId, now);
-        audit.append(accountId, "MEMBERSHIP_REDEEMED", "REDEEM_CODE", code.id(), "兑换 " + code.durationDays() + " 天专业版");
+        audit.append(accountId, "MEMBERSHIP_REDEEMED", "REDEEM_CODE", code.id(), "BALANCE".equals(code.plan()) ? "兑换 CNY " + code.balanceAmount() : "兑换 " + code.durationDays() + " 天专业版");
         return view(accountId);
     }
+
+    @Transactional
+    public RedemptionReceipt redeemWithReceipt(CurrentAccount current, String input) {
+        assertUser(current);
+        wallets.lock(current.accountId());
+        String canonical = RedeemCodes.normalize(input).orElse("");
+        var prior = jdbc.queryForList("SELECT redeemed_by FROM redeem_codes WHERE code_hash=? FOR UPDATE", String.class, Tokens.sha256(canonical));
+        boolean repeated = !prior.isEmpty() && current.accountId().equals(prior.getFirst());
+        MembershipView membership = redeem(current, input);
+        var values = jdbc.queryForMap("SELECT b.plan,b.balance_amount FROM redeem_codes c JOIN redeem_code_batches b ON b.id=c.batch_id WHERE c.code_hash=?", Tokens.sha256(canonical));
+        java.math.BigDecimal amount = values.get("balance_amount") instanceof java.math.BigDecimal value ? value : java.math.BigDecimal.ZERO;
+        return new RedemptionReceipt(String.valueOf(values.get("plan")), amount,
+                wallets.wallet(current.accountId()).availableBalance(), repeated, membership);
+    }
+
+    public record RedemptionReceipt(String kind, java.math.BigDecimal amount, java.math.BigDecimal balance,
+            boolean previouslyRedeemed, MembershipView membership) {}
 
     // ---- operations: batches of codes ---------------------------------------------------------------
 
@@ -140,9 +164,8 @@ public class MembershipService implements DeletionModuleHandler, AccountExportCo
         if (command == null) throw AppException.user("REDEEM_BATCH_INVALID", "请填写兑换码批次信息");
         String name = command.name() == null ? "" : command.name().trim();
         if (name.isEmpty() || name.length() > 120) throw AppException.user("REDEEM_BATCH_NAME", "批次名称需要 1 到 120 个字");
-        if (command.durationDays() == null || !DURATIONS.contains(command.durationDays())) {
-            throw AppException.user("REDEEM_BATCH_DURATION", "时长只能是 7、30、90、180 或 365 天");
-        }
+        if (command.balanceAmount() == null || command.balanceAmount().signum() <= 0) throw AppException.user("REDEEM_BATCH_AMOUNT", "请填写正数人民币面额");
+        BalanceWalletService.amount(command.balanceAmount());
         int quantity = command.quantity() == null ? 0 : command.quantity();
         if (quantity < 1 || quantity > MAX_BATCH) throw AppException.user("REDEEM_BATCH_QUANTITY", "每批数量为 1 到 " + MAX_BATCH + " 个");
         Instant now = clock.now();
@@ -151,9 +174,9 @@ public class MembershipService implements DeletionModuleHandler, AccountExportCo
         }
         String batchId = Ids.newId();
         String channel = command.channel() == null || command.channel().isBlank() ? null : clip(command.channel().trim(), 120);
-        jdbc.update("INSERT INTO redeem_code_batches(id,name,channel,plan,duration_days,quantity,redeemed_count,redeem_before,revoked_at,created_by,created_at) VALUES(?,?,?,?,?,?,0,?,NULL,?,?)",
-                batchId, name, channel, MembershipPlan.PRO.name(), command.durationDays(), quantity, command.redeemBefore(),
-                current.accountId(), now);
+        jdbc.update("INSERT INTO redeem_code_batches(id,name,channel,plan,duration_days,quantity,redeemed_count,redeem_before,revoked_at,created_by,created_at,balance_amount) VALUES(?,?,?,?,?,?,0,?,NULL,?,?,?)",
+                batchId, name, channel, "BALANCE", 0, quantity, command.redeemBefore(),
+                current.accountId(), now, command.balanceAmount());
         List<String> codes = new ArrayList<>(quantity);
         while (codes.size() < quantity) {
             String display = RedeemCodes.generate();
@@ -167,7 +190,7 @@ public class MembershipService implements DeletionModuleHandler, AccountExportCo
             }
         }
         audit.append(current.accountId(), "REDEEM_BATCH_CREATED", "REDEEM_BATCH", batchId,
-                "生成兑换码 " + quantity + " 个（" + command.durationDays() + " 天）");
+                "生成兑换码 " + quantity + " 个（" + command.balanceAmount() + " 元）");
         return new BatchCreated(batch(batchId, now), codes);
     }
 
@@ -240,11 +263,8 @@ public class MembershipService implements DeletionModuleHandler, AccountExportCo
     }
 
     private Instant extend(String accountId, int days, String source, Instant now) {
-        try {
-            jdbc.update("INSERT INTO account_memberships(account_id,plan,expires_at,source,version_no,created_at,updated_at) VALUES(?,'FREE',NULL,?,0,?,?)",
-                    accountId, source, now, now);
-        } catch (DuplicateKeyException exists) {
-            // The row is there already; the locked read below works on it.
+        if (jdbc.queryForList("SELECT account_id FROM account_memberships WHERE account_id=?", String.class, accountId).isEmpty()) {
+            jdbc.update("INSERT INTO account_memberships(account_id,plan,expires_at,source,version_no,created_at,updated_at) VALUES(?,'FREE',NULL,?,0,?,?)",accountId,source,now,now);
         }
         List<Instant> locked = jdbc.query("SELECT plan,expires_at FROM account_memberships WHERE account_id=? FOR UPDATE",
                 (rs, n) -> "PRO".equals(rs.getString("plan")) ? instant(rs, "expires_at") : null, accountId);
@@ -263,7 +283,7 @@ public class MembershipService implements DeletionModuleHandler, AccountExportCo
     }
 
     private void recordFailure(String accountId, Instant now) {
-        jdbc.update("INSERT INTO redeem_attempts(id,account_id,succeeded,created_at) VALUES(?,?,FALSE,?)", Ids.newId(), accountId, now);
+        attempts.failed(accountId, now);
     }
 
     private BatchView batch(String batchId, Instant now) {
@@ -280,7 +300,7 @@ public class MembershipService implements DeletionModuleHandler, AccountExportCo
                 : redeemed >= quantity ? "USED_UP"
                 : redeemBefore != null && !redeemBefore.isAfter(now) ? "EXPIRED" : "ACTIVE";
         return new BatchView(rs.getString("id"), rs.getString("name"), rs.getString("channel"), rs.getString("plan"),
-                rs.getInt("duration_days"), quantity, redeemed, redeemBefore, revoked, status, instant(rs, "created_at"));
+                rs.getInt("duration_days"), quantity, redeemed, redeemBefore, revoked, status, instant(rs, "created_at"), rs.getBigDecimal("balance_amount"));
     }
 
     private static Instant instant(ResultSet rs, String column) throws SQLException {
@@ -301,7 +321,7 @@ public class MembershipService implements DeletionModuleHandler, AccountExportCo
     }
 
     private record CodeRow(String id, String batchId, String redeemedBy, String plan, int durationDays,
-            Instant redeemBefore, Instant revokedAt, String batchName) {
+            Instant redeemBefore, Instant revokedAt, String batchName, BigDecimal balanceAmount) {
     }
 
     public record Entitlements(String plan, int aiMonthlyUnits, int activeLinks) {
@@ -325,11 +345,11 @@ public class MembershipService implements DeletionModuleHandler, AccountExportCo
             Instant createdAt) {
     }
 
-    public record BatchCommand(String name, String channel, Integer durationDays, Integer quantity, Instant redeemBefore) {
+    public record BatchCommand(String name, String channel, Integer durationDays, Integer quantity, Instant redeemBefore, BigDecimal balanceAmount) {
     }
 
     public record BatchView(String id, String name, String channel, String plan, int durationDays, int quantity,
-            int redeemed, Instant redeemBefore, Instant revokedAt, String status, Instant createdAt) {
+            int redeemed, Instant redeemBefore, Instant revokedAt, String status, Instant createdAt, BigDecimal balanceAmount) {
     }
 
     public record BatchCreated(BatchView batch, List<String> codes) {

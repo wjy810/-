@@ -18,6 +18,7 @@ import { useLoadState } from '@/shared/lib/useLoadState'
 import { MODULE_LABELS, STATUS_LABELS, TYPE_LABELS, moduleLabel, statusLabel, typeLabel } from '../labels'
 import { copyUpdate, fetchAdminOverview, listAdminUpdates, publishUpdate } from '../services/updatesApi'
 import type { ReleaseSummary } from '../types'
+import { confirmPublication } from '../publication'
 import '../updates.css'
 
 const router = useRouter()
@@ -63,7 +64,7 @@ async function applyFilters(): Promise<void> {
 
 async function onPublish(item: ReleaseSummary): Promise<void> {
   pending.value = `publish-${item.id}`; error.value = ''; notice.value = ''
-  try { await publishUpdate(item.id, item.versionNo); notice.value = `${item.versionLabel} 已正式发布`; await load() }
+  try { const choice = await confirmPublication(item.id); if (!choice) return; await publishUpdate(item.id, choice.expectedVersion, choice); notice.value = `${item.versionLabel} 已正式发布`; await load() }
   catch (reason) { error.value = errorMessage(reason, '发布失败') }
   finally { pending.value = '' }
 }

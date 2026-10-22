@@ -47,7 +47,7 @@ class MockInterviewConsistencyTest {
             if (competitor != null) competitor.run();
             return NOW;
         }, mock(MockInterviewAiService.class),
-                transactionManager);
+                transactionManager, quotaStub());
         jdbc.update("INSERT INTO mock_interview_sessions(id,account_id,title,position_name,mode,interview_type,difficulty,duration_minutes,question_count,language_code,feedback_mode,follow_up_enabled,status,current_question_index,elapsed_seconds,resume_snapshot_json,jd_snapshot_json,materials_snapshot_json,settings_snapshot_json,version_no,created_at,updated_at) VALUES('interview','owner','Interview','Engineer','TEXT','COMPREHENSIVE','STANDARD',30,2,'zh-CN','AFTER_EACH',0,'IN_PROGRESS',0,0,'{}','{}','{}','{}',0,?,?)", NOW, NOW);
         for (int i = 1; i <= 2; i++) {
             jdbc.update("INSERT INTO mock_interview_questions(id,session_id,order_no,question_type,prompt_text,source_label,source_refs_json,status,created_at) VALUES(?, 'interview',?,'PROFESSIONAL','Question','source','[]','PENDING',?)", "question-" + i, i, NOW);
@@ -108,6 +108,76 @@ class MockInterviewConsistencyTest {
         assertEquals(0, report.evaluatedCount());
     }
 
+    @Test
+    void pendingEvaluationWaitsForAccountBeforeTouchingAnswerAndPreservesConcurrentSubmission() throws Exception {
+        jdbc.execute("CREATE TABLE accounts(id VARCHAR(36) PRIMARY KEY)");
+        jdbc.update("INSERT INTO accounts VALUES('owner')");
+        insertAnswer(jdbc,"answer-1","question-1","pending","{}");
+        jdbc.update("UPDATE mock_interview_answers SET status='SUBMITTED' WHERE id='answer-1'");
+        var quota=quotaStub();
+        var tryingAccount=new java.util.concurrent.CountDownLatch(1);
+        org.mockito.Mockito.doAnswer(call->{
+            tryingAccount.countDown();
+            jdbc.queryForObject("SELECT id FROM accounts WHERE id='owner' FOR UPDATE",String.class);
+            return null;
+        }).when(quota).lockForSettlement("owner");
+        var ai=mock(MockInterviewAiService.class);
+        org.mockito.Mockito.when(ai.evaluateAnswer(org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.anyList(),org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyBoolean(),org.mockito.ArgumentMatchers.anyMap(),org.mockito.ArgumentMatchers.anyMap()))
+                .thenReturn(new MockInterviewAiService.Evaluation(Map.of("overall",80),Map.of("generationMode","AI_MODEL"),"synthetic","channel",0,0));
+        var evaluator=new MockInterviewService(jdbc,new ObjectMapper(),()->NOW,ai,
+                new DataSourceTransactionManager(jdbc.getDataSource()),quota);
+        var pool=java.util.concurrent.Executors.newSingleThreadExecutor();
+        var result=new AtomicReference<java.util.concurrent.Future<MockInterviewService.EvaluationResult>>();
+        try {
+            tx.executeWithoutResult(status->{
+                jdbc.queryForObject("SELECT id FROM accounts WHERE id='owner' FOR UPDATE",String.class);
+                result.set(pool.submit(()->evaluator.evaluatePending(current,"interview")));
+                try { org.junit.jupiter.api.Assertions.assertTrue(tryingAccount.await(5,java.util.concurrent.TimeUnit.SECONDS)); }
+                catch(InterruptedException e) {throw new RuntimeException(e);}
+                jdbc.update("UPDATE mock_interview_answers SET answer_text='new submission',version_no=version_no+1 WHERE id='answer-1'");
+            });
+            assertEquals(0,result.get().get(5,java.util.concurrent.TimeUnit.SECONDS).evaluated());
+            assertEquals("new submission",jdbc.queryForObject("SELECT answer_text FROM mock_interview_answers WHERE id='answer-1'",String.class));
+            org.mockito.Mockito.verify(quota,org.mockito.Mockito.never()).successfulUnit(org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString());
+        } finally {pool.shutdownNow();}
+    }
+
+    @Test
+    void abandonmentCommittedAfterFinalStateReadPreventsAnswerAndSettlement() {
+        var quota=quotaStub();
+        org.mockito.Mockito.when(quota.reserveExclusive(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyInt()))
+                .thenReturn(new com.jobproof.modules.airesume.application.AiQuotaService.Reservation("reservation", "request", 1, 0, "HELD"));
+        var otherTx=new TransactionTemplate(new DataSourceTransactionManager(otherConnection.getDataSource()));
+        var competingService=new MockInterviewService(otherConnection,new ObjectMapper(),()->NOW,mock(MockInterviewAiService.class),
+                new DataSourceTransactionManager(otherConnection.getDataSource()),quotaStub());
+        var ai=mock(MockInterviewAiService.class);
+        org.mockito.Mockito.when(ai.evaluateAnswer(org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.anyList(),org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyBoolean(),org.mockito.ArgumentMatchers.anyMap(),org.mockito.ArgumentMatchers.anyMap()))
+                .thenAnswer(call->{
+                    // The next clock read is after the completion transaction's active/version read.
+                    competingWrite.set(()->otherTx.executeWithoutResult(status->competingService.abandon(current,"interview")));
+                    return new MockInterviewAiService.Evaluation(Map.of("overall",80),Map.of("generationMode","AI_MODEL"),"synthetic","channel",0,0);
+                });
+        var submitting=new MockInterviewService(jdbc,new ObjectMapper(),()->{
+            Runnable competitor=competingWrite.getAndSet(null);
+            if(competitor!=null) competitor.run();
+            return NOW;
+        },ai,new DataSourceTransactionManager(jdbc.getDataSource()),quota);
+        AppException error=assertThrows(AppException.class,()->submitting.submitAnswer(current,"interview","question-1",
+                new MockInterviewService.AnswerCommand("answer finishing too late",null)));
+        assertEquals("VERSION_CONFLICT",error.reason());
+        assertEquals("ABANDONED",jdbc.queryForObject("SELECT status FROM mock_interview_sessions WHERE id='interview'",String.class));
+        assertEquals(0,jdbc.queryForObject("SELECT COUNT(*) FROM mock_interview_answers",Integer.class));
+        assertEquals("PENDING",jdbc.queryForObject("SELECT status FROM mock_interview_questions WHERE id='question-1'",String.class));
+        org.mockito.Mockito.verify(quota,org.mockito.Mockito.never()).settle(org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyInt());
+        org.mockito.Mockito.verify(quota).release("owner","reservation");
+    }
+
+    private static com.jobproof.modules.airesume.application.AiQuotaService quotaStub() {
+        var quota = org.mockito.Mockito.mock(com.jobproof.modules.airesume.application.AiQuotaService.class);
+        org.mockito.Mockito.when(quota.reserve(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyInt()))
+                .thenReturn(new com.jobproof.modules.airesume.application.AiQuotaService.Reservation("reservation", "request", 1, 0, "HELD"));
+        return quota;
+    }
     private static void insertAnswer(JdbcTemplate database, String id, String questionId, String text, String scores) {
         database.update("INSERT INTO mock_interview_answers(id,session_id,question_id,answer_mode,answer_text,status,score_json,feedback_json,version_no,created_at,updated_at) VALUES(?,'interview',?,'TEXT',?,'DRAFT',?,'{}',0,?,?)", id, questionId, text, scores, NOW, NOW);
     }

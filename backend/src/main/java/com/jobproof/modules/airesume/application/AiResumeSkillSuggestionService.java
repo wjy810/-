@@ -64,6 +64,7 @@ public class AiResumeSkillSuggestionService {
     private final ResumeAiCandidateService aiCandidates;
     private final AiGatewayService gateway;
     private final AiQuotaService quota;
+    private final AiSuggestionResults results;
     private final AiGenerationAttemptService attempts;
     private final AuditService audit;
     private final CareerLibraryService careerLibrary;
@@ -71,13 +72,14 @@ public class AiResumeSkillSuggestionService {
 
     public AiResumeSkillSuggestionService(JdbcTemplate jdbc, ObjectMapper mapper,
             ResumeAiCandidateService aiCandidates, AiGatewayService gateway, AiQuotaService quota,
-            AiGenerationAttemptService attempts, AuditService audit, CareerLibraryService careerLibrary,
+            AiGenerationAttemptService attempts, AuditService audit, AiSuggestionResults results, CareerLibraryService careerLibrary,
             @Value("${jobproof.ai.resume-model:qwen-plus}") String defaultModel) {
         this.jdbc = jdbc;
         this.mapper = mapper;
         this.aiCandidates = aiCandidates;
         this.gateway = gateway;
         this.quota = quota;
+        this.results = results;
         this.attempts = attempts;
         this.audit = audit;
         this.careerLibrary = careerLibrary;
@@ -85,6 +87,14 @@ public class AiResumeSkillSuggestionService {
     }
 
     public SkillSuggestionView generate(CurrentAccount current, String conversationId, String cardId,
+            String clientRequestId, String rawPhase, String rawMode, JsonNode currentSkills,
+            List<String> selectedNames, List<String> confirmedNames) {
+        assertSeeker(current);
+        return results.execute(current.accountId(), "skills:" + conversationId + ":" + cleanRequestId(clientRequestId), "RESUME_SKILL",
+                java.util.Arrays.asList(current, conversationId, cardId, clientRequestId, rawPhase, rawMode, currentSkills, selectedNames, confirmedNames), SkillSuggestionView.class, () -> generateFresh(current, conversationId, cardId, clientRequestId, rawPhase, rawMode, currentSkills, selectedNames, confirmedNames));
+    }
+
+    private SkillSuggestionView generateFresh(CurrentAccount current, String conversationId, String cardId,
             String clientRequestId, String rawPhase, String rawMode, JsonNode currentSkills,
             List<String> selectedNames, List<String> confirmedNames) {
         assertSeeker(current);
@@ -137,14 +147,18 @@ public class AiResumeSkillSuggestionService {
                 attempts.finish(attempt, "CANCELLED", "AI_TASK_CANCELLED", model, inputTokens, outputTokens);
                 throw AppException.conflict("AI_TASK_CANCELLED", "已取消技能生成，当前技能没有变化");
             }
-            AiQuotaService.QuotaView settled = quota.settle(current.accountId(), reservation.id(), 1);
+            SkillSuggestionView saved = results.complete(current.accountId(), reservation.id(), new SkillSuggestionView(phase, mode, parsed.candidates(), parsed.groups(), requestId, model,
+                    inputTokens, outputTokens, 0, PROMPT_VERSION, context.careerSnapshot()));
+            try {
             attempts.finish(attempt, "COMPLETED", null, model, inputTokens, outputTokens);
             audit.append(current.accountId(), "AI_RESUME_SKILLS_SUGGESTED", "AI_RESUME_CARD", cardId,
                     "phase=" + phase + " mode=" + mode + " model=" + model
                             + " candidateCount=" + parsed.candidates().size()
                             + " groupCount=" + parsed.groups().size());
-            return new SkillSuggestionView(phase, mode, parsed.candidates(), parsed.groups(), requestId, model,
-                    inputTokens, outputTokens, settled.remainingUnits(), PROMPT_VERSION, context.careerSnapshot());
+            } catch (RuntimeException ignored) {
+                // A committed paid result stays available even if telemetry is unavailable.
+            }
+            return saved;
         } catch (AiGatewayException exception) {
             if (reservation != null) quota.release(current.accountId(), reservation.id());
             attempts.finish(attempt, "FAILED", "AI_MODEL_FAILED", defaultModel, 0, 0);

@@ -111,11 +111,12 @@ public class CareerPlanningExecutionService {
     private final AuditService audit;
     private final CareerPlanningEventService events;
     private final TransactionTemplate transactions;
+    private final com.jobproof.modules.task.application.TaskService tasks;
     private final boolean enabled;
 
     public CareerPlanningExecutionService(JdbcTemplate jdbc, ObjectMapper mapper, ClockPort clock,
             CareerPlanningAiService ai, CareerPlanningService planning, AuditService audit,
-            CareerPlanningEventService events, PlatformTransactionManager transactionManager,
+            CareerPlanningEventService events, PlatformTransactionManager transactionManager, com.jobproof.modules.task.application.TaskService tasks,
             @Value("${jobproof.career-planning.enabled:false}") boolean enabled) {
         this.jdbc = jdbc;
         this.mapper = mapper;
@@ -125,6 +126,7 @@ public class CareerPlanningExecutionService {
         this.audit = audit;
         this.events = events;
         this.transactions = new TransactionTemplate(transactionManager);
+        this.tasks = tasks;
         this.enabled = enabled;
     }
 
@@ -590,8 +592,11 @@ public class CareerPlanningExecutionService {
     private <T> T persistAiResult(CurrentAccount current, AiResult<?> result, Supplier<T> persistence) {
         try {
             return transactions.execute(status -> {
+                jdbc.queryForList("SELECT id FROM accounts WHERE id=? FOR UPDATE", String.class, current.accountId());
+                tasks.fenceAiCompletion(current.accountId());
                 T saved = persistence.get();
                 ai.settle(current.accountId(), result);
+                tasks.completeAiResult(current.accountId());
                 return saved;
             });
         } catch (RuntimeException exception) {

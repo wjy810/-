@@ -16,8 +16,10 @@ import {
   PenSquare,
   Send,
   Settings,
+  ShieldCheck,
   Shapes,
   Target,
+  Wallet,
 } from 'lucide-vue-next'
 
 export type NavItem = {
@@ -62,6 +64,7 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { key: 'notifications', to: '/notifications', label: '通知', icon: Bell, badge: 'unread' },
       { key: 'updates', to: '/updates', label: '更新日志', icon: History },
+      { key: 'wallet', to: '/account/wallet', label: '钱包与账单', icon: Wallet },
       { key: 'account', to: '/account', label: '设置', icon: Settings },
     ],
   },
@@ -73,6 +76,9 @@ export const NAV_GROUPS: NavGroup[] = [
       { key: 'admin-overview', to: '/admin/overview', label: '运营概览', icon: BarChart3 },
       { key: 'admin-templates', to: '/admin/resume-templates', label: '模板运营', icon: Shapes },
       { key: 'admin-ai', to: '/admin/ai-channels', label: 'AI 通道', icon: Cpu },
+      { key: 'admin-audit', to: '/admin/audit', label: '审计日志', icon: ShieldCheck },
+      { key: 'admin-billing', to: '/admin/billing', label: '计费管理', icon: Wallet },
+      { key: 'admin-commerce', to: '/admin/commerce', label: '商业设置', icon: Settings },
       { key: 'admin-redeem', to: '/admin/redeem-codes', label: '兑换码', icon: Ticket },
       { key: 'admin-changelog', to: '/admin/changelog', label: '更新发布', icon: PenSquare },
       { key: 'admin-mail', to: '/admin/mail-settings', label: '邮件设置', icon: Mail },
@@ -81,6 +87,7 @@ export const NAV_GROUPS: NavGroup[] = [
 ]
 
 export function isNavActive(item: NavItem, path: string): boolean {
+  if (item.key === 'account' && (path === '/account/wallet' || path.startsWith('/account/wallet/'))) return false
   if (path === item.to || path.startsWith(`${item.to}/`)) return true
   return (item.match ?? []).some(prefix => path === prefix || path.startsWith(`${prefix}/`))
 }
